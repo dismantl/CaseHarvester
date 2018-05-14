@@ -1,0 +1,12 @@
+.deploy-*
+.create-stack-buckets
+.init-*
+.package-*
+setup.cfg
+pkg/
+docs/
+cloudformation/*-output.yaml
+__pycache__
+*.pyc
+env/development.env
+env/production.env

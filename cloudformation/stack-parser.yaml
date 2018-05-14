@@ -1,0 +1,115 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  DatabasePassword:
+    Type: String
+    NoEcho: True
+  DatabaseUsername:
+    Type: String
+    NoEcho: True
+  DatabaseName:
+    Type: String
+    Default: mjcs
+  StaticStackName:
+    Description: Name of the static stack, for getting database and S3 bucket details
+    Type: String
+  EnvironmentType:
+    Description: The environment type (prod or dev)
+    Type: String
+    Default: dev
+    AllowedValues:
+      - prod
+      - dev
+    ConstraintDescription: must be a prod or dev
+
+Mappings:
+  Environment:
+    ParserFailedQueueName:
+      prod: mjcs_parser_failed_queue
+      dev: dev_mjcs_parser_failed_queue
+    ParserTriggerTopicName:
+      prod: mjcs_parser_trigger
+      dev: dev_mjcs_parser_trigger
+
+Resources:
+  Parser:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: parser_lambda.lambda_handler
+      Runtime: python3.6
+      Policies:
+        - AWSLambdaFullAccess
+        - S3ReadPolicy:
+            BucketName:
+              Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
+        - AmazonSQSFullAccess
+        - VPCAccessPolicy: {}
+      CodeUri: ../pkg/parser
+      MemorySize: 128
+      Timeout: 300
+      # ReservedConcurrentExecutions: 10
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt ParserFailedQueue.Arn
+      Environment:
+        Variables:
+          MJCS_DATABASE_URL: !Sub
+            - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
+            - db_user: !Ref DatabaseUsername
+              db_pw: !Ref DatabasePassword
+              db_addr:
+                Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+              db_name: !Ref DatabaseName
+          CASE_DETAILS_BUCKET:
+            Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
+      Events:
+        SNSTrigger:
+          Type: SNS
+          Properties:
+            Topic: !Ref ParserTrigger
+      # VpcConfig:
+      #   SecurityGroupIds:
+      #     -
+      #       Fn::ImportValue: !Sub ${StaticStackName}-DatabaseSecurityGroupId
+      #   SubnetIds:
+      #     -
+      #       Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnetId
+
+  ParserTrigger:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !FindInMap [Environment, ParserTriggerTopicName, !Ref EnvironmentType]
+
+  ParserS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:*
+      FunctionName: !Ref Parser
+      Principal: s3.amazonaws.com
+      SourceArn:
+        Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketArn
+      # SourceAccount: !Ref AWS::AccountId
+
+  ParserFailedQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      QueueName: !FindInMap [Environment, ParserFailedQueueName, !Ref EnvironmentType]
+
+Outputs:
+  ParserArn:
+    Description: ARN of Parser lambda function
+    Value: !GetAtt Parser.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-ParserArn
+  ParserTriggerArn:
+    Description: ARN of the SNS topic to trigger Parser lambda
+    Value: !Ref ParserTrigger
+    Export:
+      Name: !Sub ${AWS::StackName}-ParserTriggerArn
+  ParserFailedQueueName:
+    Description: Name of the Parser lambda DLQ
+    Value: !FindInMap [Environment, ParserFailedQueueName, !Ref EnvironmentType]
+    Export:
+      Name: !Sub ${AWS::StackName}-ParserFailedQueueName

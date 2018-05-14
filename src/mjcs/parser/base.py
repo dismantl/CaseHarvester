@@ -1,0 +1,274 @@
+from abc import ABC, abstractmethod
+from bs4 import BeautifulSoup, SoupStrainer
+from ..db import db_session
+from ..case import Case
+import re
+from datetime import *
+
+class ParserError(Exception):
+    def __init__(self, message, content=None):
+        self.message = message
+        self.content = content
+
+class UnparsedDataError(Exception):
+    def __init__(self, message, content):
+        self.message = message
+        self.content = content
+
+def consumer(func):
+    func.consumer = True
+    return func
+
+class CaseDetailsParser(ABC):
+    def __init__(self, case_number, html):
+        # <body> should only have a single child div that holds the data
+        self.case_number = case_number
+        strainer = SoupStrainer('div')
+        self.soup = BeautifulSoup(html,'html.parser',parse_only=strainer)
+        if len(self.soup.contents) != 1 or not self.soup.div:
+            raise ParserError("Unexpected HTML format", self.soup)
+        self.marked_for_deletion = []
+
+    def parse(self):
+        with db_session() as db:
+            self.header(self.soup)
+            self.case(db, self.soup)
+            self.consume_all(db)
+            self.footer(self.soup)
+            self.finalize(db)
+
+    def mark_for_deletion(self, obj):
+        self.marked_for_deletion.append(obj)
+
+    def consume_all(self, db):
+        for attr in dir(self):
+            f = getattr(self,attr)
+            if hasattr(f,'consumer') and type(f) != BeautifulSoup:
+                # print("Calling consumer %s for %s" % (f.__name__,self.case_number))
+                f(db, self.soup) # this will call all @consumer methods in both sub and super classes
+
+    def finalize(self, db):
+        for obj in self.marked_for_deletion:
+            obj.decompose()
+        if list(self.soup.stripped_strings):
+            raise UnparsedDataError("Data remaining in DOM after parsing:",list(self.soup.stripped_strings))
+        # update last_parse in DB
+        db.execute(
+            Case.__table__.update()\
+                .where(Case.case_number == self.case_number)\
+                .values(last_parse = datetime.now())
+        )
+
+    @abstractmethod
+    def header(self, soup):
+        raise NotImplementedError
+
+    @abstractmethod
+    def footer(self, soup):
+        raise NotImplementedError
+
+    @abstractmethod
+    def case(self, db, soup):
+        raise NotImplementedError
+
+    def delete_previous(self, db, case_table_class):
+        db.execute(case_table_class.__table__.delete()\
+            .where(case_table_class.case_number == self.case_number))
+
+    def immediate_previous_sibling(self, next_sibling, *args, **kwargs):
+        obj_prev = next_sibling.find_previous_sibling(True)
+        if not obj_prev:
+            raise ParserError('No previous siblings')
+        obj_find = next_sibling.find_previous_sibling(*args, **kwargs)
+        if obj_prev is not obj_find:
+            raise ParserError(
+                'Unexpected immediate previous sibling',
+                obj_prev
+            )
+        return obj_prev
+
+    def immediate_sibling(self, prev_sibling, *args, **kwargs):
+        obj_next = prev_sibling.find_next_sibling(True)
+        if not obj_next:
+            raise ParserError('No subsequent siblings')
+        obj_find = prev_sibling.find_next_sibling(*args, **kwargs)
+        if obj_next is not obj_find:
+            raise ParserError(
+                'Unexpected immediate next sibling',
+                obj_next
+            )
+        return obj_next
+
+    def info_charge_statement(self, prev_sibling):
+        try:
+            div = self.immediate_sibling(prev_sibling,'div',class_='InfoChargeStatement')
+        except ParserError:
+            raise ParserError('Unable to retrieve InfoChargeStatement')
+        self.mark_for_deletion(div)
+        return div
+
+    def first_level_header(self, soup, header_name):
+        try:
+            table = soup\
+                .find('h5',string=re.compile(header_name))\
+                .find_parent('table')
+        except AttributeError:
+            raise ParserError('First level header "%s" not found' % header_name)
+        self.mark_for_deletion(table)
+        return table
+
+    def second_level_header(self, soup, header_name):
+        h5 = soup\
+            .find('h5',string=re.compile(header_name))
+        if not h5:
+            raise ParserError('Second level header "%s" not found' % header_name)
+        self.mark_for_deletion(h5)
+        return h5
+
+    def third_level_header(self, base, header_name):
+        try:
+            left = base\
+                .find('i',string=re.compile(header_name))\
+                .find_parent('h5')\
+                .find_parent('left')
+        except AttributeError:
+            raise ParserError('Third level header "%s" not found' % header_name)
+        self.mark_for_deletion(left)
+        return left
+
+    def row_label(self, base, first_column_prompt):
+        prompt_span = base\
+            .find('span',class_='FirstColumnPrompt',string=re.compile(first_column_prompt))
+        if not prompt_span:
+            raise ParserError('Row header "%s" not found' % first_column_prompt)
+        self.mark_for_deletion(prompt_span)
+        return prompt_span\
+            .find_parent('tr')
+
+    def table_next_first_column_prompt(self, prev_sibling, first_column_prompt):
+        obj = self.immediate_sibling(prev_sibling,'table')
+        try:
+            self.table_first_columm_prompt(obj, first_column_prompt)
+        except ParserError:
+            raise ParserError(
+                'Next table does not contain first column prompt %s' % first_column_prompt,
+                obj
+            )
+        return obj
+
+    def table_next_prompt(self, prev_sibling, prompt):
+        obj = self.immediate_sibling(prev_sibling,'table')
+        try:
+            self.table_prompt(obj, prompt)
+        except ParserError:
+            raise ParserError(
+                'Next table does not contain prompt %s' % prompt,
+                obj
+            )
+        return obj
+
+    def table_first_columm_prompt(self, base, first_column_prompt):
+        if type(first_column_prompt) == list:
+            first_column_prompt = [re.compile(p) for p in first_column_prompt]
+        elif type(first_column_prompt) == str:
+            first_column_prompt = re.compile(first_column_prompt)
+        try:
+            return base\
+                .find('span',class_='FirstColumnPrompt',string=first_column_prompt)\
+                .find_parent('table')
+        except AttributeError:
+            raise ParserError('Table with first column prompt "%s" not found' % first_column_prompt)
+
+    def table_prompt(self, base, prompt):
+        if type(prompt) == list:
+            prompt = [re.compile(p) for p in prompt]
+        elif type(prompt) == str:
+            prompt = re.compile(prompt)
+        try:
+            return base\
+                .find('span',class_='Prompt',string=prompt)\
+                .find_parent('table')
+        except AttributeError:
+            raise ParserError('Table with prompt "%s" not found' % prompt)
+
+    def format_value(self,
+            val,
+            strip=True,
+            remove_extra_spaces=True,
+            remove_newlines=False,
+            boolean_value=False,
+            numeric=False,
+            money=False):
+        if boolean_value:
+            return True if val else False
+        if not val:
+            return None
+        if strip:
+            val = val.strip()
+        if remove_extra_spaces:
+            val = re.sub(' +',' ',val)
+        if remove_newlines:
+            val = val.replace('\n','')
+        if numeric or money:
+            val = val.replace(',','')
+        if money:
+            val = val.replace('$','')
+        return val
+
+    def value_first_column(self, base, first_column_prompt, ignore_missing=False, **format_args):
+        prompt_span = base\
+            .find('span',class_='FirstColumnPrompt',string=re.compile(first_column_prompt))
+        if not prompt_span:
+            if ignore_missing:
+                return None
+            raise ParserError('Unable to find first column prompt %s' % first_column_prompt)
+        self.mark_for_deletion(prompt_span)
+        value = prompt_span\
+            .find_parent('td')\
+            .find_next_sibling('td')\
+            .find('span',class_='Value')\
+            .string
+        if value:
+            self.mark_for_deletion(value.parent)
+        return self.format_value(value, **format_args)
+
+    def value_combined_first_column(self, base, first_column_prompt, ignore_missing=False, **format_args):
+        prompt_span = base\
+            .find('span',class_='FirstColumnPrompt',string=re.compile(first_column_prompt))
+        if not prompt_span:
+            if ignore_missing:
+                return None
+            raise ParserError('Unable to find combined first column prompt %s' % first_column_prompt)
+        self.mark_for_deletion(prompt_span)
+        value_span = prompt_span\
+            .find_next_sibling('span',class_='Value')
+        self.mark_for_deletion(value_span)
+        return self.format_value(value_span.string, **format_args)
+
+    def value_column(self, base, prompt, ignore_missing=False, **format_args):
+        prompt_span = base\
+            .find('span',class_='Prompt',string=re.compile(prompt))
+        if not prompt_span:
+            if ignore_missing:
+                return None
+            raise ParserError('Unable to find column prompt %s' % prompt)
+        self.mark_for_deletion(prompt_span)
+        value_span = prompt_span\
+            .find_next_sibling('span',class_='Value')
+        self.mark_for_deletion(value_span)
+        return self.format_value(value_span.string, **format_args)
+
+    def value_multi_column(self, base, prompt, ignore_missing=False, **format_args):
+        prompt_span = base\
+            .find('span',class_='Prompt',string=re.compile(prompt))
+        if not prompt_span:
+            if ignore_missing:
+                return None
+            raise ParserError('Unable to find column prompt %s' % prompt)
+        self.mark_for_deletion(prompt_span)
+        value_span = prompt_span\
+            .find_parent('td')\
+            .find_next_sibling('td')\
+            .find('span',class_='Value')
+        self.mark_for_deletion(value_span)
+        return self.format_value(value_span.string, **format_args)

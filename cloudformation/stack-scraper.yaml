@@ -1,0 +1,173 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  DatabasePassword:
+    Type: String
+    NoEcho: True
+  DatabaseUsername:
+    Type: String
+    NoEcho: True
+  DatabaseName:
+    Type: String
+    Default: mjcs
+  StaticStackName:
+    Description: Name of the static stack, for getting database and S3 bucket details
+    Type: String
+  EnvironmentType:
+    Description: The environment type (prod or dev)
+    Type: String
+    Default: dev
+    AllowedValues:
+      - prod
+      - dev
+    ConstraintDescription: must be a prod or dev
+
+Mappings:
+  Environment:
+    ScraperFailedQueueName:
+      prod: mjcs_scraper_failed_queue
+      dev: dev_mjcs_scraper_failed_queue
+    ScraperQueueName:
+      prod: mjcs_scraper_queue
+      dev: dev_mjcs_scraper_queue
+    ScraperTriggerTopicName:
+      prod: mjcs_scraper_trigger
+      dev: dev_mjcs_scraper_trigger
+    ScraperCronHourlyId:
+      prod: scraper_cron_hourly
+      dev: dev_scraper_cron_hourly
+
+Resources:
+  Scraper:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: scraper_lambda.lambda_handler
+      Runtime: python3.6
+      Policies:
+        - AWSLambdaFullAccess
+        - S3CrudPolicy:
+            BucketName:
+              Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
+        - AmazonSQSFullAccess
+        - VPCAccessPolicy: {}
+      CodeUri: ../pkg/scraper
+      MemorySize: 128
+      Timeout: 300
+      ReservedConcurrentExecutions: 10
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: arn:aws:sns:us-east-1:654861592122:NotifyMe
+      Environment:
+        Variables:
+          MJCS_DATABASE_URL: !Sub
+            - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
+            - db_user: !Ref DatabaseUsername
+              db_pw: !Ref DatabasePassword
+              db_addr:
+                Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+              db_name: !Ref DatabaseName
+          CASE_DETAILS_BUCKET:
+            Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
+          SCRAPER_DYNAMODB_TABLE_NAME: !Ref ScraperWorkerTable
+          SCRAPER_QUEUE_ALARM_NAME: !Ref ScraperItemsAvailableAlarm
+          SCRAPER_FAILED_QUEUE_NAME: !GetAtt ScraperFailedQueue.QueueName
+          SCRAPER_QUEUE_NAME: !GetAtt ScraperQueue.QueueName
+      # VpcConfig:
+      #   SecurityGroupIds:
+      #     -
+      #       Fn::ImportValue: !Sub ${StaticStackName}-DatabaseSecurityGroupId
+      #   SubnetIds:
+      #     -
+      #       Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnetId
+      Events:
+        SNSTrigger:
+          Type: SNS
+          Properties:
+            Topic: !Ref ScraperTrigger
+
+  ScraperFailedQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      QueueName: !FindInMap [Environment, ScraperFailedQueueName, !Ref EnvironmentType]
+
+  ScraperQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      QueueName: !FindInMap [Environment, ScraperQueueName, !Ref EnvironmentType]
+
+  ScraperTrigger:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !FindInMap [Environment, ScraperTriggerTopicName, !Ref EnvironmentType]
+
+  ScraperItemsAvailableAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmActions:
+        - !Ref ScraperTrigger
+      AlarmDescription: "Trigger MJCS scraper when items are available in queue"
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt ScraperQueue.QueueName
+      EvaluationPeriods: '1'
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Period: '60' # seconds
+      Statistic: Average
+      Threshold: '0'
+
+  ScraperCronHourly:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "Trigger MJCS scraper once an hour"
+      ScheduleExpression: rate(1 hour)
+      Targets:
+        - Id: !FindInMap [Environment, ScraperCronHourlyId, !Ref EnvironmentType]
+          Arn: !GetAtt Scraper.Arn
+
+  PermissionForEventsToInvokeScraper:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName: !GetAtt Scraper.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ScraperCronHourly.Arn
+
+  ScraperWorkerTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+Outputs:
+  ScraperDynamoDBTableName:
+    Description: Scraper DynamoDB Table name
+    Value: !Ref ScraperWorkerTable
+    Export:
+      Name: !Sub ${AWS::StackName}-ScraperDynamoDBTableName
+  ScraperQueueAlarmName:
+    Description: Scraper queue alarm name
+    Value: !Ref ScraperItemsAvailableAlarm
+    Export:
+      Name: !Sub ${AWS::StackName}-ScraperQueueAlarmName
+  ScraperFailedQueueName:
+    Description: Scraper failed queue name
+    Value: !GetAtt ScraperFailedQueue.QueueName
+    Export:
+      Name: !Sub ${AWS::StackName}-ScraperFailedQueueName
+  ScraperQueueName:
+    Description: Scraper queue name
+    Value: !GetAtt ScraperQueue.QueueName
+    Export:
+      Name: !Sub ${AWS::StackName}-ScraperQueueName

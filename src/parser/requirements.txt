@@ -1,0 +1,5 @@
+sqlalchemy >= 1.2.6
+#psycopg2 >= 2.7.4
+beautifulsoup4 >= 4.6.0
+lxml >= 4.2.1
+h11 >= 0.8.1

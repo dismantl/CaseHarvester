@@ -1,0 +1,207 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  DatabaseMasterPassword:
+    Type: String
+    NoEcho: True
+  DatabaseMasterUsername:
+    Type: String
+    NoEcho: True
+  EnvironmentType:
+    Description: The environment type (prod or dev)
+    Type: String
+    Default: dev
+    AllowedValues:
+      - prod
+      - dev
+    ConstraintDescription: must be a prod or dev
+
+Mappings:
+  Environment:
+    VPCCidr:
+      prod: 10.0.0.0/16
+      dev: 10.1.0.0/16
+    VPCPublicSubnetCidr:
+      prod: 10.0.0.0/24
+      dev: 10.1.0.0/24
+    VPCPrivateSubnetCidr:
+      prod: 10.0.1.0/24
+      dev: 10.1.1.0/24
+    DBInstanceIdentifier:
+      prod: mjcs
+      dev: dev-mjcs
+    BucketName:
+      prod: mjcs-case-details
+      dev: dev-mjcs-case-details
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap [Environment, VPCCidr, !Ref EnvironmentType]
+      EnableDnsSupport: True
+      EnableDnsHostnames: True
+
+  VPCPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: us-east-1a
+      CidrBlock: !FindInMap [Environment, VPCPublicSubnetCidr, !Ref EnvironmentType]
+      VpcId: !Ref VPC
+
+  VPCInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  VPCInternetGatewayAttach:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref VPCInternetGateway
+      VpcId: !Ref VPC
+
+  VPCIGRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  VPCIGRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref VPCInternetGateway
+      RouteTableId: !Ref VPCIGRouteTable
+    DependsOn: VPCInternetGatewayAttach
+
+  VPCIGRouteTablePublicSubnet:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VPCIGRouteTable
+      SubnetId: !Ref VPCPublicSubnet
+
+  VPCPrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: us-east-1b
+      CidrBlock: !FindInMap [Environment, VPCPrivateSubnetCidr, !Ref EnvironmentType]
+      VpcId: !Ref VPC
+
+  VPCIGRouteTablePrivateSubnet:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VPCIGRouteTable
+      SubnetId: !Ref VPCPrivateSubnet
+
+  # VPCEIP:
+  #   Type: AWS::EC2::EIP
+  #   Properties:
+  #     Domain: vpc
+  #
+  # VPCNATGateway:
+  #   Type: AWS::EC2::NatGateway
+  #   Properties:
+  #     AllocationId: !GetAtt VPCEIP.AllocationId
+  #     SubnetId: !Ref VPCPublicSubnet
+  #
+  # VPCNATRouteTable:
+  #   Type: AWS::EC2::RouteTable
+  #   Properties:
+  #     VpcId: !Ref VPC
+  #
+  # VPCNATRoute:
+  #   Type: AWS::EC2::Route
+  #   Properties:
+  #     DestinationCidrBlock: 0.0.0.0/0
+  #     NatGatewayId: !Ref VPCNATGateway
+  #     RouteTableId: !Ref VPCNATRouteTable
+  #   # DependsOn: VPCInternetGatewayAttach
+  #
+  # VPCNATRouteTablePrivateSubnet:
+  #   Type: AWS::EC2::SubnetRouteTableAssociation
+  #   Properties:
+  #     RouteTableId: !Ref VPCNATRouteTable
+  #     SubnetId: !Ref VPCPrivateSubnet
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: RDS Subnet Group
+      SubnetIds:
+        - !Ref VPCPublicSubnet
+        - !Ref VPCPrivateSubnet
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Allows Home IP address ingress
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: Anywhere
+          FromPort: 5432
+          ToPort: 5432
+          IpProtocol: tcp
+        # - CidrIp: 10.0.0.0/8
+        #   Description: VPC
+        #   FromPort: 5432
+        #   ToPort: 5432
+        #   IpProtocol: tcp
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Retain
+    Properties:
+      AllocatedStorage: 20 # GB
+      BackupRetentionPeriod: 7 # days
+      DBInstanceClass: db.t2.micro
+      DBInstanceIdentifier: !FindInMap [Environment, DBInstanceIdentifier, !Ref EnvironmentType]
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      Engine: postgres
+      EngineVersion: 9.6.6
+      MasterUsername: !Ref DatabaseMasterUsername
+      MasterUserPassword: !Ref DatabaseMasterPassword
+      Port: 5432 # default
+      PubliclyAccessible: True
+      StorageType: gp2
+      VPCSecurityGroups:
+        - !Ref DatabaseSecurityGroup
+
+  CaseDetailsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: Private
+      BucketName: !FindInMap [Environment, BucketName, !Ref EnvironmentType]
+      VersioningConfiguration:
+        Status: Enabled
+
+Outputs:
+  DatabaseHostname:
+    Description: Endpoint hostname for the database
+    Value: !GetAtt Database.Endpoint.Address
+    Export:
+      Name: !Sub ${AWS::StackName}-DatabaseHostname
+  DatabaseSecurityGroupId:
+    Description: Security group ID associated with database
+    Value: !GetAtt DatabaseSecurityGroup.GroupId
+    Export:
+      Name: !Sub ${AWS::StackName}-DatabaseSecurityGroupId
+  VPCPublicSubnetId:
+    Description: Subnet 1 ID associated with database
+    Value: !Ref VPCPublicSubnet
+    Export:
+      Name: !Sub ${AWS::StackName}-VPCPublicSubnetId
+  VPCPrivateSubnetId:
+    Description: Subnet 2 ID associated with database
+    Value: !Ref VPCPrivateSubnet
+    Export:
+      Name: !Sub ${AWS::StackName}-VPCPrivateSubnetId
+  CaseDetailsBucketName:
+    Description: Case details S3 bucket name
+    Value: !Ref CaseDetailsBucket
+    Export:
+      Name: !Sub ${AWS::StackName}-CaseDetailsBucketName
+  CaseDetailsBucketArn:
+    Description: Case details S3 bucket ARN
+    Value: !GetAtt CaseDetailsBucket.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-CaseDetailsBucketArn
