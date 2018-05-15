@@ -9,13 +9,24 @@ Case Harvester can be run or deployed from any workstation running Python 3, [GN
 Next, configure AWS CLI with `aws configure` so that it can deploy Case Harvester. Here you'll use an Access Key ID and Secret Access Key either for your root AWS account, or an IAM user or role that has sufficient permissions.
 
 ## Deploy to AWS
-Case Harvester uses [Cloudformation](https://aws.amazon.com/cloudformation/) stacks to deploy, configure, and connect all of the needed AWS resources. There are separate stacks for static resources (VPC, S3 bucket, RDS instance), spider, scraper, and parser. To deploy all of these stacks to a development environment, run:
+Case Harvester uses [Cloudformation](https://aws.amazon.com/cloudformation/) stacks to deploy, configure, and connect all of the needed AWS resources. There are separate stacks for static resources (VPC, S3 bucket, RDS instance), spider, scraper, and parser. The first step is to set strong, unique passwords for the database users in `secrets.json`:
+
+```
+{
+  "DatabaseMasterUsername":"mjcs",
+  "DatabaseMasterPassword":"badpassword",
+  "DatabaseUsername":"mjcs_user",
+  "DatabasePassword":"alsoabadpassword"
+}
+```
+
+You can then deploy the cloudformation stacks to AWS by running:
 
 ```
 make deploy
 ```
 
-Once everything is deployed, you can intialize the database and configure Case Harvester to use the newly deployed resources by running:
+Once this is finished, you can intialize the database and configure Case Harvester to use the newly deployed resources by running:
 
 ```
 make init
