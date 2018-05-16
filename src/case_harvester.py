@@ -157,7 +157,7 @@ def run_parser(args):
     elif args.invoke_lambda:
         invoke_parser_lambda(args.type)
     else:
-        parse_unparsed_cases(args.type, on_error)
+        parse_unparsed_cases(args.type, on_error, args.threads)
 
 if __name__ == '__main__':
     if len(sys.argv) == 2 and sys.argv[1] == 'db_init':
@@ -225,6 +225,8 @@ if __name__ == '__main__':
         help="Parse cases in the parser failed queue")
     parser_parser.add_argument('--invoke-lambda', action='store_true',
         help="Use Lambda function to parse all unparsed cases")
+    parser_parser.add_argument('--threads', type=int, default=8, # number of logical cores on my Macbook Pro
+        help="Number of threads for parsing unparsed cases")
     parser_parser.set_defaults(func=run_parser)
 
     if os.getenv('DEV_MODE'):
