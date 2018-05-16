@@ -34,6 +34,7 @@ with db_session() as db:
                     if o['ContentLength'] < 1000 or 'An unexpected error occurred' in html or "Note: Initial Sort is by Last Name." in html:
                         deleted += 1
                         print('Deleting',case.case_number)
+                        # TODO delete last version instead of delete
                         s3.delete_object(
                             Bucket = config.CASE_DETAILS_BUCKET,
                             Key = case.case_number

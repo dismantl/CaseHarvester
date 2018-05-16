@@ -129,7 +129,7 @@ def parser_prompt_continue(exception, case_number):
         answer = input('Continue parsing? (y/N/delete) ')
         if answer == 'n' or answer == 'N' or answer == '':
             raise exception
-        elif answer == 'delete':
+        elif answer == 'delete' or answer == 'd':
             return 'delete'
         elif answer == 'y' or answer == 'Y':
             return 'continue'

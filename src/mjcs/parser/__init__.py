@@ -12,9 +12,9 @@ CONCURRENCY_AVAILABLE = 140
 CONCURRENCY_RATIO = 1.0
 AVERAGE_PARSER_DURATION = 5 # seconds
 
-s3 = boto3.client('s3')
-sqs = boto3.resource('sqs')
-sns = boto3.client('sns')
+case_details_bucket = boto3.resource('s3').Bucket(config.CASE_DETAILS_BUCKET)
+failed_queue = boto3.resource('sqs').get_queue_by_name(QueueName=config.PARSER_FAILED_QUEUE_NAME)
+parser_trigger = boto3.resource('sns').Topic(config.PARSER_TRIGGER_ARN)
 
 # begin parser module exports
 from .DSCR import DSCRParser
@@ -27,6 +27,30 @@ parsers = [
     ('DSCIVIL',DSCIVILParser)
 ]
 
+def delete_scrape(case_number):
+    object_versions = case_details_bucket.object_versions.filter(Prefix=case_number)
+    object_versions = [x for x in object_versions if x.object_key == case_number]
+    if len(object_versions) > 1:
+        # delete most recent version
+        object_versions = sorted(object_versions,key=lambda x: x.last_modified)
+        object_versions[-1].delete()
+        # set last_scrape to timestamp of previous version
+        with db_session() as db:
+            db.execute(
+                Case.__table__.update()\
+                    .where(Case.case_number == case_number)\
+                    .values(last_scrape=object_versions[-2].last_modified)
+            )
+    elif len(object_versions) == 1:
+        case_details_bucket.Object(case_number).delete()
+        # Set last_scrape = null in DB
+        with db_session() as db:
+            db.execute(
+                Case.__table__.update()\
+                    .where(Case.case_number == case_number)\
+                    .values(last_scrape=None)
+            )
+
 def parse_case_from_html(case_number, detail_loc, html):
     for category,parser in parsers:
         if detail_loc == category:
@@ -34,10 +58,7 @@ def parse_case_from_html(case_number, detail_loc, html):
     raise NotImplementedError('Unsupported case type: %s' % detail_loc)
 
 def parse_case(case_number, detail_loc=None):
-    case_details = s3.get_object(
-        Bucket = config.CASE_DETAILS_BUCKET,
-        Key = case_number
-    )
+    case_details = case_details_bucket.Object(case_number).get()
     case_html = case_details['Body'].read().decode('utf-8')
     if not detail_loc:
         if 'detail_loc' in case_details['Metadata']:
@@ -92,7 +113,6 @@ def parse_unparsed_cases(detail_loc=None, on_error=None, threads=1):
                             raise e
 
 def parse_failed_queue(detail_loc=None, on_error=None, nitems=10, wait_time=config.QUEUE_WAIT):
-    failed_queue = sqs.get_queue_by_name(QueueName=config.PARSER_FAILED_QUEUE_NAME)
     while True:
         queue_items = failed_queue.receive_messages(
             WaitTimeSeconds = wait_time,
@@ -119,7 +139,8 @@ def parse_failed_queue(detail_loc=None, on_error=None, nitems=10, wait_time=conf
                     if on_error:
                         r = on_error(e, case_number)
                         if r == 'delete':
-                            item.delete() # TODO delete from S3 and set last_scrape = null for case
+                            item.delete()
+                            delete_scrape(case_number)
                     else:
                         raise e
                 else:
@@ -144,8 +165,7 @@ def invoke_parser_lambda(detail_loc=None):
             for case_number,case_type in db.query(Case.case_number,Case.detail_loc).filter(batch_filter):
                 print('Invoking Parser lambda for case %s (%s of %s)' % (case_number,case_count,num_cases))
                 case_count += 1
-                sns.publish(
-                    TopicArn=config.PARSER_TRIGGER_ARN,
+                parser_trigger.publish(
                     Message='{"case_number":"%s","detail_loc":"%s"}' % (case_number,case_type)
                 )
                 time.sleep( AVERAGE_PARSER_DURATION / ( CONCURRENCY_AVAILABLE * CONCURRENCY_RATIO ) ) # so lambda doesn't get throttled
