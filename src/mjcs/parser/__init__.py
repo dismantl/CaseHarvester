@@ -1,7 +1,6 @@
 from ..config import config
 from ..db import db_session
 from ..case import Case, cases_batch_filter, get_detail_loc
-# from ..scraper import delete_scrape
 from sqlalchemy import and_
 import boto3
 import json
@@ -111,15 +110,12 @@ def parse_failed_queue(detail_loc=None, on_error=None, nitems=10, wait_time=conf
                 try:
                     print('Parsing case',case_number)
                     parse_case(case_number, case_type)
+                except NotImplementedError:
+                    item.delete() # remove from queue
                 except Exception as e:
                     print("!!! Failed to parse %s !!!" % case_number)
                     if on_error:
                         on_error(e, case_number)
-                        # r = on_error(e, case_number)
-                        # if r == 'delete':
-                        #     item.delete()
-                        #     with db_session() as db:
-                        #         delete_scrape(db, case_number)
                     else:
                         raise e
                 else:

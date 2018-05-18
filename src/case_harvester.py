@@ -126,14 +126,14 @@ def run_scraper(args):
 def parser_prompt_continue(exception, case_number):
     print(exception)
     while True:
-        answer = input('Continue parsing? (y/N/delete) ')
-        if answer == 'n' or answer == 'N' or answer == '':
+        answer = input('Continue parsing? (Y/n/delete) ')
+        if answer == 'n':
             raise exception
         elif answer == 'delete' or answer == 'd':
             with db_session() as db:
                 delete_scrape(db, case_number)
             return 'delete'
-        elif answer == 'y' or answer == 'Y':
+        elif answer == 'y' or answer == 'Y' or not answer:
             return 'continue'
         else:
             print('Invalid answer')

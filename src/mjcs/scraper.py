@@ -122,7 +122,7 @@ class Scraper:
                     raise FailedScrapeUnknownError
             elif "An unexpected error occurred" in response.text \
                     or "Note: Initial Sort is by Last Name." in response.text \
-                    or scraper_item.case_number not in response.text:
+                    or scraper_item.case_number not in response.text: # TODO this doesn't work for some non-Baltimore courts where case numbers have hyphens (e.g. D-072-LT-17-002210)
                 scraper_item.errother += 1
                 if scraper_item.errother >= config.QUERY_500_LIMIT:
                     self.log_failed_case(scraper_item.case_number, scraper_item.detail_loc,
