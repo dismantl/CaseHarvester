@@ -101,43 +101,43 @@ endef
 	)
 	touch $@
 
-.deploy-static-dev: .create-stack-buckets cloudformation/stack-static.yaml
+.deploy-static-dev: .create-stack-buckets cloudformation/stack-static.yaml $(SECRETS_FILE)
 	$(call deploy_stack_f,static,dev)
 	touch $@
 
-.deploy-static-prod: .create-stack-buckets cloudformation/stack-static.yaml
+.deploy-static-prod: .create-stack-buckets cloudformation/stack-static.yaml $(SECRETS_FILE)
 	$(call deploy_stack_f,static,prod)
 	touch $@
 
-.deploy-spider-dev: .deploy-static-dev .package-spider cloudformation/stack-spider.yaml
+.deploy-spider-dev: .deploy-static-dev .package-spider cloudformation/stack-spider.yaml $(SECRETS_FILE)
 	touch $@
 
-.deploy-spider-prod: .deploy-static-prod .package-spider cloudformation/stack-spider.yaml
+.deploy-spider-prod: .deploy-static-prod .package-spider cloudformation/stack-spider.yaml $(SECRETS_FILE)
 	touch $@
 
-.deploy-scraper-dev: .deploy-static-dev .package-scraper cloudformation/stack-scraper.yaml
+.deploy-scraper-dev: .deploy-static-dev .package-scraper cloudformation/stack-scraper.yaml $(SECRETS_FILE)
 	$(call deploy_stack_f,scraper,dev)
 	touch $@
 
-.deploy-scraper-prod: .deploy-static-prod .package-scraper cloudformation/stack-scraper.yaml
+.deploy-scraper-prod: .deploy-static-prod .package-scraper cloudformation/stack-scraper.yaml $(SECRETS_FILE)
 	$(call deploy_stack_f,scraper,prod)
 	touch $@
 
-.deploy-parser-dev: .deploy-static-dev .package-parser cloudformation/stack-parser.yaml
+.deploy-parser-dev: .deploy-static-dev .package-parser cloudformation/stack-parser.yaml $(SECRETS_FILE)
 	$(call deploy_stack_f,parser,dev)
 	$(call add_parser_notification_f,dev)
 	touch $@
 
-.deploy-parser-prod: .deploy-static-prod .package-parser cloudformation/stack-parser.yaml
+.deploy-parser-prod: .deploy-static-prod .package-parser cloudformation/stack-parser.yaml $(SECRETS_FILE)
 	$(call deploy_stack_f,parser,prod)
 	$(call add_parser_notification_f,prod)
 	touch $@
 
-.init-dev: .deploy-static-dev .deploy-spider-dev .deploy-scraper-dev .deploy-parser-dev
+.init-dev: .deploy-static-dev .deploy-spider-dev .deploy-scraper-dev .deploy-parser-dev $(SECRETS_FILE)
 	$(call db_init_f,development)
 	touch $@
 
-.init-prod: .deploy-static-prod .deploy-spider-prod .deploy-scraper-prod .deploy-parser-prod
+.init-prod: .deploy-static-prod .deploy-spider-prod .deploy-scraper-prod .deploy-parser-prod $(SECRETS_FILE)
 	$(call db_init_f,production)
 	touch $@
 
