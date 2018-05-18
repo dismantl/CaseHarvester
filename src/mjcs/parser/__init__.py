@@ -1,6 +1,7 @@
 from ..config import config
 from ..db import db_session
 from ..case import Case, cases_batch_filter, get_detail_loc
+# from ..scraper import delete_scrape
 from sqlalchemy import and_
 import boto3
 import json
@@ -26,30 +27,6 @@ parsers = [
     ('DSK8',DSK8Parser),
     ('DSCIVIL',DSCIVILParser)
 ]
-
-def delete_scrape(case_number):
-    object_versions = case_details_bucket.object_versions.filter(Prefix=case_number)
-    object_versions = [x for x in object_versions if x.object_key == case_number]
-    if len(object_versions) > 1:
-        # delete most recent version
-        object_versions = sorted(object_versions,key=lambda x: x.last_modified)
-        object_versions[-1].delete()
-        # set last_scrape to timestamp of previous version
-        with db_session() as db:
-            db.execute(
-                Case.__table__.update()\
-                    .where(Case.case_number == case_number)\
-                    .values(last_scrape=object_versions[-2].last_modified)
-            )
-    elif len(object_versions) == 1:
-        case_details_bucket.Object(case_number).delete()
-        # Set last_scrape = null in DB
-        with db_session() as db:
-            db.execute(
-                Case.__table__.update()\
-                    .where(Case.case_number == case_number)\
-                    .values(last_scrape=None)
-            )
 
 def parse_case_from_html(case_number, detail_loc, html):
     for category,parser in parsers:
@@ -137,10 +114,12 @@ def parse_failed_queue(detail_loc=None, on_error=None, nitems=10, wait_time=conf
                 except Exception as e:
                     print("!!! Failed to parse %s !!!" % case_number)
                     if on_error:
-                        r = on_error(e, case_number)
-                        if r == 'delete':
-                            item.delete()
-                            delete_scrape(case_number)
+                        on_error(e, case_number)
+                        # r = on_error(e, case_number)
+                        # if r == 'delete':
+                        #     item.delete()
+                        #     with db_session() as db:
+                        #         delete_scrape(db, case_number)
                     else:
                         raise e
                 else:

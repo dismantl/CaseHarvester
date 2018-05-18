@@ -108,7 +108,7 @@ def run_scraper(args):
     scraper = ParallelScraper(args.connections)
     if args.invoke_lambda:
         exports = get_stack_exports()
-        lambda_arn = get_export_val(exports, args.environment_short, 'ParserArn')
+        lambda_arn = get_export_val(exports, args.environment_short, 'ScraperArn')
         boto3.client('lambda').invoke(
             FunctionName = lambda_arn,
             InvocationType = 'Event',
@@ -130,6 +130,8 @@ def parser_prompt_continue(exception, case_number):
         if answer == 'n' or answer == 'N' or answer == '':
             raise exception
         elif answer == 'delete' or answer == 'd':
+            with db_session() as db:
+                delete_scrape(db, case_number)
             return 'delete'
         elif answer == 'y' or answer == 'Y':
             return 'continue'
@@ -143,6 +145,8 @@ def enter_pdb(x,y):
 
 def run_parser(args):
     from mjcs.parser import parse_unparsed_cases, parse_failed_queue, invoke_parser_lambda
+    from mjcs.scraper import delete_scrape
+    from mjcs.db import db_session
 
     on_error = None
     if args.ignore_errors:
@@ -190,7 +194,7 @@ if __name__ == '__main__':
         help="Optional. End date for search range")
     parser_spider.add_argument('--resume','-r', action='store_true',
         help="Use existing queue items in database")
-    parser_spider.add_argument('--court', choices=['BALTIMORE CITY'],
+    parser_spider.add_argument('--court', #choices=['BALTIMORE CITY'],
         help="What court to search, e.g. BALTIMORE CITY")
     parser_spider.add_argument('--overwrite','-o', action='store_true',
         help="Overwrite existing cases in database")

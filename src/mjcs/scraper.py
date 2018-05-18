@@ -15,6 +15,29 @@ sqs = boto3.resource('sqs')
 scraper_queue = sqs.get_queue_by_name(QueueName=config.SCRAPER_QUEUE_NAME)
 failed_queue = sqs.get_queue_by_name(QueueName=config.SCRAPER_FAILED_QUEUE_NAME)
 
+def delete_scrape(db, case_number):
+    case_details_bucket = boto3.resource('s3').Bucket(config.CASE_DETAILS_BUCKET)
+    object_versions = case_details_bucket.object_versions.filter(Prefix=case_number)
+    object_versions = [x for x in object_versions if x.object_key == case_number]
+    if len(object_versions) > 1:
+        # delete most recent version
+        object_versions = sorted(object_versions,key=lambda x: x.last_modified)
+        object_versions[-1].delete()
+        # set last_scrape to timestamp of previous version
+        db.execute(
+            Case.__table__.update()\
+                .where(Case.case_number == case_number)\
+                .values(last_scrape=object_versions[-2].last_modified)
+        )
+    elif len(object_versions) == 1:
+        case_details_bucket.Object(case_number).delete()
+        # Set last_scrape = null in DB
+        db.execute(
+            Case.__table__.update()\
+                .where(Case.case_number == case_number)\
+                .values(last_scrape=None)
+        )
+
 class FailedScrape(Exception):
     pass
 

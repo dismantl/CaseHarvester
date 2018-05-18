@@ -63,6 +63,8 @@ Resources:
               db_name: !Ref DatabaseName
           CASE_DETAILS_BUCKET:
             Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
+          PARSER_FAILED_QUEUE_NAME: !FindInMap [Environment, ParserFailedQueueName, !Ref EnvironmentType]
+          PARSER_TRIGGER_ARN: !Ref ParserTrigger
       Events:
         SNSTrigger:
           Type: SNS

@@ -171,3 +171,8 @@ Outputs:
     Value: !GetAtt ScraperQueue.QueueName
     Export:
       Name: !Sub ${AWS::StackName}-ScraperQueueName
+  ScraperArn:
+    Description: ARN of Scraper lambda function
+    Value: !GetAtt Scraper.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-ScraperArn

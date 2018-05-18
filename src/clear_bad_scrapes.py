@@ -3,9 +3,9 @@
 from mjcs.config import config
 from mjcs.db import db_session
 from mjcs.case import Case, cases_batch_filter
+from mjcs.scraper import delete_scrape
 from sqlalchemy import and_
 import boto3
-from botocore.exceptions import ClientError
 
 s3 = boto3.client('s3')
 
@@ -24,21 +24,13 @@ with db_session() as db:
                         Bucket = config.CASE_DETAILS_BUCKET,
                         Key = case.case_number
                     )
-                except ClientError as ex:
-                    if ex.response['Error']['Code'] == 'NoSuchKey':
-                        case.last_scrape = None
-                    else:
-                        raise ex
+                except s3.exceptions.NoSuchKey:
+                    case.last_scrape = None
                 else:
                     html = o['Body'].read().decode('utf-8')
                     if o['ContentLength'] < 1000 or 'An unexpected error occurred' in html or "Note: Initial Sort is by Last Name." in html:
                         deleted += 1
                         print('Deleting',case.case_number)
-                        # TODO delete last version instead of delete
-                        s3.delete_object(
-                            Bucket = config.CASE_DETAILS_BUCKET,
-                            Key = case.case_number
-                        )
-                        case.last_scrape = None
+                        delete_scrape(db, case.case_number)
                         case.last_parse = None
 print('Deleted %s items' % deleted)
