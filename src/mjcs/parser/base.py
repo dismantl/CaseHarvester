@@ -33,6 +33,7 @@ class CaseDetailsParser(ABC):
         with db_session() as db:
             self.header(self.soup)
             self.case(db, self.soup)
+            db.flush() # so related subtables can satisfy foreign key constraint
             self.consume_all(db)
             self.footer(self.soup)
             self.finalize(db)

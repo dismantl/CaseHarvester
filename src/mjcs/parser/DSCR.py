@@ -179,7 +179,6 @@ class DSCRParser(CaseDetailsParser):
         case.case_status = self.value_first_column(case_info_table,'Case Status:',ignore_missing=True)
         case.case_disposition = self.value_column(case_info_table,'Case Disposition:',ignore_missing=True)
         db.add(case)
-        db.flush()
 
     #########################################################
     # COURT SCHEDULING INFORMATION

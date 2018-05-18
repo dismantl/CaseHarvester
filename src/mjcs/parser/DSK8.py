@@ -265,7 +265,6 @@ class DSK8Parser(CaseDetailsParser):
         case.filing_date_str = self.value_first_column(t3,'Filing Date:',ignore_missing=True)
         case.incident_date_str = self.value_multi_column(t3,'Incident Date:',ignore_missing=True)
         db.add(case)
-        db.flush()
 
     #########################################################
     # DEFENDENT INFORMATION

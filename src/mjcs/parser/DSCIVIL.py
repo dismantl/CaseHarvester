@@ -244,7 +244,6 @@ class DSCIVILParser(CaseDetailsParser):
         case.filing_date_str = self.value_column(t2,'Filing Date:',ignore_missing=True)
         case.case_status = self.value_column(t2,'Case Status:',ignore_missing=True)
         db.add(case)
-        db.flush()
 
     #########################################################
     # Scheduled Events/Trial Information
