@@ -10,3 +10,4 @@ __pycache__
 *.pyc
 env/development.env
 env/production.env
+secrets.json
