@@ -11,7 +11,7 @@ s3 = boto3.client('s3')
 
 deleted = 0
 with db_session() as db:
-    for detail_loc in ['DSCR','DSK8','DSCIVIL']:
+    for detail_loc in ['CC']:
         filter = and_(Case.last_parse == None, Case.last_scrape != None, Case.detail_loc == detail_loc)
         num_cases = db.query(Case.case_number).filter(filter).count()
         i = 1

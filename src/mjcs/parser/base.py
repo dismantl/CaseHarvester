@@ -102,7 +102,7 @@ class CaseDetailsParser(ABC):
 
     def info_charge_statement(self, prev_sibling):
         try:
-            div = self.immediate_sibling(prev_sibling,'div',class_='InfoChargeStatement')
+            div = self.immediate_sibling(prev_sibling,class_='InfoChargeStatement')
         except ParserError:
             raise ParserError('Unable to retrieve InfoChargeStatement')
         self.mark_for_deletion(div)
@@ -114,6 +114,8 @@ class CaseDetailsParser(ABC):
                 .find('h5',string=re.compile(header_name))\
                 .find_parent('table')
         except AttributeError:
+            raise ParserError('First level header "%s" not found' % header_name)
+        if not table:
             raise ParserError('First level header "%s" not found' % header_name)
         self.mark_for_deletion(table)
         return table
@@ -134,17 +136,18 @@ class CaseDetailsParser(ABC):
                 .find_parent('left')
         except AttributeError:
             raise ParserError('Third level header "%s" not found' % header_name)
+        if not left:
+            raise ParserError('Third level header "%s" not found' % header_name)
         self.mark_for_deletion(left)
         return left
 
-    def row_label(self, base, first_column_prompt):
-        prompt_span = base\
-            .find('span',class_='FirstColumnPrompt',string=re.compile(first_column_prompt))
-        if not prompt_span:
-            raise ParserError('Row header "%s" not found' % first_column_prompt)
-        self.mark_for_deletion(prompt_span)
-        return prompt_span\
-            .find_parent('tr')
+    def fourth_level_header(self, base, header_name):
+        h6 = soup\
+            .find('h6',string=re.compile(header_name))
+        if not h6:
+            raise ParserError('Fourth level header "%s" not found' % header_name)
+        self.mark_for_deletion(h6)
+        return h6
 
     def table_next_first_column_prompt(self, prev_sibling, first_column_prompt):
         obj = self.immediate_sibling(prev_sibling,'table')
@@ -192,6 +195,38 @@ class CaseDetailsParser(ABC):
         except AttributeError:
             raise ParserError('Table with prompt "%s" not found' % prompt)
 
+    def row_label(self, base, first_column_prompt):
+        prompt_span = base\
+            .find('span',class_='FirstColumnPrompt',string=re.compile(first_column_prompt))
+        if not prompt_span:
+            raise ParserError('Row header "%s" not found' % first_column_prompt)
+        self.mark_for_deletion(prompt_span)
+        return prompt_span\
+            .find_parent('tr')
+
+    def row_first_columm_prompt(self, base, first_column_prompt):
+        if type(first_column_prompt) == list:
+            first_column_prompt = [re.compile(p) for p in first_column_prompt]
+        elif type(first_column_prompt) == str:
+            first_column_prompt = re.compile(first_column_prompt)
+        try:
+            return base\
+                .find('span',class_='FirstColumnPrompt',string=first_column_prompt)\
+                .find_parent('tr')
+        except AttributeError:
+            raise ParserError('Row with first column prompt "%s" not found' % first_column_prompt)
+
+    def row_next_first_column_prompt(self, prev_sibling, first_column_prompt):
+        obj = self.immediate_sibling(prev_sibling,'tr')
+        try:
+            self.row_first_columm_prompt(obj, first_column_prompt)
+        except ParserError:
+            raise ParserError(
+                'Next row does not contain first column prompt %s' % first_column_prompt,
+                obj
+            )
+        return obj
+
     def format_value(self,
             val,
             strip=True,
@@ -224,14 +259,14 @@ class CaseDetailsParser(ABC):
                 return None
             raise ParserError('Unable to find first column prompt %s' % first_column_prompt)
         self.mark_for_deletion(prompt_span)
-        value = prompt_span\
+        value_span = prompt_span\
             .find_parent('td')\
             .find_next_sibling('td')\
-            .find('span',class_='Value')\
-            .string
-        if value:
-            self.mark_for_deletion(value.parent)
-        return self.format_value(value, **format_args)
+            .find('span',class_='Value')
+        if value_span:
+            self.mark_for_deletion(value_span)
+            return self.format_value(value_span.string, **format_args)
+        return None
 
     def value_combined_first_column(self, base, first_column_prompt, ignore_missing=False, **format_args):
         prompt_span = base\
@@ -243,8 +278,10 @@ class CaseDetailsParser(ABC):
         self.mark_for_deletion(prompt_span)
         value_span = prompt_span\
             .find_next_sibling('span',class_='Value')
-        self.mark_for_deletion(value_span)
-        return self.format_value(value_span.string, **format_args)
+        if value_span:
+            self.mark_for_deletion(value_span)
+            return self.format_value(value_span.string, **format_args)
+        return None
 
     def value_column(self, base, prompt, ignore_missing=False, **format_args):
         prompt_span = base\
@@ -256,8 +293,10 @@ class CaseDetailsParser(ABC):
         self.mark_for_deletion(prompt_span)
         value_span = prompt_span\
             .find_next_sibling('span',class_='Value')
-        self.mark_for_deletion(value_span)
-        return self.format_value(value_span.string, **format_args)
+        if value_span:
+            self.mark_for_deletion(value_span)
+            return self.format_value(value_span.string, **format_args)
+        return None
 
     def value_multi_column(self, base, prompt, ignore_missing=False, **format_args):
         prompt_span = base\
@@ -271,5 +310,7 @@ class CaseDetailsParser(ABC):
             .find_parent('td')\
             .find_next_sibling('td')\
             .find('span',class_='Value')
-        self.mark_for_deletion(value_span)
-        return self.format_value(value_span.string, **format_args)
+        if value_span:
+            self.mark_for_deletion(value_span)
+            return self.format_value(value_span.string, **format_args)
+        return None

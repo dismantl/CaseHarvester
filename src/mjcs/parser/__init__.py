@@ -20,11 +20,13 @@ parser_trigger = boto3.resource('sns').Topic(config.PARSER_TRIGGER_ARN)
 from .DSCR import DSCRParser
 from .DSK8 import DSK8Parser
 from .DSCIVIL import DSCIVILParser
+from .CC import CCParser
 
 parsers = [
     ('DSCR',DSCRParser),
     ('DSK8',DSK8Parser),
-    ('DSCIVIL',DSCIVILParser)
+    ('DSCIVIL',DSCIVILParser),
+    ('CC',CCParser)
 ]
 
 def parse_case_from_html(case_number, detail_loc, html):

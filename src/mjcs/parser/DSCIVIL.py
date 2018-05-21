@@ -5,8 +5,8 @@ from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignK
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
-import re
 from datetime import *
+import re
 
 class DSCIVIL(CaseTable, TableBase):
     __tablename__ = 'dscivil'
@@ -217,7 +217,7 @@ class DSCIVILParser(CaseDetailsParser):
         subheader.decompose()
 
     def footer(self, soup):
-        footer = soup.find('div',class_='InfoStatement',string=re.compile('This is an electronic case record'))
+        footer = soup.find('div',class_='InfoStatement',string='This is an electronic case record')
         footer.decompose()
 
     #########################################################

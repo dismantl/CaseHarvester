@@ -124,6 +124,8 @@ def run_scraper(args):
         raise Exception("Must specify --invoke-lambda, --missing, --queue, or --failed-queue.")
 
 def parser_prompt_continue(exception, case_number):
+    from mjcs.db import db_session
+    from mjcs.scraper import delete_scrape
     print(exception)
     while True:
         answer = input('Continue parsing? (Y/n/delete) ')
@@ -145,8 +147,6 @@ def enter_pdb(x,y):
 
 def run_parser(args):
     from mjcs.parser import parse_unparsed_cases, parse_failed_queue, invoke_parser_lambda
-    from mjcs.scraper import delete_scrape
-    from mjcs.db import db_session
 
     on_error = None
     if args.ignore_errors:
@@ -217,7 +217,7 @@ if __name__ == '__main__':
 
     parser_parser = subparsers.add_parser('parser', help=\
         "Parse unparsed details from cases downloaded from the Maryland Judiciary Case Search")
-    parser_parser.add_argument('--type', '-t', choices=['DSCR','DSK8','DSCIVIL'],
+    parser_parser.add_argument('--type', '-t', choices=['DSCR','DSK8','DSCIVIL','CC'],
         help="Only parse cases of this type (detail_loc)")
     parser_parser.add_argument('--ignore-errors', action='store_true',
         help="Ignore parsing errors")
@@ -230,7 +230,7 @@ if __name__ == '__main__':
     parser_parser.add_argument('--invoke-lambda', action='store_true',
         help="Use Lambda function to parse all unparsed cases")
     parser_parser.add_argument('--threads', type=int, default=8, # number of logical cores on my Macbook Pro
-        help="Number of threads for parsing unparsed cases")
+        help="Number of threads for parsing unparsed cases (default: 8)")
     parser_parser.set_defaults(func=run_parser)
 
     if os.getenv('DEV_MODE'):

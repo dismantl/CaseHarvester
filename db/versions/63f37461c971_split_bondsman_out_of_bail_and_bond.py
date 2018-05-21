@@ -15,7 +15,7 @@ branch_labels = None
 depends_on = None
 
 from sqlalchemy.orm import sessionmaker
-from mjcs.models import BailAndBond, Bondsman
+from mjcs.models import DSK8BailAndBond, DSK8Bondsman
 
 def upgrade():
     connection = op.get_bind()

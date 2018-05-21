@@ -5,8 +5,8 @@ from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignK
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
-import re
 from datetime import *
+import re
 
 class DSCR(CaseTable, TableBase):
     __tablename__ = 'dscr'
@@ -304,7 +304,7 @@ class DSCRParser(CaseDetailsParser):
         if list(address_table.stripped_strings):
             defendant.address_1 = self.value_first_column(address_table,'Address:')
             address_row = address_table\
-                .find('span',class_='FirstColumnPrompt',string=re.compile('Address:'))\
+                .find('span',class_='FirstColumnPrompt',string='Address:')\
                 .find_parent('tr')
             if not address_row.find('span',class_='Prompt') \
                     and len(list(address_row.find_all('span',class_='FirstColumnPrompt'))) == 2 \
@@ -339,7 +339,7 @@ class DSCRParser(CaseDetailsParser):
             else:
                 alias.address_1 = self.value_first_column(address_table,'Address:')
                 address_row = address_table\
-                    .find('span',class_='FirstColumnPrompt',string=re.compile('Address:'))\
+                    .find('span',class_='FirstColumnPrompt',string='Address:')\
                     .find_parent('tr')
                 if not address_row.find('span',class_='Prompt') \
                         and len(list(address_row.find_all('span',class_='FirstColumnPrompt'))) == 2 \

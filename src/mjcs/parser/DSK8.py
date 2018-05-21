@@ -5,8 +5,8 @@ from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignK
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
-import re
 from datetime import *
+import re
 
 class DSK8(CaseTable, TableBase):
     __tablename__ = 'dsk8'
@@ -129,7 +129,7 @@ class DSK8Charge(DSK8CaseTable, TableBase):
         self.sentence_date = date_from_str(val)
         self._sentence_date_str = val
 
-class BailAndBond(DSK8CaseTable, TableBase):
+class DSK8BailAndBond(DSK8CaseTable, TableBase):
     __tablename__ = 'dsk8_bail_and_bond'
 
     id = Column(Integer, primary_key=True)
@@ -195,7 +195,7 @@ class BailAndBond(DSK8CaseTable, TableBase):
         self.judgment_date = date_from_str(val)
         self._judgment_date_str = val
 
-class Bondsman(DSK8CaseTable, TableBase):
+class DSK8Bondsman(DSK8CaseTable, TableBase):
     __tablename__ = 'dsk8_bondsman'
 
     id = Column(Integer, primary_key=True)
@@ -315,7 +315,7 @@ class DSK8Parser(CaseDetailsParser):
                 db.add(alias)
 
                 # stupid edge case (e.g. 115027015)
-                addresses = t2.find_all('span',class_='FirstColumnPrompt',string=re.compile('Address:'))
+                addresses = t2.find_all('span',class_='FirstColumnPrompt',string='Address:')
                 if len(addresses) > 1:
                     for address in addresses[1:]:
                         new_alias = DSK8DefendantAlias(self.case_number)
@@ -452,7 +452,7 @@ class DSK8Parser(CaseDetailsParser):
             db.add(person)
 
             # stupid edge case (115175016)
-            addresses = t2.find_all('span',class_='FirstColumnPrompt',string=re.compile('Address:'))
+            addresses = t2.find_all('span',class_='FirstColumnPrompt',string='Address:')
             if len(addresses) > 1:
                 for address in addresses[1:]:
                     new_person = DSK8RelatedPerson(self.case_number)
@@ -485,7 +485,7 @@ class DSK8Parser(CaseDetailsParser):
             t2 = self.table_next_first_column_prompt(t1,'Bond Type:')
             t3 = self.immediate_sibling(t2,'table')
 
-            b = BailAndBond(self.case_number)
+            b = DSK8BailAndBond(self.case_number)
 
             b.bail_amount = self.value_first_column(section,'Bail Amount:',money=True)
             b.bail_number = self.value_multi_column(section,'Bail Number:',ignore_missing=True)
@@ -520,7 +520,7 @@ class DSK8Parser(CaseDetailsParser):
                     prev_obj_2 = t5
                 except ParserError:
                     break
-                bondsman = Bondsman(self.case_number, b.id)
+                bondsman = DSK8Bondsman(self.case_number, b.id)
                 bondsman.name = self.value_first_column(t4,'Bail Bondsman:')
                 bondsman.address_1 = self.value_first_column(t4,'Street:')
                 bondsman.city = self.value_first_column(t5,'City:')
