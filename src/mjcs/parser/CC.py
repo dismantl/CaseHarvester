@@ -399,6 +399,9 @@ class CCParser(CaseDetailsParser):
                 break
             try:
                 t3 = self.immediate_sibling(t2,'table')
+                if 'Attorney(s) for the %s' % party_str in t3.text \
+                        or 'Aliases %s' % party_str in t3.text:
+                    raise ParserError('')
                 prev_obj = t3
             except ParserError:
                 t3 = None
