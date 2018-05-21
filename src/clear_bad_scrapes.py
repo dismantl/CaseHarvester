@@ -3,7 +3,7 @@
 from mjcs.config import config
 from mjcs.db import db_session
 from mjcs.case import Case, cases_batch_filter
-from mjcs.scraper import delete_scrape
+from mjcs.scraper import delete_scrape, check_scrape_sanity, FailedScrape, ExpiredSession
 from sqlalchemy import and_
 import boto3
 
@@ -29,7 +29,9 @@ with db_session() as db:
                     db.commit()
                 else:
                     html = o['Body'].read().decode('utf-8')
-                    if o['ContentLength'] < 1000 or 'An unexpected error occurred' in html or "Note: Initial Sort is by Last Name." in html:
+                    try:
+                        check_scrape_sanity(case.case_number, html)
+                    except (FailedScrape, ExpiredSession):
                         deleted += 1
                         print('Deleting',case.case_number)
                         delete_scrape(db, case.case_number)

@@ -61,48 +61,10 @@ def check_scrape_sanity(case_number, html):
     elif "Note: Initial Sort is by Last Name." in html:
         raise FailedScrapeSearchResults
     else:
-        if case_number in html:
+        # case numbers will often be displayed with dashes and/or spaces between parts of it
+        if re.search(r'[\- ]*'.join(case_number),html):
             return
-        if case_number.lower() in html:
-            return
-        # case number permutations
-        # d-025-lt-17-000002
-        m = re.fullmatch(r"([a-z])(\d+)([a-z]+)(\d\d)(\d+)",case_number.lower())
-        if m:
-            p = '%s-%s-%s-%s-%s' % m.group(1,2,3,4,5)
-            if p in html:
-                return
-        # D-072-LT-17-000041
-        m = re.fullmatch(r"([A-Z])(\d+)([A-Z]+)(\d\d)(\d+)",case_number)
-        if m:
-            p = '%s-%s-%s-%s-%s' % m.group(1,2,3,4,5)
-            if p in html:
-                return
-        m = re.fullmatch(r"(\d+)([A-Z]+)(\d\d)(\d+)",case_number)
-        if m:
-            p = '%s-%s-%s-%s' % m.group(1,2,3,4)
-            if p in html:
-                return
-        # CAEF17-00049
-        m = re.fullmatch(r"([A-Z]+\d\d)(\d+)",case_number)
-        if m:
-            p = '%s-%s' % m.group(1,2)
-            if p in html:
-                return
-        # NL1949-068
-        m = re.fullmatch(r"([A-Z]+\d\d\d\d)(\d+)",case_number)
-        if m:
-            p = '%s-%s' % m.group(1,2)
-            if p in html:
-                return
-        # 09-01-0000114-2017
-        p = '%s-%s-%s-%s' % (
-            case_number[0:2],
-            case_number[2:4],
-            case_number[4:11],
-            case_number[11:]
-        )
-        if p in html:
+        if re.search(r'[\- ]*'.join(case_number.lower()),html):
             return
         raise FailedScrapeNoCaseNumber
 
