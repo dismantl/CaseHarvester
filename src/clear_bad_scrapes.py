@@ -26,6 +26,7 @@ with db_session() as db:
                     )
                 except s3.exceptions.NoSuchKey:
                     case.last_scrape = None
+                    db.commit()
                 else:
                     html = o['Body'].read().decode('utf-8')
                     if o['ContentLength'] < 1000 or 'An unexpected error occurred' in html or "Note: Initial Sort is by Last Name." in html:
@@ -33,4 +34,5 @@ with db_session() as db:
                         print('Deleting',case.case_number)
                         delete_scrape(db, case.case_number)
                         case.last_parse = None
+                        db.commit()
 print('Deleted %s items' % deleted)

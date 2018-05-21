@@ -1,6 +1,6 @@
 from .config import config
-from .db import TableBase, column_windows, engine
-from sqlalchemy import Column, Date, Integer, String, DateTime, LargeBinary, ForeignKey, UniqueConstraint
+from .db import TableBase, column_windows, db_session
+from sqlalchemy import Column, Boolean, Date, Integer, String, DateTime
 from sqlalchemy.sql import select
 import zlib
 
@@ -30,6 +30,8 @@ class Case(TableBase):
     url = Column(String)
     last_scrape = Column(DateTime, nullable=True)
     last_parse = Column(DateTime, nullable=True)
+    scrape_exempt = Column(Boolean, default=False)
+    parse_exempt = Column(Boolean, default=False)
 
     def dict(self):
         return {
@@ -47,7 +49,9 @@ class Case(TableBase):
         }
 
 def get_detail_loc(case_number):
-    return engine.execute(
-            select([Case.detail_loc])\
-            .where(Case.case_number == case_number)
-        ).scalar()
+    with db_session() as db:
+        detail_loc = db.execute(
+                select([Case.detail_loc])\
+                .where(Case.case_number == case_number)
+            ).scalar()
+    return detail_loc

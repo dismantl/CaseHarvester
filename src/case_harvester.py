@@ -102,10 +102,67 @@ def run_spider(args):
     else:
         raise Exception("Must specify --resume, --test, or search criteria")
 
+def scraper_prompt(scraper, exception, case_number, detail_loc, html=None):
+    from mjcs.db import db_session
+    from mjcs.case import Case
+    print(exception)
+    while True:
+        print('Continue scraping?')
+        print('\t\t(y)es    - ignore error and continue scraping (default)')
+        print('\t\t(n)o     - stop scraping and raise exception')
+        print('\t\t(d)elete - ignore error and delete item from queue')
+        print('\t\t(m)ark   - mark case as unscrapable and continue')
+        print('\t\t(e)xempt - save scrape but exempt from parsing')
+        print('\t\t(s)ave   - save scrape and continue')
+        answer = input('Answer: (Y/n/d/m/e/s) ')
+        if answer == 'y' or answer == 'Y' or not answer:
+            return 'continue'
+        elif answer == 'n':
+            raise exception
+        elif answer == 'd':
+            return 'delete'
+        elif answer == 'm':
+            with db_session() as db:
+                db.execute(
+                    Case.__table__.update()\
+                        .where(Case.case_number == case_number)\
+                        .values(scrape_exempt = True)
+                )
+            return 'delete'
+        elif answer == 'e':
+            if not html:
+                raise Exception('Cannot save scrape results without HTML')
+            with db_session() as db:
+                db.execute(
+                    Case.__table__.update()\
+                        .where(Case.case_number == case_number)\
+                        .values(parse_exempt = True)
+                )
+            scraper.store_case_details(case_number, detail_loc, html)
+            return 'continue'
+        elif answer == 's':
+            if not html:
+                raise Exception('Cannot save scrape results without HTML')
+            scraper.store_case_details(case_number, detail_loc, html)
+            return 'continue'
+        else:
+            print('Invalid answer')
+
 def run_scraper(args):
     from mjcs.config import config
-    from mjcs.scraper import ParallelScraper
-    scraper = ParallelScraper(args.connections)
+    from mjcs.scraper import Scraper, ParallelScraper
+
+    on_error = None
+    if args.ignore_errors:
+        on_error = lambda s,e,c,d,h: e # do nothing but return error
+    elif args.prompt_on_error:
+        on_error = scraper_prompt
+
+    if args.connections == 1:
+        scraper = Scraper(on_error)
+    else:
+        scraper = ParallelScraper(args.connections, on_error)
+
     if args.invoke_lambda:
         exports = get_stack_exports()
         lambda_arn = get_export_val(exports, args.environment_short, 'ScraperArn')
@@ -117,44 +174,41 @@ def run_scraper(args):
     elif args.missing:
         scraper.scrape_missing_cases()
     elif args.queue:
-        scraper.scrape_from_queue()
+        scraper.scrape_from_scraper_queue()
     elif args.failed_queue:
         scraper.scrape_from_failed_queue()
     else:
         raise Exception("Must specify --invoke-lambda, --missing, --queue, or --failed-queue.")
 
-def parser_prompt_continue(exception, case_number):
+def parser_prompt(exception, case_number):
     from mjcs.db import db_session
     from mjcs.scraper import delete_scrape
     print(exception)
     while True:
-        answer = input('Continue parsing? (Y/n/delete) ')
-        if answer == 'n':
+        print('Continue parsing?')
+        print('\t\t(y)es    - ignore error and continue parsing (default)')
+        print('\t\t(n)o     - stop parsing and raise exception')
+        print('\t\t(d)elete - ignore error and delete item from queue')
+        answer = input('Answer: (Y/n/d) ')
+        if answer == 'y' or answer == 'Y' or not answer:
+            return 'continue'
+        elif answer == 'n':
             raise exception
-        elif answer == 'delete' or answer == 'd':
+        elif answer == 'd':
             with db_session() as db:
                 delete_scrape(db, case_number)
             return 'delete'
-        elif answer == 'y' or answer == 'Y' or not answer:
-            return 'continue'
         else:
             print('Invalid answer')
-
-def enter_pdb(x,y):
-    print('Dropping into PDB shell')
-    import pdb
-    pdb.set_trace()
 
 def run_parser(args):
     from mjcs.parser import parse_unparsed_cases, parse_failed_queue, invoke_parser_lambda
 
     on_error = None
     if args.ignore_errors:
-        on_error = lambda e,case_number: e # print(e) # do nothing but print error
+        on_error = lambda e,c: e # do nothing but return error
     elif args.prompt_on_error:
-        on_error = parser_prompt_continue
-    elif args.pdb_on_error:
-        on_error = enter_pdb
+        on_error = parser_prompt
 
     if args.failed_queue:
         parse_failed_queue(args.type, on_error)
@@ -205,6 +259,10 @@ if __name__ == '__main__':
     parser_scraper = subparsers.add_parser('scraper',
         help="Scrape case details from the Maryland Judiciary Case Search database")
     parser_scraper.add_argument('--connections', '-c', type=int, default=10)
+    parser_scraper.add_argument('--ignore-errors', action='store_true',
+        help="Ignore scraping errors")
+    parser_scraper.add_argument('--prompt-on-error', action='store_true',
+        help="Prompt for actions when an error occurs")
     parser_scraper.add_argument('--missing', action='store_true', help=\
         "Scrape any cases that are in the database but don't have any case details in S3")
     parser_scraper.add_argument('--queue', action='store_true', help=\
@@ -222,9 +280,7 @@ if __name__ == '__main__':
     parser_parser.add_argument('--ignore-errors', action='store_true',
         help="Ignore parsing errors")
     parser_parser.add_argument('--prompt-on-error', action='store_true',
-        help="Prompt to continue when an error occurs")
-    parser_parser.add_argument('--pdb-on-error', action='store_true',
-        help="Drop into a Python Debugger (PDB) shell on error")
+        help="Prompt for actions when an error occurs")
     parser_parser.add_argument('--failed-queue', action='store_true',
         help="Parse cases in the parser failed queue")
     parser_parser.add_argument('--invoke-lambda', action='store_true',

@@ -8,8 +8,8 @@ import concurrent.futures
 import time
 
 # TODO move these to config
-CONCURRENCY_AVAILABLE = 140
-CONCURRENCY_RATIO = 1.0
+CONCURRENCY_AVAILABLE = 87
+CONCURRENCY_RATIO = 0.9
 AVERAGE_PARSER_DURATION = 5 # seconds
 
 case_details_bucket = boto3.resource('s3').Bucket(config.CASE_DETAILS_BUCKET)
@@ -35,14 +35,13 @@ def parse_case_from_html(case_number, detail_loc, html):
             return parser(case_number, html).parse()
     raise NotImplementedError('Unsupported case type: %s' % detail_loc)
 
-def parse_case(case_number, detail_loc=None):
+def parse_case(case_number):
     case_details = case_details_bucket.Object(case_number).get()
     case_html = case_details['Body'].read().decode('utf-8')
-    if not detail_loc:
-        if 'detail_loc' in case_details['Metadata']:
-            detail_loc = case_details['Metadata']['detail_loc']
-        else:
-            detail_loc = get_detail_loc(case_number)
+    try:
+        detail_loc = case_details['Metadata']['detail_loc']
+    except KeyError:
+        detail_loc = get_detail_loc(case_number)
     parse_case_from_html(case_number, detail_loc, case_html)
 
 def parse_unparsed_cases(detail_loc=None, on_error=None, threads=1):
@@ -57,14 +56,14 @@ def parse_unparsed_cases(detail_loc=None, on_error=None, threads=1):
         for batch_filter in cases_batch_filter(db, filter):
             if threads > 1:
                 future_to_case_number = {}
-                cases = list(db.query(Case.case_number,Case.detail_loc).filter(batch_filter))
+                cases = list(db.query(Case.case_number).filter(batch_filter))
                 for i in range(0, len(cases), threads):
                     case_batch = cases[i:i+threads]
                     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-                        for case_number,case_type in case_batch:
+                        for case_number, in case_batch:
                             print('Parsing case %s (%s of %s)' % (case_number,case_count,num_cases))
                             case_count += 1
-                            future_to_case_number[executor.submit(parse_case, case_number, case_type)] = case_number
+                            future_to_case_number[executor.submit(parse_case, case_number)] = case_number
                         for future in concurrent.futures.as_completed(future_to_case_number):
                             case_number = future_to_case_number[future]
                             try:
@@ -78,11 +77,11 @@ def parse_unparsed_cases(detail_loc=None, on_error=None, threads=1):
                                 else:
                                     raise e
             else:
-                for case_number,case_type in db.query(Case.case_number,Case.detail_loc).filter(batch_filter):
+                for case_number, in db.query(Case.case_number).filter(batch_filter):
                     try:
                         print('Parsing case %s (%s of %s)' % (case_number,case_count,num_cases))
                         case_count += 1
-                        parse_case(case_number, case_type)
+                        parse_case(case_number)
                     except Exception as e:
                         print("!!! Failed to parse %s !!!" % case_number)
                         if on_error:
@@ -103,7 +102,10 @@ def parse_failed_queue(detail_loc=None, on_error=None, nitems=10, wait_time=conf
             record = json.loads(item.body)['Records'][0]
             if 's3' in record:
                 case_number = record['s3']['object']['key']
-                case_type = get_detail_loc(case_number)
+                if detail_loc:
+                    case_type = get_detail_loc(case_number)
+                else:
+                    case_type = None
             elif 'Sns' in record:
                 msg = json.loads(record['Sns']['Message'])
                 case_number = msg['case_number']
@@ -111,22 +113,20 @@ def parse_failed_queue(detail_loc=None, on_error=None, nitems=10, wait_time=conf
             if not detail_loc or detail_loc == case_type:
                 try:
                     print('Parsing case',case_number)
-                    parse_case(case_number, case_type)
+                    parse_case(case_number)
                 except NotImplementedError:
                     item.delete() # remove from queue
                 except Exception as e:
                     print("!!! Failed to parse %s !!!" % case_number)
                     if on_error:
-                        on_error(e, case_number)
+                        if on_error(e, case_number) == 'delete':
+                            item.delete()
                     else:
                         raise e
                 else:
                     item.delete() # remove from queue
             else:
-                if not detail_loc:
-                    print("No detail_loc specified")
-                else:
-                    print("item %s doesn't match type" % case_number, case_type)
+                print("item %s doesn't match type" % case_number, case_type)
 
 def invoke_parser_lambda(detail_loc=None):
     if detail_loc:
