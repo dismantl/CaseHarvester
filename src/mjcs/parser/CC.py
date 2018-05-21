@@ -181,9 +181,9 @@ class CCDocument(CCCaseTable, TableBase):
     document_number = Column(Integer)
     sequence_number = Column(Integer)
     file_date = Column(Date,nullable=True)
-    _file_date_str = Column('file_date_str',String)
+    _file_date_str = Column('file_date_str',String,nullable=True)
     entered_date = Column(Date,nullable=True)
-    _entered_date_str = Column('entered_date_str',String)
+    _entered_date_str = Column('entered_date_str',String,nullable=True)
     decision = Column(String,nullable=True)
     party_type = Column(String,nullable=True) # TODO could eventually map this and party_number to case parties
     party_number = Column(Integer,nullable=True)
@@ -198,6 +198,7 @@ class CCJudgment(CCCaseTable, TableBase):
     entered_date = Column(Date,nullable=True)
     _entered_date_str = Column('entered_date_str',String)
     amount = Column(Numeric)
+    amount_other = Column(String,nullable=True)
     prejudgment_interest = Column(Numeric)
     appearance_fee = Column(Numeric)
     filing_fee = Column(Numeric)
@@ -206,6 +207,7 @@ class CCJudgment(CCCaseTable, TableBase):
     witness_fee = Column(Numeric)
     attorney_fee = Column(Numeric)
     total_indexed_judgment = Column(Numeric)
+    tij_other = Column(String,nullable=True)
     comments = Column(String,nullable=True)
 
     @hybrid_property
@@ -226,6 +228,7 @@ class CCJudgmentModification(CCCaseTable, TableBase):
     entered_date = Column(Date,nullable=True)
     _entered_date_str = Column('entered_date_str',String)
     amount = Column(Numeric)
+    amount_other = Column(String,nullable=True)
     status_date = Column(Date,nullable=True)
     _status_date_str = Column('status_date_str',String)
     status = Column(String)
@@ -385,15 +388,27 @@ class CCParser(CaseDetailsParser):
 
         prev_obj = info_charge_statement
         while True:
+            name_table = None
+            address_table = None
+            attorney_table = None
+            alias_table = None
             try:
                 t1 = self.table_next_first_column_prompt(prev_obj,'Party Type:')
                 t2 = self.immediate_sibling(t1,'table')
-                t3 = self.immediate_sibling(t2,'table')
             except ParserError:
                 break
-            attorney_table = None
-            alias_table = None
-            prev_obj = t3
+            try:
+                t3 = self.immediate_sibling(t2,'table')
+                prev_obj = t3
+            except ParserError:
+                t3 = None
+                prev_obj = t2
+            if 'Name:' in t2.text:
+                name_table = t2
+            elif 'Address:' in t2.text:
+                address_table = t2
+            if t3 and 'Address:' in t3.text:
+                address_table = t3
             while True:
                 try:
                     t4 = self.immediate_sibling(prev_obj,'table')
@@ -413,12 +428,13 @@ class CCParser(CaseDetailsParser):
             p = party_cls(self.case_number)
             p.party_type = self.value_first_column(t1,'Party Type:')
             p.party_number = self.value_column(t1,'Party No.:',ignore_missing=True)
-            p.name = self.value_first_column(t2,'Name:',ignore_missing=True)
-            p.business_org_name = self.value_first_column(t2,'Business or Organization Name:',ignore_missing=True)
+            if name_table:
+                p.name = self.value_first_column(name_table,'Name:',ignore_missing=True)
+                p.business_org_name = self.value_first_column(name_table,'Business or Organization Name:',ignore_missing=True)
             db.add(p)
 
-            if t3.stripped_strings:
-                for address_span in t3.find_all('span',class_='FirstColumnPrompt',string='Address:'):
+            if address_table:
+                for address_span in address_table.find_all('span',class_='FirstColumnPrompt',string='Address:'):
                     r1 = address_span.find_parent('tr')
                     r2 = self.immediate_sibling(r1,'tr')
                     addr = CCPartyAddress(self.case_number)
@@ -602,6 +618,12 @@ class CCParser(CaseDetailsParser):
             j.entered_date_str = self.value_first_column(t1,'Judgment Entered Date:')
             j.other_fee = self.value_first_column(t1,'Other Fee:',money=True)
             j.amount = self.value_first_column(t1,'Amount of Judgment:',money=True)
+            if j.amount:
+                try:
+                    float(j.amount)
+                except ValueError:
+                    j.amount_other = j.amount
+                    j.amount = 0
             j.service_fee = self.value_first_column(t1,'Service Fee:',money=True)
             j.prejudgment_interest = self.value_first_column(t1,'PreJudgment Interest:',money=True)
             j.witness_fee = self.value_first_column(t1,'Witness Fee:',money=True)
@@ -609,6 +631,12 @@ class CCParser(CaseDetailsParser):
             j.attorney_fee = self.value_first_column(t1,'Attorney Fee:',money=True)
             j.filing_fee = self.value_first_column(t1,'Filing Fee:',money=True)
             j.total_indexed_judgment = self.value_first_column(t1,'Total Indexed Judgment:',money=True)
+            if j.total_indexed_judgment:
+                try:
+                    float(j.total_indexed_judgment)
+                except ValueError:
+                    j.tij_other = j.total_indexed_judgment
+                    j.total_indexed_judgment = 0
             j.comments = self.value_first_column(t1,'Comments:',ignore_missing=True)
             db.add(j)
 
@@ -652,6 +680,12 @@ class CCParser(CaseDetailsParser):
                 m.judgment_for = self.value_first_column(t2,'For:')
                 m.entered_date_str = self.value_first_column(t2,'Judgment Entered Date:')
                 m.amount = self.value_first_column(t2,'Amount:',money=True)
+                if m.amount:
+                    try:
+                        float(m.amount)
+                    except ValueError:
+                        m.amount_other = m.amount
+                        m.amount = 0
                 m.status_date_str = self.value_first_column(t2,'Status Date:')
                 m.status = self.value_first_column(t2,'Status:')
                 m.comments = self.value_first_column(t2,'Comments:')
@@ -680,9 +714,9 @@ class CCParser(CaseDetailsParser):
             d = CCDocument(self.case_number)
             doc_seq = self.value_first_column(t1,'Doc No./Seq No.:')
             d.document_number, d.sequency_number = doc_seq.split('/')
-            d.file_date_str = self.value_first_column(t1,'File Date:')
-            d.entered_date_str = self.value_column(t1,'Entered Date:')
-            d.decision = self.value_column(t1,'Decision:')
+            d.file_date_str = self.value_first_column(t1,'File Date:',ignore_missing=True)
+            d.entered_date_str = self.value_column(t1,'Entered Date:',ignore_missing=True)
+            d.decision = self.value_column(t1,'Decision:',ignore_missing=True)
             d.party_type = self.value_first_column(t1,'Party Type:',ignore_missing=True)
             d.party_number = self.value_column(t1,'Party No.:',ignore_missing=True)
             d.document_name = self.value_first_column(t1,'Document Name:',ignore_missing=True)
