@@ -13,7 +13,7 @@ class DSCR(CaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     court_system = Column(String)
-    tracking_number = Column(BigInteger, nullable=True)
+    tracking_number = Column(String, nullable=True)
     case_type = Column(String, nullable=True)
     district_code = Column(Integer, nullable=True)
     location_code = Column(Integer, nullable=True)
@@ -34,7 +34,7 @@ class DSCR(CaseTable, TableBase):
 class DSCRCaseTable(CaseTable):
     @declared_attr
     def case_number(cls):
-        return Column(String, ForeignKey('dscr.case_number', ondelete='CASCADE'))
+        return Column(String, ForeignKey('dscr.case_number', ondelete='CASCADE'), index=True)
 
 class DSCRCharge(DSCRCaseTable, TableBase):
     __tablename__ = 'dscr_charges'
@@ -75,7 +75,7 @@ class DSCRCharge(DSCRCaseTable, TableBase):
     suspended_term_years = Column(Integer, nullable=True)
     suspended_term_months = Column(Integer, nullable=True)
     suspended_term_days = Column(Integer, nullable=True)
-    credit_time_served = Column(Integer, nullable=True)
+    credit_time_served = Column(String, nullable=True)
 
     @hybrid_property
     def amended_date_str(self):
