@@ -41,7 +41,7 @@ class CC(CaseTable, TableBase):
 class CCCaseTable(CaseTable):
     @declared_attr
     def case_number(cls):
-        return Column(String, ForeignKey('cc.case_number', ondelete='CASCADE'))
+        return Column(String, ForeignKey('cc.case_number', ondelete='CASCADE'), index=True)
 
 class CCDistrictCaseNumber(CCCaseTable, TableBase):
     __tablename__ = 'cc_district_case_numbers'
@@ -573,25 +573,25 @@ class CCParser(CaseDetailsParser):
             support_row = t1\
                 .find('span',class_='FirstColumnPrompt',string='Support Amt:')\
                 .find_parent('tr')
-            o.support_amount = self.value_first_column(support_row,'Support Amt:')
+            o.support_amount = self.value_first_column(support_row,'Support Amt:',money=True)
             o.support_frequency = self.value_column(support_row,'Freq:')
             o.support_to = self.value_column(support_row,'To:')
             arrears_row = t1\
                 .find('span',class_='FirstColumnPrompt',string='Arrears Amt:')\
                 .find_parent('tr')
-            o.arrears_amount = self.value_first_column(arrears_row,'Arrear   s Amt:')
+            o.arrears_amount = self.value_first_column(arrears_row,'Arrears Amt:',money=True)
             o.arrears_frequency = self.value_column(arrears_row,'Freq:')
             o.arrears_to = self.value_column(arrears_row,'To:')
             mapr_row = t1\
                 .find('span',class_='FirstColumnPrompt',string='MAPR Amt:')\
                 .find_parent('tr')
-            o.mapr_amount = self.value_first_column(mapr_row,'MAPR Amt:')
+            o.mapr_amount = self.value_first_column(mapr_row,'MAPR Amt:',money=True)
             o.mapr_frequency = self.value_column(mapr_row,'Freq:')
             o.medical_insurance_report_date = self.value_first_column(t1,'Medical Insurance Report Date:')
             btr_row = t1\
                 .find('span',class_='FirstColumnPrompt',string='BTR Amt:')\
                 .find_parent('tr')
-            o.btr_amount = self.value_first_column(btr_row,'BTR Amt:')
+            o.btr_amount = self.value_first_column(btr_row,'BTR Amt:',money=True)
             o.btr_frequency = self.value_column(btr_row,'Freq:')
             o.lien = self.value_first_column(t1,'Lien:')
             o.provisions = self.value_column(t1,'Provisions:')
