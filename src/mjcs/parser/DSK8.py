@@ -51,7 +51,7 @@ class DSK8(CaseTable, TableBase):
 class DSK8CaseTable(CaseTable):
     @declared_attr
     def case_number(cls):
-        return Column(String, ForeignKey('dsk8.case_number', ondelete='CASCADE'))
+        return Column(String, ForeignKey('dsk8.case_number', ondelete='CASCADE'), index=True)
 
 class DSK8Charge(DSK8CaseTable, TableBase):
     __tablename__ = 'dsk8_charges'
