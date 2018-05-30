@@ -31,7 +31,7 @@ class DSCIVIL(CaseTable, TableBase):
 class DSCIVILCaseTable(CaseTable):
     @declared_attr
     def case_number(cls):
-        return Column(String, ForeignKey('dscivil.case_number', ondelete='CASCADE'))
+        return Column(String, ForeignKey('dscivil.case_number', ondelete='CASCADE'), index=True)
 
 class Complaint(DSCIVILCaseTable, TableBase):
     __tablename__ = 'dscivil_complaints'
@@ -217,7 +217,7 @@ class DSCIVILParser(CaseDetailsParser):
         subheader.decompose()
 
     def footer(self, soup):
-        footer = soup.find('div',class_='InfoStatement',string='This is an electronic case record')
+        footer = soup.find('div',class_='InfoStatement',string=re.compile('This is an electronic case record'))
         footer.decompose()
 
     #########################################################
@@ -377,6 +377,10 @@ class DSCIVILParser(CaseDetailsParser):
             try:
                 t1 = self.immediate_sibling(prev_obj,'table')
                 separator = self.immediate_sibling(t1,'hr')
+                try:
+                    separator = self.immediate_sibling(separator,'hr') # sometimes there are two <hr>s in a row
+                except ParserError:
+                    pass
                 prev_obj = separator
             except ParserError:
                 break
