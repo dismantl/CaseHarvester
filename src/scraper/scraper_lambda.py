@@ -67,7 +67,7 @@ def lambda_handler(event, context):
     if 'SCRAPE' in event: # this is a worker invocation
         print("Worker invocation")
         try:
-            scraper.scrape_from_queue_or_raise(scraper_queue)
+            scraper.scrape_from_queue(scraper_queue)
         except NoItemsInQueue:
             mark_complete()
         else:
