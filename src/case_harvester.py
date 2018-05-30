@@ -188,7 +188,7 @@ def parser_prompt(exception, case_number):
         print('Continue parsing?')
         print('\t\t(y)es    - ignore error and continue parsing (default)')
         print('\t\t(n)o     - stop parsing and raise exception')
-        print('\t\t(d)elete - ignore error and delete item from queue')
+        print('\t\t(d)elete - delete scrape and remove from queue')
         answer = input('Answer: (Y/n/d) ')
         if answer == 'y' or answer == 'Y' or not answer:
             return 'continue'
@@ -211,7 +211,7 @@ def run_parser(args):
         on_error = parser_prompt
 
     if args.failed_queue:
-        parse_failed_queue(args.type, on_error)
+        parse_failed_queue(args.type, on_error, args.threads)
     elif args.invoke_lambda:
         invoke_parser_lambda(args.type)
     else:

@@ -3,6 +3,8 @@ from .db import TableBase, column_windows, db_session
 from sqlalchemy import Column, Boolean, Date, Integer, String, DateTime
 from sqlalchemy.sql import select
 import zlib
+import concurrent.futures
+import copy
 
 def total_cases(db):
     return db.query(Case).count()
@@ -55,3 +57,69 @@ def get_detail_loc(case_number):
                 .where(Case.case_number == case_number)
             ).scalar()
     return detail_loc
+
+def process_cases(func, cases, on_success=None, on_error=None, user_obj=None, threads=1, counter=None):
+    to_process = copy.deepcopy(cases)
+    continue_processing = True
+    caught_exception = None
+    while to_process and continue_processing:
+        if threads == 1:
+            for case in to_process:
+                case_number = case['case_number'] if type(case) == dict else case
+                if counter:
+                    print('Parsing case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
+                    counter['count'] += 1
+                try:
+                    func(case)
+                except NotImplementedError:
+                    pass
+                except Exception as e:
+                    continue_processing = False
+                    print("!!! Failed to process %s !!!" % case_number)
+                    if on_error:
+                        if on_error(e, case, user_obj) == 'continue':
+                            continue_processing = True
+                    else:
+                        caught_exception = e
+                    break
+                else:
+                    if on_success:
+                        on_success(case, user_obj)
+        else:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+                canceled = False
+                future_to_case = {}
+                for case in to_process:
+                    future_to_case[executor.submit(func, case)] = case
+                for future in concurrent.futures.as_completed(future_to_case):
+                    case = future_to_case[future]
+                    case_number = case['case_number'] if type(case) == dict else case
+                    if not canceled:
+                        to_process.remove(case)
+                        if counter:
+                            counter['count'] += 1
+                            print('Processed case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
+                    try:
+                        future.result()
+                    except concurrent.futures.CancelledError:
+                        pass
+                    except NotImplementedError:
+                        pass
+                    except Exception as e: # Won't catch KeyboardInterrupt, which is raised in as_completed
+                        if not canceled:
+                            continue_processing = False
+                            # cancel all remaining tasks
+                            for future in future_to_case:
+                                future.cancel()
+                            canceled = True
+                            print("!!! Failed to Process %s !!!" % case_number)
+                            if on_error:
+                                if on_error(e, case, user_obj) == 'continue':
+                                    continue_processing = True
+                            else:
+                                caught_exception = e
+                    else:
+                        if on_success:
+                            on_success(case, user_obj)
+        if caught_exception:
+            raise caught_exception
