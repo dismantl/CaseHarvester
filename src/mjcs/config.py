@@ -9,7 +9,7 @@ if not os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
     elif os.getenv('MJCS_PRODUCTION_ENV'):
         load_dotenv(dotenv_path=os.path.join(env_dir,'production.env'))
     else:
-        load_dotenv(dotenv_path=os.path.join(env_dir,'development.env'))
+        raise Exception('No environment specified')
 
 class Config:
     DB_BATCH_SIZE = int(os.getenv('DB_BATCH_SIZE',1000))
