@@ -1,10 +1,5 @@
-from mjcs.config import config
-from mjcs.parser import parse_case_from_html, parse_case
-import boto3
+from mjcs.parser import parse_case
 import json
-
-s3 = boto3.client('s3')
-bucket = config.CASE_DETAILS_BUCKET
 
 def lambda_handler(event, context):
     for record in event['Records']:

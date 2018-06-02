@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
+from mjcs.config import config
+from mjcs.db import TableBase, db_session
+from mjcs.spider import Spider
+from mjcs.case import Case
+from mjcs.scraper import Scraper, delete_scrape
+from mjcs.parser import Parser, invoke_parser_lambda
+import mjcs.models
 import boto3
 from datetime import *
 import sys
 import os
 import json
 import argparse
+from sqlalchemy import create_engine
+from sqlalchemy.sql import text
 
 def get_stack_exports():
     return boto3.client('cloudformation').list_exports()['Exports']
@@ -38,8 +47,6 @@ def run_db_init(args):
 
 def create_database_and_user(db_hostname, db_name, master_username,
         master_password, username, password):
-    from sqlalchemy import create_engine
-    from sqlalchemy.sql import text
     engine_ = create_engine('postgresql://%s:%s@%s/postgres' % \
         (master_username, master_password, db_hostname))
     conn = engine_.connect()
@@ -75,10 +82,8 @@ def write_env_file(env_long, env_short, exports, db_name, username, password):
             get_export_val(exports,env_short,'ParserTriggerArn')))
 
 def create_tables():
-    from mjcs.db import TableBase, engine
-    import mjcs.models
     print("Creating all tables")
-    TableBase.metadata.create_all(engine)
+    TableBase.metadata.create_all(config.db_engine)
 
 def valid_date(s):
     try:
@@ -87,9 +92,6 @@ def valid_date(s):
         raise argparse.ArgumentTypeError("Not a valid date: %s" % s)
 
 def run_spider(args):
-    from mjcs.config import config
-    from mjcs.spider import Spider
-
     spider = Spider(args.connections)
 
     if args.test:
@@ -102,9 +104,7 @@ def run_spider(args):
     else:
         raise Exception("Must specify --resume, --test, or search criteria")
 
-def scraper_prompt(scraper, exception, case_number, detail_loc, html=None):
-    from mjcs.db import db_session
-    from mjcs.case import Case
+def scraper_prompt(exception, case_number):
     print(exception)
     while True:
         print('Continue scraping?')
@@ -130,38 +130,26 @@ def scraper_prompt(scraper, exception, case_number, detail_loc, html=None):
                 )
             return 'delete'
         elif answer == 'e':
-            if not html:
-                raise Exception('Cannot save scrape results without HTML')
             with db_session() as db:
                 db.execute(
                     Case.__table__.update()\
                         .where(Case.case_number == case_number)\
                         .values(parse_exempt = True)
                 )
-            scraper.store_case_details(case_number, detail_loc, html)
-            return 'continue'
+            return 'store'
         elif answer == 's':
-            if not html:
-                raise Exception('Cannot save scrape results without HTML')
-            scraper.store_case_details(case_number, detail_loc, html)
-            return 'continue'
+            return 'store'
         else:
             print('Invalid answer')
 
 def run_scraper(args):
-    from mjcs.config import config
-    from mjcs.scraper import Scraper, ParallelScraper
-
     on_error = None
     if args.ignore_errors:
-        on_error = lambda s,e,c,d,h: e # do nothing but return error
+        on_error = lambda e,c: 'continue'
     elif args.prompt_on_error:
         on_error = scraper_prompt
 
-    if args.connections == 1:
-        scraper = Scraper(on_error)
-    else:
-        scraper = ParallelScraper(args.connections, on_error)
+    scraper = Scraper(on_error, args.threads)
 
     if args.invoke_lambda:
         exports = get_stack_exports()
@@ -181,8 +169,8 @@ def run_scraper(args):
         raise Exception("Must specify --invoke-lambda, --missing, --queue, or --failed-queue.")
 
 def parser_prompt(exception, case_number):
-    from mjcs.db import db_session
-    from mjcs.scraper import delete_scrape
+    if type(exception) == NotImplementedError:
+        return 'continue'
     print(exception)
     while True:
         print('Continue parsing?')
@@ -202,20 +190,20 @@ def parser_prompt(exception, case_number):
             print('Invalid answer')
 
 def run_parser(args):
-    from mjcs.parser import parse_unparsed_cases, parse_failed_queue, invoke_parser_lambda
-
     on_error = None
     if args.ignore_errors:
-        on_error = lambda e,c: e # do nothing but return error
+        on_error = lambda e,c: 'continue'
     elif args.prompt_on_error:
         on_error = parser_prompt
 
+    parser = Parser(on_error, args.threads)
+
     if args.failed_queue:
-        parse_failed_queue(args.type, on_error, args.threads)
+        parser.parse_failed_queue(args.type)
     elif args.invoke_lambda:
         invoke_parser_lambda(args.type)
     else:
-        parse_unparsed_cases(args.type, on_error, args.threads)
+        parser.parse_unparsed_cases(args.type)
 
 if __name__ == '__main__':
     if len(sys.argv) == 2 and sys.argv[1] == 'db_init':
@@ -258,7 +246,6 @@ if __name__ == '__main__':
 
     parser_scraper = subparsers.add_parser('scraper',
         help="Scrape case details from the Maryland Judiciary Case Search database")
-    parser_scraper.add_argument('--connections', '-c', type=int, default=10)
     parser_scraper.add_argument('--ignore-errors', action='store_true',
         help="Ignore scraping errors")
     parser_scraper.add_argument('--prompt-on-error', action='store_true',
@@ -271,6 +258,8 @@ if __name__ == '__main__':
         "Scrape cases in the queue of failed cases")
     parser_scraper.add_argument('--invoke-lambda', action='store_true',
         help="Invoke scraper lambda function")
+    parser_scraper.add_argument('--threads', type=int, default=1,
+        help="Number of threads (default: 1)")
     parser_scraper.set_defaults(func=run_scraper)
 
     parser_parser = subparsers.add_parser('parser', help=\
@@ -285,8 +274,8 @@ if __name__ == '__main__':
         help="Parse cases in the parser failed queue")
     parser_parser.add_argument('--invoke-lambda', action='store_true',
         help="Use Lambda function to parse all unparsed cases")
-    parser_parser.add_argument('--threads', type=int, default=8, # number of logical cores on my Macbook Pro
-        help="Number of threads for parsing unparsed cases (default: 8)")
+    parser_parser.add_argument('--threads', type=int, default=1,
+        help="Number of threads for parsing unparsed cases (default: 1)")
     parser_parser.set_defaults(func=run_parser)
 
     if os.getenv('DEV_MODE'):
@@ -302,11 +291,10 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    config.initialize_from_environment(args.environment)
     if args.environment == 'development':
-        os.environ['MJCS_DEVELOPMENT_ENV'] = '1'
         args.environment_short = 'dev'
     elif args.environment == 'production':
-        os.environ['MJCS_PRODUCTION_ENV'] = '1'
         args.environment_short = 'prod'
 
     args.func(args)

@@ -4,7 +4,6 @@ from .search import SearchItem, active_count, active_items, clear_queue
 from .case import Case
 from .run import Run
 from .session import AsyncSession
-import boto3
 import trio
 import asks
 from sqlalchemy.dialects.postgresql import insert
@@ -16,9 +15,6 @@ import string
 import xml.etree.ElementTree as ET
 import h11
 import json
-
-sqs = boto3.resource('sqs')
-scraper_queue = sqs.get_queue_by_name(QueueName=config.SCRAPER_QUEUE_NAME)
 
 # TODO non-interactive option for lambda runs, via command line -y?
 def prompt_continue(prompt):
@@ -271,7 +267,7 @@ class Spider:
             run.queue_finished += 1
 
     def __add_to_scraper_queue(self, case_number, loc, detail_loc):
-        scraper_queue.send_message(
+        config.scraper_queue.send_message(
             MessageBody = json.dumps({
                 'case_number': case_number,
                 'loc': loc,
@@ -339,7 +335,7 @@ class Spider:
             nitems = active_count(db)
         while nitems:
             with db_session() as db:
-                items = active_items(db).limit(config.DB_BATCH_SIZE)
+                items = active_items(db).limit(config.CASE_BATCH_SIZE)
                 print("new batch")
                 async with trio.open_nursery() as nursery:
                     for item in items:
@@ -377,7 +373,9 @@ class Spider:
             self.__seed_queue_test(db)
         self.__run(overwrite=overwrite, force_scrape=force_scrape)
 
-    def __init__(self, connections = config.SPIDER_DEFAULT_CONCURRENCY):
+    def __init__(self, connections=None):
+        if not connections:
+            connections = config.SPIDER_DEFAULT_CONCURRENCY
         asks.init('trio')
         self.session_pool = trio.Queue(connections)
         for i in range(connections):

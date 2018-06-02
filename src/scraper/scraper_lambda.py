@@ -1,21 +1,16 @@
 from mjcs.config import config
-from mjcs.scraper import ParallelScraper, NoItemsInQueue
-import boto3
+from mjcs.scraper import Scraper, NoItemsInQueue
 import json
 from datetime import *
 
 DYNAMODB_KEY='worker'
 
-sqs = boto3.resource('sqs')
-scraper_queue = sqs.get_queue_by_name(QueueName=config.SCRAPER_QUEUE_NAME)
 lambda_ = boto3.client('lambda')
-dynamodb = boto3.resource('dynamodb')
-scraper_table = dynamodb.Table(config.SCRAPER_DYNAMODB_TABLE_NAME)
-scraper = ParallelScraper(connections=config.SCRAPER_DEFAULT_CONCURRENCY)
+scraper = Scraper(threads=config.SCRAPER_DEFAULT_CONCURRENCY)
 
 def mark_complete():
     print("Marking lambda invocation chain complete")
-    scraper_table.delete_item(
+    config.scraper_table.delete_item(
         Key = {
             'id': DYNAMODB_KEY
         }
@@ -23,7 +18,7 @@ def mark_complete():
 
 def start_worker(context):
     print("Starting worker lambda invocation")
-    scraper_table.put_item( # will overwrite
+    config.scraper_table.put_item( # will overwrite
         Item = {
             'id': DYNAMODB_KEY,
             'invoked': datetime.now().isoformat()
@@ -36,7 +31,7 @@ def start_worker(context):
     )
 
 def is_worker_running():
-    worker_task = scraper_table.get_item(
+    worker_task = config.scraper_table.get_item(
         Key = {
             'id': DYNAMODB_KEY
         }
@@ -49,7 +44,7 @@ def is_worker_running():
         now = datetime.now()
         if now - last_worker_invoked > timedelta(minutes=config.SCRAPER_LAMBDA_EXPIRY_MIN):
             print("Last worker expired, removing from table")
-            scraper_table.delete_item(
+            config.scraper_table.delete_item(
                 Key = {
                     'id': DYNAMODB_KEY
                 }
@@ -60,14 +55,14 @@ def is_worker_running():
             return True
 
 def items_count():
-    scraper_queue.load() # refresh attributes
-    return scraper_queue.attributes['ApproximateNumberOfMessages']
+    config.scraper_queue.load() # refresh attributes
+    return config.scraper_queue.attributes['ApproximateNumberOfMessages']
 
 def lambda_handler(event, context):
     if 'SCRAPE' in event: # this is a worker invocation
         print("Worker invocation")
         try:
-            scraper.scrape_from_queue(scraper_queue)
+            scraper.scrape_from_scraper_queue(nitems=config.SCRAPER_DEFAULT_CONCURRENCY)
         except NoItemsInQueue:
             mark_complete()
         else:

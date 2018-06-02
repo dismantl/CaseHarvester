@@ -4,12 +4,13 @@ from sqlalchemy import Column, Boolean, Date, Integer, String, DateTime
 from sqlalchemy.sql import select
 import zlib
 import concurrent.futures
-import copy
 
 def total_cases(db):
     return db.query(Case).count()
 
-def cases_batch_filter(db, filter=None, batch_size=config.DB_BATCH_SIZE):
+def cases_batch_filter(db, filter=None, batch_size=None):
+    if not batch_size:
+        batch_size = config.CASE_BATCH_SIZE
     for whereclause in column_windows(db, Case.case_number, batch_size, filter=filter):
         yield whereclause
 
@@ -58,8 +59,8 @@ def get_detail_loc(case_number):
             ).scalar()
     return detail_loc
 
-def process_cases(func, cases, on_success=None, on_error=None, user_obj=None, threads=1, counter=None):
-    to_process = copy.deepcopy(cases)
+def process_cases(func, cases, on_success=None, on_error=None, threads=1, counter=None):
+    to_process = [_ for _ in cases]
     continue_processing = True
     caught_exception = None
     while to_process and continue_processing:
@@ -77,14 +78,14 @@ def process_cases(func, cases, on_success=None, on_error=None, user_obj=None, th
                     continue_processing = False
                     print("!!! Failed to process %s !!!" % case_number)
                     if on_error:
-                        if on_error(e, case, user_obj) == 'continue':
+                        if on_error(e, case) == 'continue':
                             continue_processing = True
                     else:
                         caught_exception = e
                     break
                 else:
                     if on_success:
-                        on_success(case, user_obj)
+                        on_success(case)
         else:
             with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
                 canceled = False
@@ -94,32 +95,32 @@ def process_cases(func, cases, on_success=None, on_error=None, user_obj=None, th
                 for future in concurrent.futures.as_completed(future_to_case):
                     case = future_to_case[future]
                     case_number = case['case_number'] if type(case) == dict else case
-                    if not canceled:
-                        to_process.remove(case)
-                        if counter:
-                            counter['count'] += 1
-                            print('Processed case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
                     try:
                         future.result()
                     except concurrent.futures.CancelledError:
                         pass
-                    except NotImplementedError:
-                        pass
                     except Exception as e: # Won't catch KeyboardInterrupt, which is raised in as_completed
-                        if not canceled:
-                            continue_processing = False
-                            # cancel all remaining tasks
-                            for future in future_to_case:
-                                future.cancel()
-                            canceled = True
-                            print("!!! Failed to Process %s !!!" % case_number)
-                            if on_error:
-                                if on_error(e, case, user_obj) == 'continue':
-                                    continue_processing = True
-                            else:
-                                caught_exception = e
+                        continue_processing = False
+                        # cancel all remaining tasks
+                        for future in future_to_case:
+                            future.cancel()
+                        canceled = True
+                        print("!!! Failed to process %s !!!" % case_number)
+                        if on_error:
+                            if on_error(e, case) == 'continue':
+                                continue_processing = True
+                                to_process.remove(case)
+                                if counter:
+                                    counter['count'] += 1
+                                    print('Processed case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
+                        else:
+                            caught_exception = e
                     else:
                         if on_success:
-                            on_success(case, user_obj)
+                            on_success(case)
+                        to_process.remove(case)
+                        if counter:
+                            counter['count'] += 1
+                            print('Processed case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
         if caught_exception:
             raise caught_exception

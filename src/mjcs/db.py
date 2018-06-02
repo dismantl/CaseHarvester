@@ -1,6 +1,6 @@
 from .config import config
 import sqlalchemy
-from sqlalchemy import create_engine, and_, func
+from sqlalchemy import and_, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager
@@ -8,12 +8,10 @@ import h11
 
 TableBase = declarative_base()
 
-engine = create_engine(config.MJCS_DATABASE_URL)
-db_factory = sessionmaker(bind = engine)
-
 @contextmanager
 def db_session():
     """Provide a transactional scope around a series of operations."""
+    db_factory = sessionmaker(bind = config.db_engine)
     db = db_factory()
     try:
         yield db

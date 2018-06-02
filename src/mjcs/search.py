@@ -33,7 +33,7 @@ def clear_queue(db):
     )
 
 def active_items_batch_filter(db):
-    for whereclause in column_windows(db, SearchItem.id, config.DB_BATCH_SIZE, SearchItem.status.in_(['new','retry'])):
+    for whereclause in column_windows(db, SearchItem.id, config.CASE_BATCH_SIZE, SearchItem.status.in_(['new','retry'])):
         yield whereclause
 
 def active_items_batch(db, batch_filter):
@@ -101,7 +101,7 @@ class SearchItem(TableBase):
         self.status = 'failed'
 
     def handle_500(self):
-        if self.err500s >= config.QUERY_500_LIMIT:
+        if self.err500s >= config.QUERY_ERROR_LIMIT:
             self.status = 'failed'
         else:
             self.err500s += 1
