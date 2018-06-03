@@ -60,11 +60,14 @@ class Config:
         self.PARSER_TRIGGER_ARN = os.getenv('PARSER_TRIGGER_ARN')
 
         self.db_engine = create_engine(self.MJCS_DATABASE_URL)
-        self.scraper_queue = sqs.get_queue_by_name(QueueName=self.SCRAPER_QUEUE_NAME)
-        self.scraper_table = dynamodb.Table(self.SCRAPER_DYNAMODB_TABLE_NAME)
         self.case_details_bucket = s3.Bucket(self.CASE_DETAILS_BUCKET)
-        self.parser_trigger = sns.Topic(self.PARSER_TRIGGER_ARN)
-        self.parser_failed_queue = sqs.get_queue_by_name(QueueName=self.PARSER_FAILED_QUEUE_NAME)
-        self.scraper_failed_queue = sqs.get_queue_by_name(QueueName=self.SCRAPER_FAILED_QUEUE_NAME)
+        if self.SCRAPER_QUEUE_NAME:
+            self.scraper_queue = sqs.get_queue_by_name(QueueName=self.SCRAPER_QUEUE_NAME)
+            self.scraper_table = dynamodb.Table(self.SCRAPER_DYNAMODB_TABLE_NAME)
+            self.scraper_failed_queue = sqs.get_queue_by_name(QueueName=self.SCRAPER_FAILED_QUEUE_NAME)
+        if self.PARSER_TRIGGER_ARN:
+            self.parser_trigger = sns.Topic(self.PARSER_TRIGGER_ARN)
+            self.parser_failed_queue = sqs.get_queue_by_name(QueueName=self.PARSER_FAILED_QUEUE_NAME)
+
 
 config = Config()

@@ -32,6 +32,10 @@ def parse_case_from_html(case_number, detail_loc, html):
 
 def parse_case(case):
     case_number = case['case_number'] if type(case) == dict else case
+    # check if parse_exempt before scraping
+    with db_session() as db:
+        if db.query(Case.parse_exempt).filter(Case.case_number == case_number).scalar() == True:
+            return
     case_details = config.case_details_bucket.Object(case_number).get()
     case_html = case_details['Body'].read().decode('utf-8')
     try:
@@ -43,10 +47,10 @@ def parse_case(case):
 def invoke_parser_lambda(detail_loc=None):
     if detail_loc:
         filter = and_(Case.last_parse == None, Case.last_scrape != None,
-            Case.detail_loc == detail_loc)
+            Case.parse_exempt != True, Case.detail_loc == detail_loc)
     else:
         filter = and_(Case.last_parse == None, Case.last_scrape != None,
-            Case.detail_loc.in_([c for c,p in parsers]))
+            Case.parse_exempt != True, Case.detail_loc.in_([c for c,p in parsers]))
     with db_session() as db:
         num_cases = db.query(Case.case_number).filter(filter).count()
         case_count = 1

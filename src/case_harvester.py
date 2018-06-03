@@ -145,7 +145,7 @@ def scraper_prompt(exception, case_number):
 def run_scraper(args):
     on_error = None
     if args.ignore_errors:
-        on_error = lambda e,c: 'continue'
+        on_error = lambda e,c: 'delete' # delete because failed scrapes will be (re-)added to failed queue
     elif args.prompt_on_error:
         on_error = scraper_prompt
 

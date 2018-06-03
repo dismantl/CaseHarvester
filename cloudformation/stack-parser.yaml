@@ -97,6 +97,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       MessageRetentionPeriod: 1209600
+      VisibilityTimeout: 300
       QueueName: !FindInMap [Environment, ParserFailedQueueName, !Ref EnvironmentType]
 
 Outputs:

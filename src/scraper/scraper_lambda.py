@@ -2,11 +2,12 @@ from mjcs.config import config
 from mjcs.scraper import Scraper, NoItemsInQueue
 import json
 from datetime import *
+import boto3
 
 DYNAMODB_KEY='worker'
 
 lambda_ = boto3.client('lambda')
-scraper = Scraper(threads=config.SCRAPER_DEFAULT_CONCURRENCY)
+scraper = Scraper(threads=config.SCRAPER_DEFAULT_CONCURRENCY, on_error=lambda e,c: 'delete')
 
 def mark_complete():
     print("Marking lambda invocation chain complete")

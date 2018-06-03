@@ -1,4 +1,4 @@
-trio >= 0.3.0
-asks >= 1.3.10
 sqlalchemy >= 1.2.6
 #psycopg2 >= 2.7.4
+h11 >= 0.8.1
+requests >= 2.18.4

@@ -329,7 +329,7 @@ class Scraper:
         return self.scrape_from_queue(config.scraper_failed_queue, nitems)
 
     def scrape_missing_cases(self):
-        filter = and_(Case.last_scrape == None, Case.parse_exempt != True)
+        filter = and_(Case.last_scrape == None, Case.scrape_exempt != True)
         with db_session() as db:
             print('Getting count of unscraped cases...',end='',flush=True)
             counter = {

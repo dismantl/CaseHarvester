@@ -90,12 +90,14 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       MessageRetentionPeriod: 1209600
+      VisibilityTimeout: 300
       QueueName: !FindInMap [Environment, ScraperFailedQueueName, !Ref EnvironmentType]
 
   ScraperQueue:
     Type: AWS::SQS::Queue
     Properties:
       MessageRetentionPeriod: 1209600
+      VisibilityTimeout: 300
       QueueName: !FindInMap [Environment, ScraperQueueName, !Ref EnvironmentType]
 
   ScraperTrigger:
