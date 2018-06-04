@@ -100,10 +100,10 @@ class Parser:
                     MaxNumberOfMessages = 10
                 )
 
-            # Concurrently fetch up to 1000 messages from queue
+            # Concurrently fetch up to 100 messages from queue
             queue_items = []
-            with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
-                results = executor.map(fetch_from_queue,range(0,100))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                results = executor.map(fetch_from_queue,range(0,10))
                 for result in results:
                     if result:
                         queue_items += result

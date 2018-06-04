@@ -258,7 +258,7 @@ class Scraper:
                     MaxNumberOfMessages = n
                 )
 
-            # Concurrently fetch up to 1000 (or nitems) messages from queue
+            # Concurrently fetch up to 100 (or nitems) messages from queue
             queue_items = []
             if nitems:
                 q,r = divmod(nitems,10)
@@ -271,8 +271,8 @@ class Scraper:
                         if result:
                             queue_items += result
             else:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
-                    results = executor.map(fetch_from_queue,[10 for _ in range(0,100)])
+                with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                    results = executor.map(fetch_from_queue,[10 for _ in range(0,10)])
                     for result in results:
                         if result:
                             queue_items += result
