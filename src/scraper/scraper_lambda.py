@@ -19,17 +19,29 @@ def mark_complete():
 
 def start_worker(context):
     print("Starting worker lambda invocation")
+    invoked_time = datetime.now().isoformat()
     config.scraper_table.put_item( # will overwrite
         Item = {
             'id': DYNAMODB_KEY,
-            'invoked': datetime.now().isoformat()
+            'invoked': invoked_time
         }
     )
     lambda_.invoke(
         FunctionName = context.function_name,
         InvocationType = 'Event',
-        Payload = '{"SCRAPE":true}'
+        Payload = '{"worker":true,"last_invocation":"%s"}' % invoked_time
     )
+
+def check_invocation_time(last_invocation):
+    worker_task = config.scraper_table.get_item(
+        Key = {
+            'id': DYNAMODB_KEY
+        }
+    )
+    if not 'Item' in worker_task:
+        raise Exception('Worker entry not found in Dynamodb table')
+    if worker_task['Item']['invoked'] != last_invocation:
+        raise Exception('Mismatched last invocation time')
 
 def is_worker_running():
     worker_task = config.scraper_table.get_item(
@@ -60,8 +72,9 @@ def items_count():
     return config.scraper_queue.attributes['ApproximateNumberOfMessages']
 
 def lambda_handler(event, context):
-    if 'SCRAPE' in event: # this is a worker invocation
+    if 'worker' in event: # this is a worker invocation
         print("Worker invocation")
+        check_invocation_time(event['last_invocation'])
         try:
             scraper.scrape_from_scraper_queue(nitems=config.SCRAPER_DEFAULT_CONCURRENCY)
         except NoItemsInQueue:
@@ -74,7 +87,11 @@ def lambda_handler(event, context):
             alarm = json.loads(event['Records'][0]['Sns']['Message'])
             if alarm['AlarmName'] != config.SCRAPER_QUEUE_ALARM_NAME:
                 raise Exception("Unknown alarm message received")
-        elif 'detail-type' not in event or event['detail-type'] != 'Scheduled Event':
+        elif 'manual' in event:
+            pass
+        elif 'detail-type' in event and event['detail-type'] == 'Scheduled Event':
+            pass
+        else:
             raise Exception("Unknown message received")
         if not items_count():
             print("No items in queue. Exiting...")

@@ -157,7 +157,7 @@ def run_scraper(args):
         boto3.client('lambda').invoke(
             FunctionName = lambda_arn,
             InvocationType = 'Event',
-            Payload = '{"SCRAPE":true}'
+            Payload = '{"manual":true}'
         )
     elif args.missing:
         scraper.scrape_missing_cases()
