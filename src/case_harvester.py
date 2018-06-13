@@ -30,7 +30,6 @@ def run_db_init(args):
     if not db_hostname:
         raise Exception('Unable to find database hostname in AWS cloudformation exports')
     secrets = json.loads(args.secrets_file.read())
-    secrets = {item['ParameterKey']:item['ParameterValue'] for item in secrets}
     db_username = secrets['DatabaseUsername']
     db_password = secrets['DatabasePassword']
 
