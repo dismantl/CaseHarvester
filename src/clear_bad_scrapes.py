@@ -3,7 +3,7 @@
 from mjcs.config import config
 from mjcs.db import db_session
 from mjcs.case import Case, cases_batch_filter
-from mjcs.scraper import delete_scrape, check_scrape_sanity, FailedScrape, ExpiredSession
+from mjcs.scraper import delete_latest_scrape, check_scrape_sanity, FailedScrape, ExpiredSession
 from sqlalchemy import and_
 import boto3
 
@@ -34,7 +34,7 @@ with db_session() as db:
                     except (FailedScrape, ExpiredSession):
                         deleted += 1
                         print('Deleting',case.case_number)
-                        delete_scrape(db, case.case_number)
+                        delete_latest_scrape(db, case.case_number)
                         case.last_parse = None
                         db.commit()
 print('Deleted %s items' % deleted)

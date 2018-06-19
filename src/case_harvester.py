@@ -3,7 +3,7 @@ from mjcs.config import config
 from mjcs.db import TableBase, db_session
 from mjcs.spider import Spider
 from mjcs.case import Case
-from mjcs.scraper import Scraper, delete_scrape
+from mjcs.scraper import Scraper, delete_latest_scrape
 from mjcs.parser import Parser, invoke_parser_lambda
 import mjcs.models
 import boto3
@@ -183,7 +183,7 @@ def parser_prompt(exception, case_number):
             raise exception
         elif answer == 'd':
             with db_session() as db:
-                delete_scrape(db, case_number)
+                delete_latest_scrape(db, case_number)
             return 'delete'
         else:
             print('Invalid answer')

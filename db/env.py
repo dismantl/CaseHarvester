@@ -9,10 +9,13 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # Import our models and database objects
-# TODO add CLI switches for choosing environment (prod, dev)
 from mjcs.config import config as my_config
-from mjcs.db import TableBase, engine
+from mjcs.db import TableBase
 from mjcs.models import *
+if os.getenv('PRODUCTION_ENV'):
+    my_config.initialize_from_environment('production')
+else:
+    my_config.initialize_from_environment('development')
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -66,7 +69,7 @@ def run_migrations_online():
     #     config.get_section(config.config_ini_section),
     #     prefix='sqlalchemy.',
     #     poolclass=pool.NullPool)
-    connectable = engine
+    connectable = my_config.db_engine
 
     with connectable.connect() as connection:
         context.configure(

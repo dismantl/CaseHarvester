@@ -1,8 +1,9 @@
 from .config import config
-from .db import db_session
+from .db import db_session, TableBase
 from .case import Case, cases_batch, cases_batch_filter, process_cases
 from .session import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, select, Column, DateTime, Integer, Numeric, String, ForeignKey, Index
+from hashlib import sha256
 import requests
 import boto3
 import re
@@ -14,6 +15,25 @@ import concurrent.futures
 MJCS_AUTH_TARGET = 'http://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp'
 
 s3 = boto3.client('s3')
+
+class ScrapeVersion(TableBase):
+    __tablename__ = 'scrape_versions'
+
+    s3_version_id = Column(String, primary_key=True)
+    case_number = Column(String, ForeignKey('cases.case_number', ondelete='CASCADE'), index=True)
+    length = Column(Integer)
+    sha256 = Column(String)
+
+class Scrape(TableBase):
+    __tablename__ = 'scrapes'
+
+    id = Column(Integer, primary_key=True)
+    case_number = Column(String, ForeignKey('cases.case_number', ondelete='CASCADE'), index=True)
+    s3_version_id = Column(String, ForeignKey('scrape_versions.s3_version_id', ondelete='CASCADE'))
+    timestamp = Column(DateTime)
+    duration = Column(Numeric, nullable=True) # seconds
+
+Index('ix_scrape_timestamp', Scrape.case_number, Scrape.timestamp.desc())
 
 class ScraperItem:
     def __init__(self, case_number, detail_loc):
@@ -75,23 +95,41 @@ def check_scrape_sanity(case_number, html):
             return
         raise FailedScrapeNoCaseNumber
 
-def delete_scrape(db, case_number):
-    case_details_bucket = boto3.resource('s3').Bucket(config.CASE_DETAILS_BUCKET)
-    object_versions = case_details_bucket.object_versions.filter(Prefix=case_number)
-    object_versions = [x for x in object_versions if x.object_key == case_number]
-    if len(object_versions) > 1:
-        # delete most recent version
-        object_versions = sorted(object_versions,key=lambda x: x.last_modified)
-        object_versions[-1].delete()
+def delete_latest_scrape(db, case_number):
+    versions = [_ for _, in db.query(ScrapeVersion.s3_version_id)\
+        .filter(ScrapeVersion.case_number == case_number)]
+    last_version_id = versions[0]
+    last_version_obj = boto3.resource('s3').ObjectVersion(
+        config.CASE_DETAILS_BUCKET,
+        case_number,
+        last_version_id
+    )
+    last_version_obj.delete()
+    db.execute(
+        ScrapeVersion.__table__.delete()\
+            .where(
+                and_(
+                    ScrapeVersion.case_number == case_number,
+                    ScrapeVersion.s3_version_id == last_version_id
+                )
+            )
+    )
+    if len(versions) > 1:
         # set last_scrape to timestamp of previous version
         db.execute(
             Case.__table__.update()\
                 .where(Case.case_number == case_number)\
-                .values(last_scrape=object_versions[-2].last_modified)
+                .values(
+                    last_scrape = select([Scrape.timestamp])\
+                        .where(
+                            and_(
+                                Scrape.case_number == case_number,
+                                Scrape.s3_version_id == versions[1]
+                            )
+                        ).as_scalar()
+                )
         )
-    elif len(object_versions) == 1:
-        case_details_bucket.Object(case_number).delete()
-        # Set last_scrape = null in DB
+    elif len(versions) == 1:
         db.execute(
             Case.__table__.update()\
                 .where(Case.case_number == case_number)\
@@ -100,13 +138,13 @@ def delete_scrape(db, case_number):
 
 def has_scrape(case_number):
     try:
-        o = config.case_details_bucket.Object(case_number).get()
+        config.case_details_bucket.Object(case_number).get()
     except s3.exceptions.NoSuchKey:
         return False
     else:
         return True
 
-def log_failed_case(case_number, detail_loc, error):
+def log_failed_scrape(case_number, detail_loc, error):
     print("Failed to scrape case %s: %s" % (case_number, error))
     config.scraper_failed_queue.send_message(
         MessageBody = json.dumps({
@@ -115,7 +153,7 @@ def log_failed_case(case_number, detail_loc, error):
         })
     )
 
-def store_case_details(case_number, detail_loc, html, check_before_store=True):
+def store_case_details(case_number, detail_loc, html, scrape_duration=None, check_before_store=True):
     if check_before_store:
         add = False
         try:
@@ -131,28 +169,43 @@ def store_case_details(case_number, detail_loc, html, check_before_store=True):
         add = True
 
     if add:
-        config.case_details_bucket.put_object(
+        timestamp = datetime.now()
+        obj = config.case_details_bucket.put_object(
             Body = html,
             Key = case_number,
             Metadata = {
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': timestamp.isoformat(),
                 'detail_loc': detail_loc
             }
         )
-        # TODO what if s3 put_object succeeds, but cannot connect to database?
         with db_session() as db:
+            scrape_version = ScrapeVersion(
+                s3_version_id = obj.version_id,
+                case_number = case_number,
+                length = len(html),
+                sha256 = sha256(html.encode('utf-8')).hexdigest()
+            )
+            scrape = Scrape(
+                case_number = case_number,
+                s3_version_id = obj.version_id,
+                timestamp = timestamp,
+                duration = scrape_duration
+            )
+            db.add(scrape_version)
+            # db.flush()
+            db.add(scrape)
             db.execute(
                 Case.__table__.update()\
                     .where(Case.case_number == case_number)\
-                    .values(last_scrape = datetime.now())
+                    .values(last_scrape = timestamp)
             )
 
-def handle_scrape_response(scraper_item, response, check_before_store=True):
+def handle_scrape_response(scraper_item, response, scrape_duration, check_before_store=True):
     if response.status_code != 200:
         if response.status_code == 500:
             scraper_item.errors += 1
             if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
-                log_failed_case(scraper_item.case_number,
+                log_failed_scrape(scraper_item.case_number,
                     scraper_item.detail_loc, "Reached 500 error limit")
                 raise FailedScrape500
         # This is how requests deals with redirects
@@ -162,7 +215,7 @@ def handle_scrape_response(scraper_item, response, check_before_store=True):
         else:
             scraper_item.errors += 1
             if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
-                log_failed_case(
+                log_failed_scrape(
                     scraper_item.case_number, scraper_item.detail_loc,
                     "Received unexpected response: code = %d, body = %s" % (response.status_code, response.text)
                 )
@@ -170,13 +223,13 @@ def handle_scrape_response(scraper_item, response, check_before_store=True):
     elif re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text):
         scraper_item.errors += 1
         if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
-            log_failed_case(scraper_item.case_number,
+            log_failed_scrape(scraper_item.case_number,
                 scraper_item.detail_loc, "Case details not found")
             raise FailedScrapeNotFound
     elif 'Sorry, but your query has timed out after 2 minute' in response.text:
         scraper_item.timeouts += 1
         if scraper_item.timeouts >= config.QUERY_TIMEOUTS_LIMIT:
-            log_failed_case(scraper_item.case_number,
+            log_failed_scrape(scraper_item.case_number,
                 scraper_item.detail_loc, "Reached timeout limit")
             raise FailedScrapeTimeout
     else:
@@ -186,11 +239,11 @@ def handle_scrape_response(scraper_item, response, check_before_store=True):
         except FailedScrape as e:
             scraper_item.errors += 1
             if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
-                log_failed_case(scraper_item.case_number, scraper_item.detail_loc,
+                log_failed_scrape(scraper_item.case_number, scraper_item.detail_loc,
                     str(type(e)))
                 raise e
         else:
-            store_case_details(scraper_item.case_number, scraper_item.detail_loc, response.text, check_before_store)
+            store_case_details(scraper_item.case_number, scraper_item.detail_loc, response.text, scrape_duration, check_before_store)
             raise CompletedScrape
 
 def scrape_case(case_number, detail_loc, session=None, check_before_store=True):
@@ -200,6 +253,7 @@ def scrape_case(case_number, detail_loc, session=None, check_before_store=True):
     while True:
         try:
             print("Requesting case details for",case_number)
+            begin = datetime.now()
             response = session.post(
                 'http://casesearch.courts.state.md.us/casesearch/inquiryByCaseNum.jis',
                 data = {
@@ -207,6 +261,8 @@ def scrape_case(case_number, detail_loc, session=None, check_before_store=True):
                 },
                 allow_redirects = False
             )
+            end = datetime.now()
+            duration = (begin - end).total_seconds()
         except requests.exceptions.Timeout:
             scraper_item.timeouts += 1
             if scraper_item.timeouts >= config.QUERY_TIMEOUTS_LIMIT:
@@ -214,7 +270,7 @@ def scrape_case(case_number, detail_loc, session=None, check_before_store=True):
                 raise FailedScrapeTimeout
         else:
             try:
-                handle_scrape_response(scraper_item, response, check_before_store)
+                handle_scrape_response(scraper_item, response, duration, check_before_store)
             except ExpiredSession:
                 print("Renewing session")
                 session.renew()
