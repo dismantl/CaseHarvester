@@ -7,7 +7,7 @@ import boto3
 DYNAMODB_KEY='worker'
 
 lambda_ = boto3.client('lambda')
-scraper = Scraper(threads=config.SCRAPER_DEFAULT_CONCURRENCY, on_error=lambda e,c: 'delete')
+scraper = Scraper(threads=config.SCRAPER_DEFAULT_CONCURRENCY, on_error=lambda e,c: 'continue')
 
 def mark_complete():
     print("Marking lambda invocation chain complete")

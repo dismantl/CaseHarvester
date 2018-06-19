@@ -14,8 +14,6 @@ import concurrent.futures
 
 MJCS_AUTH_TARGET = 'http://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp'
 
-s3 = boto3.client('s3')
-
 class ScrapeVersion(TableBase):
     __tablename__ = 'scrape_versions'
 
@@ -137,6 +135,7 @@ def delete_latest_scrape(db, case_number):
         )
 
 def has_scrape(case_number):
+    s3 = boto3.client('s3')
     try:
         config.case_details_bucket.Object(case_number).get()
     except s3.exceptions.NoSuchKey:
@@ -154,10 +153,13 @@ def log_failed_scrape(case_number, detail_loc, error):
     )
 
 def store_case_details(case_number, detail_loc, html, scrape_duration=None, check_before_store=True):
+    boto_session = boto3.session.Session() # https://boto3.readthedocs.io/en/latest/guide/resources.html#multithreading-multiprocessing
+    s3 = boto_session.client('s3')
+    case_details_bucket = boto_session.resource('s3').Bucket(config.CASE_DETAILS_BUCKET)
     if check_before_store:
         add = False
         try:
-            previous_fetch = config.case_details_bucket.Object(case_number).get()
+            previous_fetch = case_details_bucket.Object(case_number).get()
         except s3.exceptions.NoSuchKey:
             print("Case details for %s not found, adding..." % case_number)
             add = True
@@ -170,7 +172,7 @@ def store_case_details(case_number, detail_loc, html, scrape_duration=None, chec
 
     if add:
         timestamp = datetime.now()
-        obj = config.case_details_bucket.put_object(
+        obj = case_details_bucket.put_object(
             Body = html,
             Key = case_number,
             Metadata = {
@@ -192,7 +194,7 @@ def store_case_details(case_number, detail_loc, html, scrape_duration=None, chec
                 duration = scrape_duration
             )
             db.add(scrape_version)
-            # db.flush()
+            db.flush()
             db.add(scrape)
             db.execute(
                 Case.__table__.update()\

@@ -52,7 +52,7 @@ Resources:
         - AmazonSQSFullAccess
         - VPCAccessPolicy: {}
       CodeUri: ../pkg/scraper
-      MemorySize: 128
+      MemorySize: 192
       Timeout: 300
       ReservedConcurrentExecutions: 10
       DeadLetterQueue:

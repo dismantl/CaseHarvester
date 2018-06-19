@@ -46,43 +46,44 @@ def upgrade():
     op.create_index('ix_scrape_timestamp', 'scrapes', ['case_number', sa.text('timestamp DESC')], unique=False)
     op.create_index(op.f('ix_scrapes_case_number'), 'scrapes', ['case_number'], unique=False)
     # ### end Alembic commands ###
-    print('Running migration')
-    connection = op.get_bind()
-    db_factory = sessionmaker(bind = connection)
-    db = db_factory()
-    try:
-        total_cases = db.query(Case).filter(Case.last_scrape.isnot(None)).count()
-        i = 0
-        for version in config.case_details_bucket.object_versions.all():
-            i += 1
-            print('Adding version %s for case_number %s (%d of %d)' % (version.id, version.object_key, i, total_cases))
-            try:
-                obj = version.get()
-            except:
-                print('ERROR')
-                continue
-            html = obj['Body'].read()
-            timestamp = datetime.strptime(obj['Metadata']['timestamp'], "%Y-%m-%dT%H:%M:%S.%f")
-            scrape_version = ScrapeVersion(
-                s3_version_id = version.id,
-                case_number = version.object_key,
-                length = len(html),
-                sha256 = sha256(html).hexdigest()
-            )
-            scrape = Scrape(
-                case_number = version.object_key,
-                s3_version_id = version.id,
-                timestamp = timestamp,
-                duration = None
-            )
-            db.add(scrape_version)
-            db.add(scrape)
-        db.commit()
-    except:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+    if 0: # no need to do this for dev
+        print('Running migration')
+        connection = op.get_bind()
+        db_factory = sessionmaker(bind = connection)
+        db = db_factory()
+        try:
+            total_cases = db.query(Case).filter(Case.last_scrape.isnot(None)).count()
+            i = 0
+            for version in config.case_details_bucket.object_versions.all():
+                i += 1
+                print('Adding version %s for case_number %s (%d of %d)' % (version.id, version.object_key, i, total_cases))
+                try:
+                    obj = version.get()
+                except:
+                    print('ERROR')
+                    continue
+                html = obj['Body'].read()
+                timestamp = datetime.strptime(obj['Metadata']['timestamp'], "%Y-%m-%dT%H:%M:%S.%f")
+                scrape_version = ScrapeVersion(
+                    s3_version_id = version.id,
+                    case_number = version.object_key,
+                    length = len(html),
+                    sha256 = sha256(html).hexdigest()
+                )
+                scrape = Scrape(
+                    case_number = version.object_key,
+                    s3_version_id = version.id,
+                    timestamp = timestamp,
+                    duration = None
+                )
+                db.add(scrape_version)
+                db.add(scrape)
+            db.commit()
+        except:
+            db.rollback()
+            raise
+        finally:
+            db.close()
     print('Finished!')
 
 def downgrade():

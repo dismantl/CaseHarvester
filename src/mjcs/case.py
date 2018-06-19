@@ -68,7 +68,7 @@ def process_cases(func, cases, on_success=None, on_error=None, threads=1, counte
             for case in to_process:
                 case_number = case['case_number'] if type(case) == dict else case
                 if counter:
-                    print('Parsing case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
+                    print('Processing case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
                     counter['count'] += 1
                 try:
                     func(case)
