@@ -40,7 +40,7 @@ aws cloudformation deploy --template-file cloudformation/stack-$(component)-outp
 	--parameter-overrides \
 		EnvironmentType=$(environment) DatabaseName=$(DB_NAME) \
 		StaticStackName=$(STACK_PREFIX)-static-$(environment) \
-		$(shell jq -r '. as $$x|keys[]|. + "=" + $$x[.]' $(SECRETS_FILE))
+		$(shell jq -r '.$(environment) as $$x|$$x|keys[]|. + "=" + $$x[.]' $(SECRETS_FILE))
 endef
 
 define create_stack_bucket_f
@@ -75,8 +75,8 @@ docker run -v "$(abspath $(DOCS_DIR)):/output" schemaspy/schemaspy:snapshot \
 	-t pgsql \
 	-db $(DB_NAME) \
 	-s public \
-	-u $(shell jq '.DatabaseUsername' $(SECRETS_FILE)) \
-	-p $(shell jq '.DatabasePassword' $(SECRETS_FILE)) \
+	-u $(shell jq '.$(environment).DatabaseUsername' $(SECRETS_FILE)) \
+	-p $(shell jq '.$(environment).DatabasePassword' $(SECRETS_FILE)) \
 	-host $(hostname)
 endef
 

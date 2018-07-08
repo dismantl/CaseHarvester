@@ -30,8 +30,12 @@ def run_db_init(args):
     if not db_hostname:
         raise Exception('Unable to find database hostname in AWS cloudformation exports')
     secrets = json.loads(args.secrets_file.read())
-    db_username = secrets['DatabaseUsername']
-    db_password = secrets['DatabasePassword']
+    db_username = secrets[args.environment]['DatabaseUsername']
+    db_password = secrets[args.environment]['DatabasePassword']
+    db_master_username = secrets[args.environment]['DatabaseMasterUsername']
+    db_master_password = secrets[args.environment]['DatabaseMasterPassword']
+    db_ro_username = secrets[args.environment]['DatabaseReadOnlyUsername']
+    db_ro_password = secrets[args.environment]['DatabaseReadOnlyPassword']
 
     if args.create_tables_only:
         create_tables()
@@ -39,13 +43,13 @@ def run_db_init(args):
         write_env_file(args.environment, args.environment_short, exports, args.db_name, db_username, db_password)
     else:
         create_database_and_user(db_hostname, args.db_name,
-            secrets['DatabaseMasterUsername'], secrets['DatabaseMasterPassword'],
-            db_username, db_password)
+            db_master_username, db_master_password, db_username, db_password,
+            db_ro_username, db_ro_password)
         write_env_file(args.environment, args.environment_short, exports, args.db_name, db_username, db_password)
         create_tables()
 
 def create_database_and_user(db_hostname, db_name, master_username,
-        master_password, username, password):
+        master_password, username, password, ro_username, ro_password):
     engine_ = create_engine('postgresql://%s:%s@%s/postgres' % \
         (master_username, master_password, db_hostname))
     conn = engine_.connect()
@@ -55,6 +59,8 @@ def create_database_and_user(db_hostname, db_name, master_username,
     print("Creating user",username)
     conn.execute(text("create user %s with password :pw" % username), pw=password)
     conn.execute("grant all privileges on database %s to %s" % (db_name,username))
+    conn.execute(text("create user %s with password :pw" % ro_username), pw=ro_password)
+    conn.execute("alter default privileges in schema public grant select on tables to %s" % ro_username)
     conn.close()
 
 def write_env_file(env_long, env_short, exports, db_name, username, password):
