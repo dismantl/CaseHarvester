@@ -224,9 +224,12 @@ if __name__ == '__main__':
                 '  %(prog)s parser --help',
         formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument('--environment', default='development',
+    parser.add_argument('--environment', '--env', default='development',
         choices=['production','development'],
         help="Environment to run the case harvester in (e.g. production, development)")
+    parser.add_argument('--profile', '-p', default='default',
+        help="AWS named profile to use for credentials (see \
+        https://docs.aws.amazon.com/cli/latest/userguide/cli-multiple-profiles.html)")
     subparsers = parser.add_subparsers(title='Commands')
 
     parser_spider = subparsers.add_parser('spider',
@@ -296,7 +299,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    config.initialize_from_environment(args.environment)
+    config.initialize_from_environment(args.environment, args.profile)
     if args.environment == 'development':
         args.environment_short = 'dev'
     elif args.environment == 'production':

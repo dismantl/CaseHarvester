@@ -2,11 +2,6 @@ from sqlalchemy import create_engine
 import os
 import boto3
 
-sqs = boto3.resource('sqs')
-dynamodb = boto3.resource('dynamodb')
-s3 = boto3.resource('s3')
-sns = boto3.resource('sns')
-
 class Config:
     def __getattr__(self, name):
         if self.__getattribute__('initialized') == False:
@@ -21,7 +16,7 @@ class Config:
             self.initialized = False
 
     # Does not need to be called by lambda functions, only CLI
-    def initialize_from_environment(self, environment):
+    def initialize_from_environment(self, environment, aws_profile='default'):
         if self.initialized == True:
             return
         from dotenv import load_dotenv # imported here so we don't have to package dotenv with lambda functions
@@ -33,10 +28,10 @@ class Config:
             load_dotenv(dotenv_path=os.path.join(env_dir,'production.env'))
         else:
             raise Exception('Invalid environment %s' % environment)
-        self.set_values()
+        self.set_values(aws_profile)
         self.initialized = True
 
-    def set_values(self):
+    def set_values(self, aws_profile='default'):
         self.CASE_BATCH_SIZE = int(os.getenv('CASE_BATCH_SIZE',1000))
 
         self.QUERY_TIMEOUTS_LIMIT = int(os.getenv('QUERY_TIMEOUTS_LIMIT',5))
@@ -60,14 +55,27 @@ class Config:
         self.PARSER_TRIGGER_ARN = os.getenv('PARSER_TRIGGER_ARN')
 
         self.db_engine = create_engine(self.MJCS_DATABASE_URL)
-        self.case_details_bucket = s3.Bucket(self.CASE_DETAILS_BUCKET)
+
+        # Create custom boto3 session to use aws_profile
+        self.aws_profile = aws_profile
+        self.boto3_session = boto3.session.Session(profile_name=self.aws_profile)
+
+        # Generic boto3 resources/clients
+        self.sqs = self.boto3_session.resource('sqs')
+        self.dynamodb = self.boto3_session.resource('dynamodb')
+        self.s3 = self.boto3_session.resource('s3')
+        self.sns = self.boto3_session.resource('sns')
+        self.lambda_ = self.boto3_session.client('lambda')
+
+        # Specific AWS objects
+        self.case_details_bucket = self.s3.Bucket(self.CASE_DETAILS_BUCKET)
         if self.SCRAPER_QUEUE_NAME:
-            self.scraper_queue = sqs.get_queue_by_name(QueueName=self.SCRAPER_QUEUE_NAME)
-            self.scraper_table = dynamodb.Table(self.SCRAPER_DYNAMODB_TABLE_NAME)
-            self.scraper_failed_queue = sqs.get_queue_by_name(QueueName=self.SCRAPER_FAILED_QUEUE_NAME)
+            self.scraper_queue = self.sqs.get_queue_by_name(QueueName=self.SCRAPER_QUEUE_NAME)
+            self.scraper_table = self.dynamodb.Table(self.SCRAPER_DYNAMODB_TABLE_NAME)
+            self.scraper_failed_queue = self.sqs.get_queue_by_name(QueueName=self.SCRAPER_FAILED_QUEUE_NAME)
         if self.PARSER_TRIGGER_ARN:
-            self.parser_trigger = sns.Topic(self.PARSER_TRIGGER_ARN)
-            self.parser_failed_queue = sqs.get_queue_by_name(QueueName=self.PARSER_FAILED_QUEUE_NAME)
+            self.parser_trigger = self.sns.Topic(self.PARSER_TRIGGER_ARN)
+            self.parser_failed_queue = self.sqs.get_queue_by_name(QueueName=self.PARSER_FAILED_QUEUE_NAME)
 
 
 config = Config()

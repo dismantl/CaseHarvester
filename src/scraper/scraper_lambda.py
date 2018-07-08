@@ -2,11 +2,9 @@ from mjcs.config import config
 from mjcs.scraper import Scraper, NoItemsInQueue
 import json
 from datetime import *
-import boto3
 
 DYNAMODB_KEY='worker'
 
-lambda_ = boto3.client('lambda')
 scraper = Scraper(threads=config.SCRAPER_DEFAULT_CONCURRENCY, on_error=lambda e,c: 'continue')
 
 def mark_complete():
@@ -26,7 +24,7 @@ def start_worker(context):
             'invoked': invoked_time
         }
     )
-    lambda_.invoke(
+    config.lambda_.invoke(
         FunctionName = context.function_name,
         InvocationType = 'Event',
         Payload = '{"worker":true,"last_invocation":"%s"}' % invoked_time

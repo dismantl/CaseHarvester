@@ -97,7 +97,7 @@ def delete_latest_scrape(db, case_number):
     versions = [_ for _, in db.query(ScrapeVersion.s3_version_id)\
         .filter(ScrapeVersion.case_number == case_number)]
     last_version_id = versions[0]
-    last_version_obj = boto3.resource('s3').ObjectVersion(
+    last_version_obj = config.s3.ObjectVersion(
         config.CASE_DETAILS_BUCKET,
         case_number,
         last_version_id
@@ -135,10 +135,9 @@ def delete_latest_scrape(db, case_number):
         )
 
 def has_scrape(case_number):
-    s3 = boto3.client('s3')
     try:
         config.case_details_bucket.Object(case_number).get()
-    except s3.exceptions.NoSuchKey:
+    except config.s3.meta.client.exceptions.NoSuchKey:
         return False
     else:
         return True
@@ -153,14 +152,14 @@ def log_failed_scrape(case_number, detail_loc, error):
     )
 
 def store_case_details(case_number, detail_loc, html, scrape_duration=None, check_before_store=True):
-    boto_session = boto3.session.Session() # https://boto3.readthedocs.io/en/latest/guide/resources.html#multithreading-multiprocessing
-    s3 = boto_session.client('s3')
-    case_details_bucket = boto_session.resource('s3').Bucket(config.CASE_DETAILS_BUCKET)
+    boto_session = boto3.session.Session(profile_name=config.aws_profile) # https://boto3.readthedocs.io/en/latest/guide/resources.html#multithreading-multiprocessing
+    s3 = boto_session.resource('s3')
+    case_details_bucket = s3.Bucket(config.CASE_DETAILS_BUCKET)
     if check_before_store:
         add = False
         try:
             previous_fetch = case_details_bucket.Object(case_number).get()
-        except s3.exceptions.NoSuchKey:
+        except s3.meta.client.exceptions.NoSuchKey:
             print("Case details for %s not found, adding..." % case_number)
             add = True
         else:
