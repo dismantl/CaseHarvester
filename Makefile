@@ -8,9 +8,10 @@ SCRAPER_DEPS=$(addprefix $(CODE_SRC)/,scraper/scraper_lambda.py \
 PARSER_DEPS=$(addprefix $(CODE_SRC)/,parser/parser_lambda.py \
 	$(addprefix mjcs/,__init__.py config.py db.py case.py parser/*.py))
 SECRETS_FILE=secrets.json
-STACK_PREFIX=mjcs-stack
+STACK_PREFIX=caseharvester-stack
 AWS_REGION=us-east-1
 DB_NAME=mjcs
+AWS_PROFILE=default
 
 .PHONY: package $(addprefix package_,spider scraper parser) deploy \
 	deploy_production $(addprefix deploy_,static spider scraper parser) \
@@ -31,6 +32,7 @@ endef
 define deploy_stack_f
 $(eval component = $(1))
 $(eval environment = $(2))
+$(eval env_long = $(subst prod,production,$(subst dev,development,$(environment))))
 aws cloudformation package --template-file cloudformation/stack-$(component).yaml \
 	--output-template-file cloudformation/stack-$(component)-output.yaml \
 	--s3-bucket $(STACK_PREFIX)-$(component)-$(environment)
@@ -40,7 +42,7 @@ aws cloudformation deploy --template-file cloudformation/stack-$(component)-outp
 	--parameter-overrides \
 		EnvironmentType=$(environment) DatabaseName=$(DB_NAME) \
 		StaticStackName=$(STACK_PREFIX)-static-$(environment) \
-		$(shell jq -r '.$(environment) as $$x|$$x|keys[]|. + "=" + $$x[.]' $(SECRETS_FILE))
+		$(shell jq -r '.$(env_long) as $$x|$$x|keys[]|. + "=" + $$x[.]' $(SECRETS_FILE))
 endef
 
 define create_stack_bucket_f
@@ -50,34 +52,37 @@ aws s3api create-bucket --bucket $(STACK_PREFIX)-$(component)-$(environment) --r
 endef
 
 define add_parser_notification_f
-sleep 5 # so exports can propagate
 $(eval environment = $(1))
-$(eval bucket=$(shell aws cloudformation list-exports|grep \
-	$(STACK_PREFIX)-static-$(environment)-CaseDetailsBucketName -A1|grep Value|awk '{print $$2}'))
-$(eval parser_arn=$(shell aws cloudformation list-exports|grep \
-	$(STACK_PREFIX)-parser-$(environment)-ParserArn -A1|grep Value|awk '{print $$2}'))
-aws s3api put-bucket-notification-configuration --bucket $(bucket) \
-	--notification-configuration '{"LambdaFunctionConfigurations":\
-	[{"LambdaFunctionArn":$(parser_arn),"Events":["s3:ObjectCreated:*"]}]}'
+sleep 5 # so exports can propagate
+aws cloudformation list-exports | awk '\
+	/$(STACK_PREFIX)-static-$(environment)-CaseDetailsBucketName/ { getline; bucket=$$2 };\
+	/$(STACK_PREFIX)-parser-$(environment)-ParserArn/ { getline; parser_arn=$$2 };\
+	END { print bucket, parser_arn }' | \
+	xargs printf "aws s3api put-bucket-notification-configuration --bucket %s \
+	--notification-configuration \'{\"LambdaFunctionConfigurations\": \
+	[{\"LambdaFunctionArn\":\"%s\",\"Events\":[\"s3:ObjectCreated:*\"]}]}\'" | bash
 endef
 
 define db_init_f
 $(eval environment = $(1))
-DEV_MODE=1 python3 $(CODE_SRC)/case_harvester.py --environment $(environment) db_init \
-	--db-name $(DB_NAME) --secrets-file $(SECRETS_FILE)
+$(eval profile = $(or $(2),$(AWS_PROFILE),default))
+DEV_MODE=1 python3 $(CODE_SRC)/case_harvester.py --environment $(environment) \
+	--profile $(profile) db_init --db-name $(DB_NAME) --secrets-file $(SECRETS_FILE)
 endef
 
 define create_docs_f
 $(eval environment = $(1))
-$(eval hostname=$(shell aws cloudformation list-exports|grep \
-	$(STACK_PREFIX)-static-$(environment)-DatabaseHostname -A1|grep Value|awk '{print $$2}'))
-docker run -v "$(abspath $(DOCS_DIR)):/output" schemaspy/schemaspy:snapshot \
-	-t pgsql \
-	-db $(DB_NAME) \
-	-s public \
-	-u $(shell jq '.$(environment).DatabaseUsername' $(SECRETS_FILE)) \
-	-p $(shell jq '.$(environment).DatabasePassword' $(SECRETS_FILE)) \
-	-host $(hostname)
+$(eval env_long = $(subst prod,production,$(subst dev,development,$(environment))))
+aws cloudformation list-exports|grep \
+	$(STACK_PREFIX)-static-$(environment)-DatabaseHostname -A1|grep Value|\
+	awk '{print $$2}' | xargs \
+	docker run -v "$(abspath $(DOCS_DIR)):/output" schemaspy/schemaspy:snapshot \
+		-t pgsql \
+		-db $(DB_NAME) \
+		-s public \
+		-u $(shell jq '.$(env_long).DatabaseUsername' $(SECRETS_FILE)) \
+		-p $(shell jq '.$(env_long).DatabasePassword' $(SECRETS_FILE)) \
+		-host
 endef
 
 .package-spider: $(SPIDER_DEPS) $(CODE_SRC)/spider/requirements.txt

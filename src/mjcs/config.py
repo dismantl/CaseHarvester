@@ -14,11 +14,13 @@ class Config:
             self.initialized = True
         else:
             self.initialized = False
+        self.aws_profile = None
 
     # Does not need to be called by lambda functions, only CLI
-    def initialize_from_environment(self, environment, aws_profile='default'):
-        if self.initialized == True:
-            return
+    def initialize_from_environment(self, environment, aws_profile=None):
+        if not self.aws_profile:
+            self.aws_profile = aws_profile if aws_profile else 'default'
+
         from dotenv import load_dotenv # imported here so we don't have to package dotenv with lambda functions
         env_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'env')
         load_dotenv(dotenv_path=os.path.join(env_dir,'base.env'))
@@ -28,10 +30,7 @@ class Config:
             load_dotenv(dotenv_path=os.path.join(env_dir,'production.env'))
         else:
             raise Exception('Invalid environment %s' % environment)
-        self.set_values(aws_profile)
-        self.initialized = True
 
-    def set_values(self, aws_profile='default'):
         self.CASE_BATCH_SIZE = int(os.getenv('CASE_BATCH_SIZE',1000))
 
         self.QUERY_TIMEOUTS_LIMIT = int(os.getenv('QUERY_TIMEOUTS_LIMIT',5))
@@ -57,7 +56,6 @@ class Config:
         self.db_engine = create_engine(self.MJCS_DATABASE_URL)
 
         # Create custom boto3 session to use aws_profile
-        self.aws_profile = aws_profile
         self.boto3_session = boto3.session.Session(profile_name=self.aws_profile)
 
         # Generic boto3 resources/clients
@@ -77,5 +75,6 @@ class Config:
             self.parser_trigger = self.sns.Topic(self.PARSER_TRIGGER_ARN)
             self.parser_failed_queue = self.sqs.get_queue_by_name(QueueName=self.PARSER_FAILED_QUEUE_NAME)
 
+        self.initialized = True
 
 config = Config()

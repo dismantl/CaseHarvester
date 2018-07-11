@@ -50,9 +50,12 @@ def run_db_init(args):
 
 def create_database_and_user(db_hostname, db_name, master_username,
         master_password, username, password, ro_username, ro_password):
-    engine_ = create_engine('postgresql://%s:%s@%s/postgres' % \
-        (master_username, master_password, db_hostname))
-    conn = engine_.connect()
+    postgres_url = 'postgresql://%s:%s@%s/postgres' % \
+        (master_username, master_password, db_hostname)
+    db_url = 'postgresql://%s:%s@%s/%s' % \
+        (username, password, db_hostname, db_name)
+
+    conn = create_engine(postgres_url).connect()
     conn.execute("commit")
     print("Creating database",db_name)
     conn.execute("create database " + db_name)
@@ -60,7 +63,11 @@ def create_database_and_user(db_hostname, db_name, master_username,
     conn.execute(text("create user %s with password :pw" % username), pw=password)
     conn.execute("grant all privileges on database %s to %s" % (db_name,username))
     conn.execute(text("create user %s with password :pw" % ro_username), pw=ro_password)
-    conn.execute("alter default privileges in schema public grant select on tables to %s" % ro_username)
+    conn.close()
+
+    conn = create_engine(db_url).connect()
+    conn.execute("alter default privileges in schema public grant select on tables to %s"
+        % ro_username)
     conn.close()
 
 def write_env_file(env_long, env_short, exports, db_name, username, password):
@@ -85,6 +92,8 @@ def write_env_file(env_long, env_short, exports, db_name, username, password):
             get_export_val(exports,env_short,'ParserFailedQueueName')))
         f.write('%s=%s\n' % ('PARSER_TRIGGER_ARN',
             get_export_val(exports,env_short,'ParserTriggerArn')))
+    # re-load config
+    config.initialize_from_environment(env_long)
 
 def create_tables():
     print("Creating all tables")
