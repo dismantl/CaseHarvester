@@ -70,13 +70,13 @@ Resources:
           Type: SNS
           Properties:
             Topic: !Ref ParserTrigger
-      # VpcConfig:
-      #   SecurityGroupIds:
-      #     -
-      #       Fn::ImportValue: !Sub ${StaticStackName}-DatabaseSecurityGroupId
-      #   SubnetIds:
-      #     -
-      #       Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnetId
+      VpcConfig:
+        SecurityGroupIds:
+          -
+            Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+        SubnetIds:
+          -
+            Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnetId
 
   ParserTrigger:
     Type: AWS::SNS::Topic

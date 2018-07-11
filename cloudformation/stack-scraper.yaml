@@ -55,9 +55,6 @@ Resources:
       MemorySize: 192
       Timeout: 300
       ReservedConcurrentExecutions: 10
-      DeadLetterQueue:
-        Type: SNS
-        TargetArn: arn:aws:sns:us-east-1:654861592122:NotifyMe
       Environment:
         Variables:
           MJCS_DATABASE_URL: !Sub
@@ -73,13 +70,13 @@ Resources:
           SCRAPER_QUEUE_ALARM_NAME: !Ref ScraperItemsAvailableAlarm
           SCRAPER_FAILED_QUEUE_NAME: !GetAtt ScraperFailedQueue.QueueName
           SCRAPER_QUEUE_NAME: !GetAtt ScraperQueue.QueueName
-      # VpcConfig:
-      #   SecurityGroupIds:
-      #     -
-      #       Fn::ImportValue: !Sub ${StaticStackName}-DatabaseSecurityGroupId
-      #   SubnetIds:
-      #     -
-      #       Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnetId
+      VpcConfig:
+        SecurityGroupIds:
+          -
+            Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+        SubnetIds:
+          -
+            Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnetId
       Events:
         SNSTrigger:
           Type: SNS

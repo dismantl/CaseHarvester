@@ -16,18 +16,30 @@ Parameters:
       - prod
       - dev
     ConstraintDescription: must be a prod or dev
+  VPCCidr:
+    Type: String
+    Default: 10.0.0.0/16
+  VPCPublicSubnet1Cidr:
+    Type: String
+    Default: 10.0.0.0/24
+  VPCPublicSubnet1AZ:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: us-east-1a
+  VPCPublicSubnet2Cidr:
+    Type: String
+    Default: 10.0.1.0/24
+  VPCPublicSubnet2AZ:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: us-east-1b
+  VPCPrivateSubnetCidr:
+    Type: String
+    Default: 10.0.2.0/24
+  VPCPrivateSubnetAZ:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: us-east-1a
 
 Mappings:
   Environment:
-    VPCCidr:
-      prod: 10.0.0.0/16
-      dev: 10.1.0.0/16
-    VPCPublicSubnetCidr:
-      prod: 10.0.0.0/24
-      dev: 10.1.0.0/24
-    VPCPrivateSubnetCidr:
-      prod: 10.0.1.0/24
-      dev: 10.1.1.0/24
     DBInstanceIdentifier:
       prod: mjcs
       dev: dev-mjcs
@@ -39,15 +51,22 @@ Resources:
   VPC:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: !FindInMap [Environment, VPCCidr, !Ref EnvironmentType]
+      CidrBlock: !Ref VPCCidr
       EnableDnsSupport: True
       EnableDnsHostnames: True
 
-  VPCPublicSubnet:
+  VPCPublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: us-east-1a
-      CidrBlock: !FindInMap [Environment, VPCPublicSubnetCidr, !Ref EnvironmentType]
+      AvailabilityZone: !Ref VPCPublicSubnet1AZ
+      CidrBlock: !Ref VPCPublicSubnet1Cidr
+      VpcId: !Ref VPC
+
+  VPCPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref VPCPublicSubnet2AZ
+      CidrBlock: !Ref VPCPublicSubnet2Cidr
       VpcId: !Ref VPC
 
   VPCInternetGateway:
@@ -72,79 +91,74 @@ Resources:
       RouteTableId: !Ref VPCIGRouteTable
     DependsOn: VPCInternetGatewayAttach
 
-  VPCIGRouteTablePublicSubnet:
+  VPCIGRouteTablePublicSubnet1:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       RouteTableId: !Ref VPCIGRouteTable
-      SubnetId: !Ref VPCPublicSubnet
+      SubnetId: !Ref VPCPublicSubnet1
+
+  VPCIGRouteTablePublicSubnet2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VPCIGRouteTable
+      SubnetId: !Ref VPCPublicSubnet2
 
   VPCPrivateSubnet:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: us-east-1b
-      CidrBlock: !FindInMap [Environment, VPCPrivateSubnetCidr, !Ref EnvironmentType]
+      AvailabilityZone: !Ref VPCPrivateSubnetAZ
+      CidrBlock: !Ref VPCPrivateSubnetCidr
       VpcId: !Ref VPC
 
-  VPCIGRouteTablePrivateSubnet:
+  VPCEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  VPCNATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt VPCEIP.AllocationId
+      SubnetId: !Ref VPCPublicSubnet1
+
+  VPCNATRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  VPCNATRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref VPCNATGateway
+      RouteTableId: !Ref VPCNATRouteTable
+    DependsOn: VPCInternetGatewayAttach
+
+  VPCNATRouteTablePrivateSubnet:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      RouteTableId: !Ref VPCIGRouteTable
+      RouteTableId: !Ref VPCNATRouteTable
       SubnetId: !Ref VPCPrivateSubnet
-
-  # VPCEIP:
-  #   Type: AWS::EC2::EIP
-  #   Properties:
-  #     Domain: vpc
-  #
-  # VPCNATGateway:
-  #   Type: AWS::EC2::NatGateway
-  #   Properties:
-  #     AllocationId: !GetAtt VPCEIP.AllocationId
-  #     SubnetId: !Ref VPCPublicSubnet
-  #
-  # VPCNATRouteTable:
-  #   Type: AWS::EC2::RouteTable
-  #   Properties:
-  #     VpcId: !Ref VPC
-  #
-  # VPCNATRoute:
-  #   Type: AWS::EC2::Route
-  #   Properties:
-  #     DestinationCidrBlock: 0.0.0.0/0
-  #     NatGatewayId: !Ref VPCNATGateway
-  #     RouteTableId: !Ref VPCNATRouteTable
-  #   # DependsOn: VPCInternetGatewayAttach
-  #
-  # VPCNATRouteTablePrivateSubnet:
-  #   Type: AWS::EC2::SubnetRouteTableAssociation
-  #   Properties:
-  #     RouteTableId: !Ref VPCNATRouteTable
-  #     SubnetId: !Ref VPCPrivateSubnet
 
   DatabaseSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
       DBSubnetGroupDescription: RDS Subnet Group
       SubnetIds:
-        - !Ref VPCPublicSubnet
-        - !Ref VPCPrivateSubnet
+        - !Ref VPCPublicSubnet1
+        - !Ref VPCPublicSubnet2
 
   DatabaseSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       VpcId: !Ref VPC
-      GroupDescription: Allows Home IP address ingress
+      GroupDescription: Controls access to Case Harvester database
       SecurityGroupIngress:
         - CidrIp: 0.0.0.0/0
           Description: Anywhere
           FromPort: 5432
           ToPort: 5432
           IpProtocol: tcp
-        # - CidrIp: 10.0.0.0/8
-        #   Description: VPC
-        #   FromPort: 5432
-        #   ToPort: 5432
-        #   IpProtocol: tcp
 
   Database:
     Type: AWS::RDS::DBInstance
@@ -163,6 +177,7 @@ Resources:
       PubliclyAccessible: True
       StorageType: gp2
       VPCSecurityGroups:
+        - !GetAtt VPC.DefaultSecurityGroup
         - !Ref DatabaseSecurityGroup
 
   CaseDetailsBucket:
@@ -180,16 +195,11 @@ Outputs:
     Value: !GetAtt Database.Endpoint.Address
     Export:
       Name: !Sub ${AWS::StackName}-DatabaseHostname
-  DatabaseSecurityGroupId:
-    Description: Security group ID associated with database
-    Value: !GetAtt DatabaseSecurityGroup.GroupId
+  VPCDefaultSecurityGroupId:
+    Description: VPC default security group ID
+    Value: !GetAtt VPC.DefaultSecurityGroup
     Export:
-      Name: !Sub ${AWS::StackName}-DatabaseSecurityGroupId
-  VPCPublicSubnetId:
-    Description: Subnet 1 ID associated with database
-    Value: !Ref VPCPublicSubnet
-    Export:
-      Name: !Sub ${AWS::StackName}-VPCPublicSubnetId
+      Name: !Sub ${AWS::StackName}-VPCDefaultSecurityGroupId
   VPCPrivateSubnetId:
     Description: Subnet 2 ID associated with database
     Value: !Ref VPCPrivateSubnet
