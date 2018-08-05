@@ -76,7 +76,9 @@ Resources:
             Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
         SubnetIds:
           -
-            Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnetId
+            Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
+          -
+            Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
 
   ParserTrigger:
     Type: AWS::SNS::Topic

@@ -31,12 +31,18 @@ Parameters:
   VPCPublicSubnet2AZ:
     Type: AWS::EC2::AvailabilityZone::Name
     Default: us-east-1b
-  VPCPrivateSubnetCidr:
+  VPCPrivateSubnet1Cidr:
     Type: String
     Default: 10.0.2.0/24
-  VPCPrivateSubnetAZ:
+  VPCPrivateSubnet1AZ:
     Type: AWS::EC2::AvailabilityZone::Name
     Default: us-east-1a
+  VPCPrivateSubnet2Cidr:
+    Type: String
+    Default: 10.0.3.0/24
+  VPCPrivateSubnet2AZ:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: us-east-1b
 
 Mappings:
   Environment:
@@ -103,11 +109,18 @@ Resources:
       RouteTableId: !Ref VPCIGRouteTable
       SubnetId: !Ref VPCPublicSubnet2
 
-  VPCPrivateSubnet:
+  VPCPrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: !Ref VPCPrivateSubnetAZ
-      CidrBlock: !Ref VPCPrivateSubnetCidr
+      AvailabilityZone: !Ref VPCPrivateSubnet1AZ
+      CidrBlock: !Ref VPCPrivateSubnet1Cidr
+      VpcId: !Ref VPC
+
+  VPCPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref VPCPrivateSubnet2AZ
+      CidrBlock: !Ref VPCPrivateSubnet2Cidr
       VpcId: !Ref VPC
 
   VPCEIP:
@@ -134,11 +147,17 @@ Resources:
       RouteTableId: !Ref VPCNATRouteTable
     DependsOn: VPCInternetGatewayAttach
 
-  VPCNATRouteTablePrivateSubnet:
+  VPCNATRouteTablePrivateSubnet1:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       RouteTableId: !Ref VPCNATRouteTable
-      SubnetId: !Ref VPCPrivateSubnet
+      SubnetId: !Ref VPCPrivateSubnet1
+
+  VPCNATRouteTablePrivateSubnet2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VPCNATRouteTable
+      SubnetId: !Ref VPCPrivateSubnet2
 
   DatabaseSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
@@ -200,11 +219,16 @@ Outputs:
     Value: !GetAtt VPC.DefaultSecurityGroup
     Export:
       Name: !Sub ${AWS::StackName}-VPCDefaultSecurityGroupId
-  VPCPrivateSubnetId:
-    Description: Subnet 2 ID associated with database
-    Value: !Ref VPCPrivateSubnet
+  VPCPrivateSubnet1Id:
+    Description: Private Subnet 1 ID
+    Value: !Ref VPCPrivateSubnet1
     Export:
-      Name: !Sub ${AWS::StackName}-VPCPrivateSubnetId
+      Name: !Sub ${AWS::StackName}-VPCPrivateSubnet1Id
+  VPCPrivateSubnet1Id:
+    Description: Private Subnet 2 ID
+    Value: !Ref VPCPrivateSubnet2
+    Export:
+      Name: !Sub ${AWS::StackName}-VPCPrivateSubnet2Id
   CaseDetailsBucketName:
     Description: Case details S3 bucket name
     Value: !Ref CaseDetailsBucket
