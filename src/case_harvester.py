@@ -173,6 +173,7 @@ def run_scraper(args):
             InvocationType = 'Event',
             Payload = '{"manual":true}'
         )
+        print("Invoked scraper Lambda function")
     elif args.missing:
         scraper.scrape_missing_cases()
     elif args.queue:
