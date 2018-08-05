@@ -9,27 +9,26 @@ class Config:
         return self.__getattribute__(name)
 
     def __init__(self):
-        if os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
-            self.set_values()
-            self.initialized = True
-        else:
-            self.initialized = False
+        self.initialized = False
         self.aws_profile = None
+        if os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
+            self.initialize_from_environment()
 
     # Does not need to be called by lambda functions, only CLI
-    def initialize_from_environment(self, environment, aws_profile=None):
-        if not self.aws_profile:
-            self.aws_profile = aws_profile if aws_profile else 'default'
+    def initialize_from_environment(self, environment=None, aws_profile=None):
+        if aws_profile and not self.__getattribute__('aws_profile'):
+            self.aws_profile = aws_profile
 
-        from dotenv import load_dotenv # imported here so we don't have to package dotenv with lambda functions
-        env_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'env')
-        load_dotenv(dotenv_path=os.path.join(env_dir,'base.env'))
-        if environment == 'dev' or environment == 'development':
-            load_dotenv(dotenv_path=os.path.join(env_dir,'development.env'))
-        elif environment == 'prod' or environment == 'production':
-            load_dotenv(dotenv_path=os.path.join(env_dir,'production.env'))
-        else:
-            raise Exception('Invalid environment %s' % environment)
+        if environment:
+            from dotenv import load_dotenv # imported here so we don't have to package dotenv with lambda functions
+            env_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'env')
+            load_dotenv(dotenv_path=os.path.join(env_dir,'base.env'))
+            if environment == 'dev' or environment == 'development':
+                load_dotenv(dotenv_path=os.path.join(env_dir,'development.env'))
+            elif environment == 'prod' or environment == 'production':
+                load_dotenv(dotenv_path=os.path.join(env_dir,'production.env'))
+            else:
+                raise Exception('Invalid environment %s' % environment)
 
         self.CASE_BATCH_SIZE = int(os.getenv('CASE_BATCH_SIZE',1000))
 
@@ -45,15 +44,17 @@ class Config:
         self.QUEUE_WAIT = int(os.getenv('QUEUE_WAIT',5)) # seconds
 
         self.MJCS_DATABASE_URL = os.getenv('MJCS_DATABASE_URL')
+        self.CASE_DETAILS_BUCKET = os.getenv('CASE_DETAILS_BUCKET')
+
         self.SCRAPER_QUEUE_NAME = os.getenv('SCRAPER_QUEUE_NAME')
         self.SCRAPER_FAILED_QUEUE_NAME = os.getenv('SCRAPER_FAILED_QUEUE_NAME')
         self.SCRAPER_DYNAMODB_TABLE_NAME = os.getenv('SCRAPER_DYNAMODB_TABLE_NAME')
         self.SCRAPER_QUEUE_ALARM_NAME = os.getenv('SCRAPER_QUEUE_ALARM_NAME')
-        self.CASE_DETAILS_BUCKET = os.getenv('CASE_DETAILS_BUCKET')
         self.PARSER_FAILED_QUEUE_NAME = os.getenv('PARSER_FAILED_QUEUE_NAME')
         self.PARSER_TRIGGER_ARN = os.getenv('PARSER_TRIGGER_ARN')
 
-        self.db_engine = create_engine(self.MJCS_DATABASE_URL)
+        if self.__getattribute__('MJCS_DATABASE_URL'):
+            self.db_engine = create_engine(self.MJCS_DATABASE_URL)
 
         # Create custom boto3 session to use aws_profile
         self.boto3_session = boto3.session.Session(profile_name=self.aws_profile)
@@ -66,12 +67,13 @@ class Config:
         self.lambda_ = self.boto3_session.client('lambda')
 
         # Specific AWS objects
-        self.case_details_bucket = self.s3.Bucket(self.CASE_DETAILS_BUCKET)
-        if self.SCRAPER_QUEUE_NAME:
+        if self.__getattribute__('CASE_DETAILS_BUCKET'):
+            self.case_details_bucket = self.s3.Bucket(self.CASE_DETAILS_BUCKET)
+        if self.__getattribute__('SCRAPER_QUEUE_NAME'):
             self.scraper_queue = self.sqs.get_queue_by_name(QueueName=self.SCRAPER_QUEUE_NAME)
             self.scraper_table = self.dynamodb.Table(self.SCRAPER_DYNAMODB_TABLE_NAME)
             self.scraper_failed_queue = self.sqs.get_queue_by_name(QueueName=self.SCRAPER_FAILED_QUEUE_NAME)
-        if self.PARSER_TRIGGER_ARN:
+        if self.__getattribute__('PARSER_TRIGGER_ARN'):
             self.parser_trigger = self.sns.Topic(self.PARSER_TRIGGER_ARN)
             self.parser_failed_queue = self.sqs.get_queue_by_name(QueueName=self.PARSER_FAILED_QUEUE_NAME)
 
