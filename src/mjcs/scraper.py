@@ -193,7 +193,7 @@ def store_case_details(case_number, detail_loc, html, scrape_duration=None, chec
                 duration = scrape_duration
             )
             db.add(scrape_version)
-            db.flush()
+            db.flush() # to satisfy foreign key constraint of scrapes
             db.add(scrape)
             db.execute(
                 Case.__table__.update()\
@@ -298,6 +298,32 @@ def scrape_case_thread(case):
         session_pool.put_nowait(session)
     return ret
 
+def fetch_from_queue(queue, nitems=None):
+    def queue_receive(n):
+        return queue.receive_messages(
+            WaitTimeSeconds = config.QUEUE_WAIT,
+            MaxNumberOfMessages = n
+        )
+    # Concurrently fetch up to nitems (or 100) messages from queue, 10 per thread
+    queue_items = []
+    if nitems:
+        q,r = divmod(nitems,10)
+        nitems_per_thread = [10 for _ in range(0,q)]
+        if r:
+            nitems_per_thread.append(r)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(nitems_per_thread)) as executor:
+            results = executor.map(queue_receive,nitems_per_thread)
+            for result in results:
+                if result:
+                    queue_items += result
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            results = executor.map(queue_receive,[10 for _ in range(0,10)])
+            for result in results:
+                if result:
+                    queue_items += result
+    return queue_items
+
 class Scraper:
     def __init__(self, on_error=None, threads=1):
         self.on_error = on_error
@@ -307,37 +333,17 @@ class Scraper:
         session_pool = Queue(self.threads)
         for i in range(self.threads):
             session_pool.put_nowait(Session())
-        items_scraped = 0
-        while True:
-            def fetch_from_queue(n):
-                return queue.receive_messages(
-                    WaitTimeSeconds = config.QUEUE_WAIT,
-                    MaxNumberOfMessages = n
-                )
+        counter = {
+            'total': 0,
+            'count': 0
+        }
 
-            # Concurrently fetch up to 100 (or nitems) messages from queue
-            queue_items = []
-            if nitems:
-                q,r = divmod(nitems,10)
-                nitems_per_thread = [10 for _ in range(0,q)]
-                if r:
-                    nitems_per_thread.append(r)
-                with concurrent.futures.ThreadPoolExecutor(max_workers=len(nitems_per_thread)) as executor:
-                    results = executor.map(fetch_from_queue,nitems_per_thread)
-                    for result in results:
-                        if result:
-                            queue_items += result
-            else:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                    results = executor.map(fetch_from_queue,[10 for _ in range(0,10)])
-                    for result in results:
-                        if result:
-                            queue_items += result
+        while True:
+            queue_items = fetch_from_queue(queue, nitems)
             if not queue_items:
                 print("No items found in queue")
-                if items_scraped == 0:
-                    raise NoItemsInQueue
                 break
+            counter['total'] += len(queue_items)
 
             cases = []
             for item in queue_items:
@@ -369,15 +375,15 @@ class Scraper:
                     return action
                 raise exception
 
-            counter = {
-                'total': len(cases),
-                'count': 0
-            }
-            print("Scraping %d cases" % counter['total'])
+            print("Scraping %d cases" % len(cases))
             process_cases(scrape_case_thread, cases, queue_on_success, queue_on_error, self.threads, counter)
             print("Finished scraping %d cases" % counter['total'])
             if nitems:
                 break # don't need to keep looping
+
+        print("Total number of scraped cases: %d" % counter['count'])
+        if counter['count'] == 0:
+            raise NoItemsInQueue
 
     def scrape_from_scraper_queue(self, nitems=None):
         return self.scrape_from_queue(config.scraper_queue, nitems)

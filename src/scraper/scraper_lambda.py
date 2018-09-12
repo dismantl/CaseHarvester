@@ -5,7 +5,9 @@ from datetime import *
 
 DYNAMODB_KEY='worker'
 
-scraper = Scraper(threads=config.SCRAPER_DEFAULT_CONCURRENCY, on_error=lambda e,c: 'continue')
+# on_error returns 'delete' so the case is removed from scraper queue regardless
+# of if the scrape succeeded or failed
+scraper = Scraper(threads=config.SCRAPER_DEFAULT_CONCURRENCY, on_error=lambda e,c: 'delete')
 
 def mark_complete():
     print("Marking lambda invocation chain complete")
