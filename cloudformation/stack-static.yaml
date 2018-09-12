@@ -224,7 +224,7 @@ Outputs:
     Value: !Ref VPCPrivateSubnet1
     Export:
       Name: !Sub ${AWS::StackName}-VPCPrivateSubnet1Id
-  VPCPrivateSubnet1Id:
+  VPCPrivateSubnet2Id:
     Description: Private Subnet 2 ID
     Value: !Ref VPCPrivateSubnet2
     Export:
