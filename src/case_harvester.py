@@ -106,15 +106,20 @@ def valid_date(s):
         raise argparse.ArgumentTypeError("Not a valid date: %s" % s)
 
 def run_spider(args):
-    spider = Spider(args.connections)
+    spider = Spider(
+        concurrency = args.concurrency,
+        overwrite = args.overwrite,
+        force_scrape = args.force_scrape
+    )
 
     if args.test:
-        spider.test(args.overwrite, args.force_scrape)
+        spider.test()
     elif args.resume:
-        spider.resume(args.overwrite, args.force_scrape)
+        spider.resume()
+    elif args.failed:
+        spider.retry_failed()
     elif args.start_date:
-        spider.search(args.start_date, args.end_date, args.court,
-            args.overwrite, args.force_scrape)
+        spider.search(args.start_date, args.end_date, args.court)
     else:
         raise Exception("Must specify --resume, --test, or search criteria")
 
@@ -244,7 +249,7 @@ if __name__ == '__main__':
 
     parser_spider = subparsers.add_parser('spider',
         help='Spider the Maryland Judiciary Case Search database for case numbers')
-    parser_spider.add_argument('--connections', '-c', type=int, default=10)
+    parser_spider.add_argument('--concurrency', '-c', type=int, default=10)
     parser_spider.add_argument('--test','-t',action='store_true',
         help="Seed queue with test items")
     parser_spider.add_argument('--start-date','-s', type=valid_date,
@@ -258,8 +263,10 @@ if __name__ == '__main__':
         help="What court to search, e.g. BALTIMORE CITY")
     parser_spider.add_argument('--overwrite','-o', action='store_true',
         help="Overwrite existing cases in database")
-    parser_spider.add_argument('--force-scrape','-f', action='store_true',
+    parser_spider.add_argument('--force-scrape', action='store_true',
         help="Force scraping of case details for all found cases")
+    parser_spider.add_argument('--failed', action='store_true',
+        help="Retry failed search items in queue")
     parser_spider.set_defaults(func=run_spider)
 
     parser_scraper = subparsers.add_parser('scraper',

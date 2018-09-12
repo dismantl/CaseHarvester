@@ -1,6 +1,6 @@
 from .config import config
-from .db import db_session, column_windows
-from .search import SearchItem, active_count, active_items, clear_queue
+from .db import db_session
+from .search import SearchItem, SearchItemStatus, active_count, active_items, failed_count, failed_items, clear_queue
 from .case import Case
 from .run import Run
 from .session import AsyncSession
@@ -53,44 +53,6 @@ class Spider:
         + string.punctuation.replace('_','').replace('%','') \
         + ' '
 
-    __test_queries = [
-        { # 500 results
-            'search_string':'J',
-            'start_date':datetime(2017,12,1),
-            'end_date':datetime(2017,12,16),
-            'court': 'BALTIMORE CITY'
-        },
-        { # 81 results
-            'search_string':'T',
-            'end_date':None,
-            'start_date':datetime(2017,12,1),
-            'court': 'BALTIMORE CITY'
-        },
-        { # 276 results
-            'search_string':'E',
-            'start_date':datetime(2017,12,17),
-            'end_date':datetime(2017,12,31),
-            'court': 'BALTIMORE CITY'
-        },
-        { # 39 results
-            'search_string':'S',
-            'end_date':None,
-            'start_date':datetime(2017,12,17),
-            'court': 'BALTIMORE CITY'
-        },
-        { # turns up cases with NUL char in name
-            'search_string':'Z',
-            'end_date':datetime(2017,12,9),
-            'start_date':datetime(2017,11,24),
-            'court': 'BALTIMORE CITY'
-        },
-        { # 1 result
-            'search_string':'PUGH',
-            'start_date':datetime(2017,5,12),
-            'court':'BALTIMORE CITY'
-        }
-    ]
-
     async def __query_mjcs(self, db, item, session, url, method='POST', post_params={}, xml=False):
         if xml:
             post_params['d-16544-e'] = 3
@@ -104,6 +66,9 @@ class Spider:
         except asks.errors.RequestTimeout:
             item.handle_timeout(db)
             raise FailedSearchTimeout
+        except asks.errors.BadHttpResponse as e:
+            item.handle_unknown_err(e)
+            raise FailedSearchUnknownError
         except h11.RemoteProtocolError as e:
             item.handle_unknown_err(e)
             raise FailedSearchUnknownError
@@ -148,6 +113,8 @@ class Spider:
             'filingDate':item.start_date.strftime("%-m/%-d/%Y") if not item.end_date else None
         }
         with db_session() as db:
+            item = db.merge(item)
+            # run = db.merge(run)
             try:
                 response_html = await self.__query_mjcs(
                     db,
@@ -190,11 +157,10 @@ class Spider:
                 for row in html.find('table',class_='results',id='row').tbody.find_all('tr'):
                     results.append(row)
 
-        query_time = (datetime.now() - start_query).total_seconds()
-        self.session_pool.put_nowait(session)
-        print("Search string %s returned %d items, took %d seconds" % (item.search_string, len(results), query_time))
+            query_time = (datetime.now() - start_query).total_seconds()
+            self.session_pool.put_nowait(session)
+            print("Search string %s returned %d items, took %d seconds" % (item.search_string, len(results), query_time))
 
-        with db_session() as db:
             processed_cases = []
             for result in results:
                 elements = result.find_all('td')
@@ -252,14 +218,14 @@ class Spider:
                         start_date = item.start_date,
                         end_date = item.end_date,
                         court = item.court,
-                        status = 'new'
+                        status = SearchItemStatus.new
                     ))
                     self.__upsert_search_item(db, SearchItem(
                         search_string = item.search_string + ' ' + char,
                         start_date = item.start_date,
                         end_date = item.end_date,
                         court = item.court,
-                        status = 'new'
+                        status = SearchItemStatus.new
                     ))
 
             item.handle_complete(db, len(results), start_query, query_time)
@@ -290,15 +256,6 @@ class Spider:
                     set_=item_dict
                 )
         )
-
-    def __seed_queue_test(self, db):
-        for item in self.__test_queries:
-            self.__upsert_search_item(db, SearchItem(
-                search_string = item['search_string'],
-                start_date = item['start_date'],
-                end_date = item['end_date'] if 'end_date' in item else None,
-                court = item['court']
-            ))
 
     def __seed_queue(self, db, start_date, end_date=None, court=None):
         print("Seeding queue")
@@ -332,51 +289,75 @@ class Spider:
 
     async def __main_task(self, run):
         with db_session() as db:
-            nitems = active_count(db)
+            nitems = failed_count(db) if run.retry_failed else active_count(db)
         while nitems:
             with db_session() as db:
-                items = active_items(db).limit(config.CASE_BATCH_SIZE)
-                print("new batch")
+                if run.retry_failed:
+                    items = failed_items(db).limit(config.CASE_BATCH_SIZE)
+                else:
+                    items = active_items(db).limit(config.CASE_BATCH_SIZE)
+            # print("new batch")
+            try:
                 async with trio.open_nursery() as nursery:
                     for item in items:
                         await nursery.start(self.__search_cases, run, item)
-            with db_session() as db:
-                nitems = active_count(db)
+            except KeyboardInterrupt:
+                raise
+            except trio.MultiError as e:
+                raise # TODO
+            except e:
+                raise # TODO
+            finally:
 
-    def __run(self, start_date=None, end_date=None, court=None, overwrite=False, force_scrape=False):
+                with db_session() as db:
+                    nitems = failed_count(db) if run.retry_failed else active_count(db)
+
+    def __run(self, start_date=None, end_date=None, court=None, retry_failed=False):
         print("Starting run")
         with db_session() as db:
-            run = Run(db, start_date, end_date, court, overwrite=overwrite, force_scrape=force_scrape)
+            run = Run(
+                db = db,
+                start_date = start_date,
+                end_date = end_date,
+                court = court,
+                overwrite=self.overwrite,
+                force_scrape=self.force_scrape,
+                retry_failed=retry_failed
+            )
+            db.add(run)
             try:
                 trio.run(self.__main_task, run, restrict_keyboard_interrupt_to_checkpoints=True)
             except KeyboardInterrupt:
                 print("\nCaught KeyboardInterrupt: saving run...")
-            run.complete(db)
-            db.add(run)
-        print("Run complete")
+            finally:
+                run.update(db)
+                db.commit()
+        print("Spider run complete")
 
-    def search(self, start_date, end_date=None, court=None, overwrite=False, force_scrape=False):
+    def search(self, start_date, end_date=None, court=None):
         with db_session() as db:
             self.__clear_queue(db)
             self.__seed_queue(db, start_date, end_date, court)
-        self.__run(start_date, end_date, court, overwrite=overwrite, force_scrape=force_scrape)
+        self.__run(start_date, end_date, court)
 
-    def resume(self, overwrite=False, force_scrape=False):
+    def resume(self):
         with db_session() as db:
             if not active_count(db):
                 raise Exception("Cannot resume, no items in queue")
-        self.__run(overwrite=overwrite, force_scrape=force_scrape)
+        self.__run()
 
-    def test(self, overwrite=False, force_scrape=False):
+    def retry_failed(self):
         with db_session() as db:
-            self.__clear_queue(db)
-            self.__seed_queue_test(db)
-        self.__run(overwrite=overwrite, force_scrape=force_scrape)
+            if not failed_count(db):
+                raise Exception("Cannot retry, no failed items in queue")
+        self.__run(retry_failed=True)
 
-    def __init__(self, connections=None):
-        if not connections:
-            connections = config.SPIDER_DEFAULT_CONCURRENCY
+    def __init__(self, concurrency=None, overwrite=False, force_scrape=False):
+        self.overwrite = overwrite
+        self.force_scrape = force_scrape
+        if not concurrency:
+            concurrency = config.SPIDER_DEFAULT_CONCURRENCY
         asks.init('trio')
-        self.session_pool = trio.Queue(connections)
-        for i in range(connections):
+        self.session_pool = trio.Queue(concurrency)
+        for i in range(concurrency):
             self.session_pool.put_nowait(AsyncSession())
