@@ -4,6 +4,7 @@ from sqlalchemy import Column, Date, Integer, String, DateTime, ForeignKey, Uniq
 from sqlalchemy.orm import relationship
 from datetime import *
 import zlib
+import math
 
 class SearchItemStatus:
     new = 'new'
@@ -57,6 +58,21 @@ def failed_items(db, filter=None):
 
 def failed_count(db, filter=None):
     return failed_items(db, filter).count()
+
+def split_date_range(start_date, end_date):
+    assert(end_date)
+    assert(end_date > start_date)
+    days_diff = (end_date - start_date).days
+    if days_diff == 1:
+        range1 = [start_date, None]
+        range2 = [end_date, None]
+    elif days_diff == 2:
+        range1 = [start_date, start_date + timedelta(1)]
+        range2 = [end_date, None]
+    else:
+        range1 = [start_date, start_date + timedelta(int(days_diff / 2))]
+        range2 = [start_date + timedelta(math.ceil((days_diff + 1) / 2)), end_date]
+    return range1, range2
 
 class SearchItem(TableBase):
     __tablename__ = 'queue'
@@ -117,26 +133,20 @@ class SearchItem(TableBase):
     def handle_timeout(self, db):
         # For timeouts, split the date range in half and add both to queue
         if self.end_date:
-            time_diff = self.end_date - self.start_date
-            if time_diff.days == 1:
-                item1 = [self.start_date, self.start_date + timedelta(days=(time_diff / 2).days)]
-                item2 = [self.start_date + timedelta(time_diff.days + 1 / 2), self.end_date]
-            else:
-                item1 = [self.start_date, None]
-                item2 = [self.end_date, None]
-            print("Appending %s from %s to %s" % (self.search_string, item1[0], item1[1]))
+            range1, range2 = split_date_range(self.start_date, self.end_date)
+            print("Appending %s from %s to %s" % (self.search_string, range1[0], range1[1]))
             db.merge(SearchItem(
                 search_string = self.search_string,
-                start_date = item1[0],
-                end_date = item1[1],
+                start_date = range1[0],
+                end_date = range1[1],
                 court = self.court,
                 status = SearchItemStatus.new
             ))
-            print("Appending %s from %s to %s" % (self.search_string, item2[0], item2[1]))
+            print("Appending %s from %s to %s" % (self.search_string, range2[0], range2[1]))
             db.merge(SearchItem(
                 search_string = self.search_string,
-                start_date = item2[0],
-                end_date = item2[1],
+                start_date = range2[0],
+                end_date = range2[1],
                 court = self.court,
                 status = SearchItemStatus.new
             ))
