@@ -21,7 +21,7 @@ The scraper component downloads and stores the case details for every case numbe
 The scraper is a [Lambda function](https://aws.amazon.com/lambda/) that runs once an hour, as well as when the scraper queue has items in it. When the scraper is initially invoked by one of these triggers, it spawns a limited number of worker functions which can each scrape up to 10 cases from the queue. Each of the worker functions spawns another worker function upon completion, until the scraper queue is empty. The scraper is configured to spawn usually 1-2 concurrent worker functions, in order to limit the load on the MJCS.
 
 ### Parser
-The parser component is another Lambda function that parses the case details from the HTML for each case, and stores those in the PostgreSQL database ([see here](https://disman.tl/mjcs/docs/) for database schema information). Each new item added to the scraper S3 bucket spawns a new parser function, which allows for significant scaling.
+The parser component is another Lambda function that parses the case details from the HTML for each case, and stores those in the PostgreSQL database. Each new item added to the scraper S3 bucket spawns a new parser function, which allows for significant scaling.
 
 ![Parser diagram](./img/parser.svg)
 
