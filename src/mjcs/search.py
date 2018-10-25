@@ -120,7 +120,7 @@ class SearchItem(TableBase):
         }
 
     def handle_unknown_err(self, error):
-        self.errunknown = error
+        self.errunknown = str(error)
         self.status = SearchItemStatus.failed
 
     def handle_500(self):

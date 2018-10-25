@@ -138,8 +138,14 @@ class Spider:
             hit_limit = 'The result set exceeds the limit of 500 records' in response_html.text
             html = BeautifulSoup(response_html.text,'html.parser')
             results = []
-            for row in html.find('table',class_='results',id='row').tbody.find_all('tr'):
+            results_table = html.find('table',class_='results',id='row')
+            if not results_table:
+                print('Error finding results table in returned HTML')
+                self.session_pool.put_nowait(session)
+                return
+            for row in results_table.tbody.find_all('tr'):
                 results.append(row)
+
             # Paginate through results if needed
             while html.find('span',class_='pagelinks').find('a',string='Next'):
                 try:
@@ -305,7 +311,7 @@ class Spider:
                 raise
             except trio.MultiError as e:
                 raise # TODO
-            except e:
+            except:
                 raise # TODO
             finally:
 

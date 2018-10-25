@@ -19,7 +19,7 @@ class Session:
         )
         if response.status_code != 200:
             raise Exception(
-                message = "Failed to authenticate with MJCS: code = %d, body = %s" % (response.status_code, response.text)
+                "Failed to authenticate with MJCS: code = %d, body = %s" % (response.status_code, response.text)
             )
 
 class AsyncSession:
