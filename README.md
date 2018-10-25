@@ -1,7 +1,7 @@
 # Case Harvester
 Case Harvester is a project designed to mine the [Maryland Judiciary Case Search](http://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp) (MJCS) and build a near-complete database of Maryland court cases that can be queried and analyzed without the limitations of the MJCS interface. It is designed to leverage [Amazon Web Services (AWS)](https://aws.amazon.com/) for scalability and performance.
 
-If you are a researcher or journalist and would like access to our database, please reach out to us at [caseharvester@disman.tl](mailto:caseharvester@disman.tl).
+If you are a researcher or journalist and would like access to our database, please reach out to us at [info@openjusticebaltimore.org](mailto:info@openjusticebaltimore.org).
 
 # Architecture
 Case Harvester is split into three main components: spider, scraper, and parser. Each component is a part of a pipeline that finds, downloads, and parses case data from the MJCS. The following diagram shows at a high level how each of these components interact:
@@ -18,12 +18,20 @@ The scraper component downloads and stores the case details for every case numbe
 
 ![Scraper diagram](./img/scraper.svg)
 
-The scraper is a [Lambda function](https://aws.amazon.com/lambda/) that runs once an hour, as well as when the scraper queue has items in it. When the scraper is initially invoked by one of these triggers, it spawns a limited number of worker functions which can each scrape up to 10 cases from the queue. Each of the worker functions spawns another worker function upon completion, until the scraper queue is empty. The scraper is configured to spawn usually 1-2 concurrent worker functions, in order to limit the load on the MJCS. 
+The scraper is a [Lambda function](https://aws.amazon.com/lambda/) that runs once an hour, as well as when the scraper queue has items in it. When the scraper is initially invoked by one of these triggers, it spawns a limited number of worker functions which can each scrape up to 10 cases from the queue. Each of the worker functions spawns another worker function upon completion, until the scraper queue is empty. The scraper is configured to spawn usually 1-2 concurrent worker functions, in order to limit the load on the MJCS.
 
 ### Parser
 The parser component is another Lambda function that parses the case details from the HTML for each case, and stores those in the PostgreSQL database ([see here](https://disman.tl/mjcs/docs/) for database schema information). Each new item added to the scraper S3 bucket spawns a new parser function, which allows for significant scaling.
 
 ![Parser diagram](./img/parser.svg)
+
+Case details in the MJCS are displayed differently depending on the county and type of case (e.g. district vs circuit court, criminal vs civil, etc.). MJCS assigns a code to each of these different case types, which can be thought of as schemas for rendering case details. Case Harvester currently has [parsers](src/mjcs/parser) for the following schemas:
+* CC: Circuit court civil cases
+* DSCIVIL: District court civil cases
+* DSCR: District court criminal cases
+* DSK8: Circuit court criminal cases
+
+Each different parser breaks down the case details to a granular level and stores the data in a number of database tables. This [schematic diagram](https://disman.tl/mjcs/docs/relationships.html) illustrates how this data is represented in the database.
 
 # Installation
 Case Harvester can be run or deployed from any workstation running Python 3, [GNU Make](https://www.gnu.org/software/make/), and [jq](https://stedolan.github.io/jq/). The required Python 3 modules are in `requirements.txt` and can be installed with `pip3 install -r requirements.txt`.
@@ -35,10 +43,22 @@ Case Harvester uses [Cloudformation](https://aws.amazon.com/cloudformation/) sta
 
 ```
 {
-  "DatabaseMasterUsername":"mjcs",
-  "DatabaseMasterPassword":"badpassword",
-  "DatabaseUsername":"mjcs_user",
-  "DatabasePassword":"alsoabadpassword"
+  "development":{
+    "DatabaseMasterUsername":"root",
+    "DatabaseMasterPassword":"badpassword",
+    "DatabaseUsername":"db_user",
+    "DatabasePassword":"badpassword",
+    "DatabaseReadOnlyUsername":"ro_user",
+    "DatabaseReadOnlyPassword":"badpassword"
+  },
+  "production":{
+    "DatabaseMasterUsername":"root",
+    "DatabaseMasterPassword":"badpassword",
+    "DatabaseUsername":"db_user",
+    "DatabasePassword":"badpassword",
+    "DatabaseReadOnlyUsername":"ro_user",
+    "DatabaseReadOnlyPassword":"badpassword"
+  }
 }
 ```
 
@@ -61,7 +81,7 @@ make deploy_production
 make init_production
 ```
 
-More make targets (such as deploying a specific stack or generating documentation) can be found by looking in the `Makefile`.
+More make targets (such as deploying a specific stack or generating documentation) can be found by looking in the [`Makefile`](Makefile).
 
 # Usage
 The default deployment of Case Harvester sets up the scraper and parser to automatically run when new case numbers are submitted by the spider. The spider can be run from any workstation, though for convenience it is usually run on an EC2 instance since the search process can take a long time.
@@ -78,4 +98,4 @@ By default, `case_harvester.py` runs in your development AWS environment (see [D
 ```
 
 # Questions
-For questions or more information, contact Dan at [caseharvester@disman.tl](mailto:caseharvester@disman.tl).
+For questions or more information, email [info@openjusticebaltimore.org](mailto:info@openjusticebaltimore.org).
