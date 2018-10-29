@@ -142,15 +142,6 @@ def has_scrape(case_number):
     else:
         return True
 
-def log_failed_scrape(case_number, detail_loc, error):
-    print("Failed to scrape case %s: %s" % (case_number, error))
-    config.scraper_failed_queue.send_message(
-        MessageBody = json.dumps({
-            'case_number': case_number,
-            'detail_loc': detail_loc
-        })
-    )
-
 def store_case_details(case_number, detail_loc, html, scrape_duration=None, check_before_store=True):
     boto_session = boto3.session.Session(profile_name=config.aws_profile) # https://boto3.readthedocs.io/en/latest/guide/resources.html#multithreading-multiprocessing
     s3 = boto_session.resource('s3')
@@ -179,16 +170,23 @@ def store_case_details(case_number, detail_loc, html, scrape_duration=None, chec
                 'detail_loc': detail_loc
             }
         )
+        while True: # during multithreading sometimes obj.version_id throws an exception
+            try:
+                obj_version_id = obj.version_id
+            except:
+                pass
+            else:
+                break
         with db_session() as db:
             scrape_version = ScrapeVersion(
-                s3_version_id = obj.version_id,
+                s3_version_id = obj_version_id,
                 case_number = case_number,
                 length = len(html),
                 sha256 = sha256(html.encode('utf-8')).hexdigest()
             )
             scrape = Scrape(
                 case_number = case_number,
-                s3_version_id = obj.version_id,
+                s3_version_id = obj_version_id,
                 timestamp = timestamp,
                 duration = scrape_duration
             )
@@ -200,103 +198,6 @@ def store_case_details(case_number, detail_loc, html, scrape_duration=None, chec
                     .where(Case.case_number == case_number)\
                     .values(last_scrape = timestamp)
             )
-
-def handle_scrape_response(scraper_item, response, scrape_duration, check_before_store=True):
-    if response.status_code != 200:
-        if response.status_code == 500:
-            scraper_item.errors += 1
-            if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
-                log_failed_scrape(scraper_item.case_number,
-                    scraper_item.detail_loc, "Reached 500 error limit")
-                raise FailedScrape500
-        # This is how requests deals with redirects
-        elif response.status_code == 302 \
-                and response.headers['Location'] == MJCS_AUTH_TARGET:
-            raise ExpiredSession
-        else:
-            scraper_item.errors += 1
-            if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
-                log_failed_scrape(
-                    scraper_item.case_number, scraper_item.detail_loc,
-                    "Received unexpected response: code = %d, body = %s" % (response.status_code, response.text)
-                )
-                raise FailedScrapeUnknownError
-    elif re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text):
-        scraper_item.errors += 1
-        if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
-            log_failed_scrape(scraper_item.case_number,
-                scraper_item.detail_loc, "Case details not found")
-            raise FailedScrapeNotFound
-    elif 'Sorry, but your query has timed out after 2 minute' in response.text:
-        scraper_item.timeouts += 1
-        if scraper_item.timeouts >= config.QUERY_TIMEOUTS_LIMIT:
-            log_failed_scrape(scraper_item.case_number,
-                scraper_item.detail_loc, "Reached timeout limit")
-            raise FailedScrapeTimeout
-    else:
-        # Some sanity checks
-        try:
-            check_scrape_sanity(scraper_item.case_number, response.text)
-        except FailedScrape as e:
-            scraper_item.errors += 1
-            if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
-                log_failed_scrape(scraper_item.case_number, scraper_item.detail_loc,
-                    str(type(e)))
-                raise e
-        else:
-            store_case_details(scraper_item.case_number, scraper_item.detail_loc, response.text, scrape_duration, check_before_store)
-            raise CompletedScrape
-
-def scrape_case(case_number, detail_loc, session=None, check_before_store=True):
-    if not session:
-        session = Session()
-    scraper_item = ScraperItem(case_number, detail_loc)
-    while True:
-        try:
-            print("Requesting case details for",case_number)
-            begin = datetime.now()
-            response = session.post(
-                'http://casesearch.courts.state.md.us/casesearch/inquiryByCaseNum.jis',
-                data = {
-                    'caseId': case_number
-                },
-                allow_redirects = False
-            )
-            end = datetime.now()
-            duration = (begin - end).total_seconds()
-        except requests.exceptions.Timeout:
-            scraper_item.timeouts += 1
-            if scraper_item.timeouts >= config.QUERY_TIMEOUTS_LIMIT:
-                log_failed_scrape(case_number, detail_loc, "Reached timeout limit")
-                raise FailedScrapeTimeout
-        else:
-            try:
-                handle_scrape_response(scraper_item, response, duration, check_before_store)
-            except ExpiredSession:
-                print("Renewing session")
-                session.renew()
-            except CompletedScrape:
-                print("Completed scraping",case_number)
-                break
-            except Exception as e:
-                e.html = response.text
-                raise e
-
-def scrape_case_thread(case):
-    case_number = case['case_number']
-    detail_loc = case['detail_loc']
-    session_pool = case['session_pool']
-    check_before_store = case['check_before_store']
-
-    session = session_pool.get()
-    ret = None
-    try:
-        ret = scrape_case(case_number, detail_loc, session, check_before_store)
-    except:
-        raise
-    finally:
-        session_pool.put_nowait(session)
-    return ret
 
 def fetch_from_queue(queue, nitems=None):
     def queue_receive(n):
@@ -325,14 +226,124 @@ def fetch_from_queue(queue, nitems=None):
     return queue_items
 
 class Scraper:
-    def __init__(self, on_error=None, threads=1):
+    def __init__(self, on_error=None, threads=1, log_failed_scrapes=True):
         self.on_error = on_error
         self.threads = threads
+        self.log_failed_scrapes = log_failed_scrapes
+
+    def log_failed_scrape(self, case_number, detail_loc, error):
+        print("Failed to scrape case %s: %s" % (case_number, error))
+        if self.log_failed_scrapes:
+            config.scraper_failed_queue.send_message(
+                MessageBody = json.dumps({
+                    'case_number': case_number,
+                    'detail_loc': detail_loc
+                })
+            )
+
+    def handle_scrape_response(self, scraper_item, response, scrape_duration, check_before_store=True):
+        if response.status_code != 200:
+            if response.status_code == 500:
+                scraper_item.errors += 1
+                if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
+                    self.log_failed_scrape(scraper_item.case_number,
+                        scraper_item.detail_loc, "Reached 500 error limit")
+                    raise FailedScrape500
+            # This is how requests deals with redirects
+            elif response.status_code == 302 \
+                    and response.headers['Location'] == MJCS_AUTH_TARGET:
+                raise ExpiredSession
+            else:
+                scraper_item.errors += 1
+                if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
+                    self.log_failed_scrape(
+                        scraper_item.case_number, scraper_item.detail_loc,
+                        "Received unexpected response: code = %d, body = %s" % (response.status_code, response.text)
+                    )
+                    raise FailedScrapeUnknownError
+        elif re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text):
+            scraper_item.errors += 1
+            if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
+                self.log_failed_scrape(scraper_item.case_number,
+                    scraper_item.detail_loc, "Case details not found")
+                raise FailedScrapeNotFound
+        elif 'Sorry, but your query has timed out after 2 minute' in response.text:
+            scraper_item.timeouts += 1
+            if scraper_item.timeouts >= config.QUERY_TIMEOUTS_LIMIT:
+                self.log_failed_scrape(scraper_item.case_number,
+                    scraper_item.detail_loc, "Reached timeout limit")
+                raise FailedScrapeTimeout
+        else:
+            # Some sanity checks
+            try:
+                check_scrape_sanity(scraper_item.case_number, response.text)
+            except FailedScrape as e:
+                scraper_item.errors += 1
+                if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
+                    self.log_failed_scrape(scraper_item.case_number, scraper_item.detail_loc,
+                        str(type(e)))
+                    raise e
+            else:
+                store_case_details(scraper_item.case_number, scraper_item.detail_loc, response.text, scrape_duration, check_before_store)
+                raise CompletedScrape
+
+    def scrape_case(self, case_number, detail_loc, session=None, check_before_store=True):
+        if not session:
+            session = Session()
+        scraper_item = ScraperItem(case_number, detail_loc)
+        while True:
+            try:
+                print("Requesting case details for",case_number)
+                begin = datetime.now()
+                response = session.post(
+                    'http://casesearch.courts.state.md.us/casesearch/inquiryByCaseNum.jis',
+                    data = {
+                        'caseId': case_number
+                    },
+                    allow_redirects = False
+                )
+                end = datetime.now()
+                duration = (begin - end).total_seconds()
+            except requests.exceptions.Timeout:
+                scraper_item.timeouts += 1
+                if scraper_item.timeouts >= config.QUERY_TIMEOUTS_LIMIT:
+                    self.log_failed_scrape(case_number, detail_loc, "Reached timeout limit")
+                    raise FailedScrapeTimeout
+            else:
+                try:
+                    self.handle_scrape_response(scraper_item, response, duration, check_before_store)
+                except ExpiredSession:
+                    print("Renewing session")
+                    session.renew()
+                except CompletedScrape:
+                    print("Completed scraping",case_number)
+                    break
+                except Exception as e:
+                    e.html = response.text
+                    raise e
+
+    def scrape_case_thread(self, case):
+        case_number = case['case_number']
+        detail_loc = case['detail_loc']
+        session_pool = case['session_pool']
+        check_before_store = case['check_before_store']
+
+        session = session_pool.get()
+        ret = None
+        try:
+            ret = self.scrape_case(case_number, detail_loc, session, check_before_store)
+        except:
+            raise
+        finally:
+            session_pool.put_nowait(session)
+        return ret
 
     def scrape_from_queue(self, queue, nitems=None):
         session_pool = Queue(self.threads)
         for i in range(self.threads):
-            session_pool.put_nowait(Session())
+            session = Session()
+            session.renew() # Renew session immediately bc it was causing errors in Lambda
+            session_pool.put_nowait(session)
         counter = {
             'total': 0,
             'count': 0
@@ -371,12 +382,12 @@ class Scraper:
                                 exception.html
                             )
                         case['item'].delete()
-                        return 'continue'
+                        return 'delete'
                     return action
                 raise exception
 
             print("Scraping %d cases" % len(cases))
-            process_cases(scrape_case_thread, cases, queue_on_success, queue_on_error, self.threads, counter)
+            process_cases(self.scrape_case_thread, cases, queue_on_success, queue_on_error, self.threads, counter)
             print("Finished scraping %d cases" % counter['total'])
             if nitems:
                 break # don't need to keep looping
@@ -389,6 +400,7 @@ class Scraper:
         return self.scrape_from_queue(config.scraper_queue, nitems)
 
     def scrape_from_failed_queue(self, nitems=None):
+        self.log_failed_scrapes = False
         return self.scrape_from_queue(config.scraper_failed_queue, nitems)
 
     def scrape_missing_cases(self):
@@ -426,4 +438,4 @@ class Scraper:
                         return 'continue'
                     return action
                 raise exception
-            process_cases(scrape_case_thread, cases, None, _on_error, self.threads, counter)
+            process_cases(self.scrape_case_thread, cases, None, _on_error, self.threads, counter)

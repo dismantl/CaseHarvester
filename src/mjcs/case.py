@@ -72,13 +72,16 @@ def process_cases(func, cases, on_success=None, on_error=None, threads=1, counte
                     counter['count'] += 1
                 try:
                     func(case)
-                except NotImplementedError:
-                    pass
+                # except NotImplementedError:
+                #     pass
                 except Exception as e:
                     continue_processing = False
                     print("!!! Failed to process %s !!!" % case_number)
                     if on_error:
-                        if on_error(e, case) == 'continue':
+                        action = on_error(e, case)
+                        if action == 'delete':
+                            to_process.remove(case)
+                        if action == 'continue' or action == 'delete':
                             continue_processing = True
                     else:
                         caught_exception = e
@@ -86,9 +89,9 @@ def process_cases(func, cases, on_success=None, on_error=None, threads=1, counte
                 else:
                     if on_success:
                         on_success(case)
+                    to_process.remove(case)
         else:
             with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-                canceled = False
                 future_to_case = {}
                 for case in to_process:
                     future_to_case[executor.submit(func, case)] = case
@@ -100,19 +103,22 @@ def process_cases(func, cases, on_success=None, on_error=None, threads=1, counte
                     except concurrent.futures.CancelledError:
                         pass
                     except Exception as e: # Won't catch KeyboardInterrupt, which is raised in as_completed
+                        print(type(e))
+                        print(str(e))
                         continue_processing = False
                         # cancel all remaining tasks
                         for future in future_to_case:
                             future.cancel()
-                        canceled = True
                         print("!!! Failed to process %s !!!" % case_number)
                         if on_error:
-                            if on_error(e, case) == 'continue':
-                                continue_processing = True
+                            action = on_error(e, case)
+                            if action == 'delete':
                                 to_process.remove(case)
-                                if counter:
-                                    counter['count'] += 1
-                                    print('Processed case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
+                            if action == 'continue' or action == 'delete':
+                                continue_processing = True
+                            if counter:
+                                counter['count'] += 1
+                                print('Processed case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
                         else:
                             caught_exception = e
                     else:
