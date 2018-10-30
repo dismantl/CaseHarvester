@@ -164,7 +164,7 @@ def scraper_prompt(exception, case_number):
 def run_scraper(args):
     on_error = None
     if args.ignore_errors:
-        on_error = lambda e,c: 'delete' # delete because failed scrapes will be (re-)added to failed queue
+        on_error = lambda e,c: 'delete'
     elif args.prompt_on_error:
         on_error = scraper_prompt
 
@@ -190,7 +190,7 @@ def run_scraper(args):
 
 def parser_prompt(exception, case_number):
     if type(exception) == NotImplementedError:
-        return 'continue'
+        return 'delete'
     print(exception)
     while True:
         print('Continue parsing?')
@@ -212,7 +212,7 @@ def parser_prompt(exception, case_number):
 def run_parser(args):
     on_error = None
     if args.ignore_errors:
-        on_error = lambda e,c: 'continue'
+        on_error = lambda e,c: 'delete'
     elif args.prompt_on_error:
         on_error = parser_prompt
 

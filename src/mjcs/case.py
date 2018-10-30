@@ -76,6 +76,8 @@ def process_cases(func, cases, on_success=None, on_error=None, threads=1, counte
                 #     pass
                 except Exception as e:
                     continue_processing = False
+                    print(type(e))
+                    print(str(e))
                     print("!!! Failed to process %s !!!" % case_number)
                     if on_error:
                         action = on_error(e, case)
@@ -103,12 +105,12 @@ def process_cases(func, cases, on_success=None, on_error=None, threads=1, counte
                     except concurrent.futures.CancelledError:
                         pass
                     except Exception as e: # Won't catch KeyboardInterrupt, which is raised in as_completed
-                        print(type(e))
-                        print(str(e))
                         continue_processing = False
                         # cancel all remaining tasks
                         for future in future_to_case:
                             future.cancel()
+                        print(type(e))
+                        print(str(e))
                         print("!!! Failed to process %s !!!" % case_number)
                         if on_error:
                             action = on_error(e, case)

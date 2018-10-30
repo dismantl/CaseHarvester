@@ -1,6 +1,7 @@
 from ..config import config
 from ..db import db_session
 from ..case import Case, cases_batch_filter, get_detail_loc, process_cases
+from ..util import fetch_from_queue, NoItemsInQueue
 from sqlalchemy import and_
 import json
 import time
@@ -93,23 +94,17 @@ class Parser:
             process_cases(parse_case, case_numbers, None, self.on_error, self.threads, counter)
 
     def parse_failed_queue(self, detail_loc=None):
-        while True:
-            def fetch_from_queue(n):
-                return config.parser_failed_queue.receive_messages(
-                    WaitTimeSeconds = config.QUEUE_WAIT,
-                    MaxNumberOfMessages = 10
-                )
+        counter = {
+            'total': 0,
+            'count': 0
+        }
 
-            # Concurrently fetch up to 100 messages from queue
-            queue_items = []
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                results = executor.map(fetch_from_queue,range(0,10))
-                for result in results:
-                    if result:
-                        queue_items += result
+        while True:
+            queue_items = fetch_from_queue(config.parser_failed_queue)
             if not queue_items:
                 print("No items found in queue")
                 break
+            counter['total'] += len(queue_items)
 
             missing_case_type = {}
             cases = []
@@ -155,12 +150,11 @@ class Parser:
                     action = self.on_error(exception, case['case_number'])
                     if action == 'delete':
                         case['item'].delete()
-                        return 'continue'
                     return action
                 raise exception
 
-            counter = {
-                'total': len(cases),
-                'count': 0
-            }
             process_cases(parse_case, cases, queue_on_success, queue_on_error, self.threads, counter)
+
+        print("Total number of parsed cases: %d" % counter['count'])
+        if counter['count'] == 0:
+            raise NoItemsInQueue

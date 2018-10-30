@@ -2,6 +2,7 @@ from .config import config
 from .db import db_session, TableBase
 from .case import Case, cases_batch, cases_batch_filter, process_cases
 from .session import Session
+from .util import fetch_from_queue, NoItemsInQueue
 from sqlalchemy import and_, select, Column, DateTime, Integer, Numeric, String, ForeignKey, Index
 from hashlib import sha256
 import requests
@@ -71,9 +72,6 @@ class CompletedScrape(Exception):
     pass
 
 class ExpiredSession(Exception):
-    pass
-
-class NoItemsInQueue(Exception):
     pass
 
 def check_scrape_sanity(case_number, html):
@@ -198,32 +196,6 @@ def store_case_details(case_number, detail_loc, html, scrape_duration=None, chec
                     .where(Case.case_number == case_number)\
                     .values(last_scrape = timestamp)
             )
-
-def fetch_from_queue(queue, nitems=None):
-    def queue_receive(n):
-        return queue.receive_messages(
-            WaitTimeSeconds = config.QUEUE_WAIT,
-            MaxNumberOfMessages = n
-        )
-    # Concurrently fetch up to nitems (or 100) messages from queue, 10 per thread
-    queue_items = []
-    if nitems:
-        q,r = divmod(nitems,10)
-        nitems_per_thread = [10 for _ in range(0,q)]
-        if r:
-            nitems_per_thread.append(r)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(nitems_per_thread)) as executor:
-            results = executor.map(queue_receive,nitems_per_thread)
-            for result in results:
-                if result:
-                    queue_items += result
-    else:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            results = executor.map(queue_receive,[10 for _ in range(0,10)])
-            for result in results:
-                if result:
-                    queue_items += result
-    return queue_items
 
 class Scraper:
     def __init__(self, on_error=None, threads=1, log_failed_scrapes=True):
@@ -435,7 +407,7 @@ class Scraper:
                                 exception.html,
                                 check_before_store=True
                             )
-                        return 'continue'
+                        return 'delete'
                     return action
                 raise exception
             process_cases(self.scrape_case_thread, cases, None, _on_error, self.threads, counter)
