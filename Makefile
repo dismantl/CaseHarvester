@@ -4,9 +4,9 @@ LIB_DIR=lib
 DOCS_DIR=docs
 SPIDER_DEPS=
 SCRAPER_DEPS=$(addprefix $(CODE_SRC)/,scraper/scraper_lambda.py \
-	$(addprefix mjcs/,__init__.py scraper.py config.py db.py case.py session.py))
+	$(addprefix mjcs/,__init__.py scraper.py config.py db.py case.py util.py session.py))
 PARSER_DEPS=$(addprefix $(CODE_SRC)/,parser/parser_lambda.py \
-	$(addprefix mjcs/,__init__.py config.py db.py case.py parser/*.py))
+	$(addprefix mjcs/,__init__.py config.py db.py case.py util.py parser/*.py))
 SECRETS_FILE=secrets.json
 STACK_PREFIX=caseharvester-stack
 AWS_REGION=us-east-1
@@ -194,10 +194,13 @@ test:
 sync:
 	rsync -av . mjcs:mjcs
 
+sync_prod:
+	rsync -av . mjcs-prod:mjcs
+
 docs:
 	rm -rf $(DOCS_DIR)
 	mkdir -p $(DOCS_DIR)
-	$(call create_docs_f,dev)
+	$(call create_docs_f,prod)
 
 clean:
 	rm -rf $(PACKAGE_DIR)

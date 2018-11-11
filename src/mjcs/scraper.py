@@ -376,6 +376,12 @@ class Scraper:
         return self.scrape_from_queue(config.scraper_failed_queue, nitems)
 
     def scrape_missing_cases(self):
+        session_pool = Queue(self.threads)
+        for i in range(self.threads):
+            session = Session()
+            session.renew() # Renew session immediately bc it was causing errors in Lambda
+            session_pool.put_nowait(session)
+
         filter = and_(Case.last_scrape == None, Case.scrape_exempt != True)
         with db_session() as db:
             print('Getting count of unscraped cases...',end='',flush=True)
@@ -390,12 +396,15 @@ class Scraper:
 
         for batch_filter in batch_filters:
             with db_session() as db:
+                print('Fetching batch of cases...',end='',flush=True)
                 cases = cases_batch(db, batch_filter)
+                print('Done.')
             cases = [{
                 'case_number': case.case_number,
                 'detail_loc': case.detail_loc,
-
-            }]
+                'session_pool': session_pool,
+                'check_before_store': False,
+            } for case in cases]
             def _on_error(exception, case):
                 if self.on_error:
                     action = self.on_error(exception, case['case_number'])
@@ -405,7 +414,7 @@ class Scraper:
                                 case['case_number'],
                                 case['detail_loc'],
                                 exception.html,
-                                check_before_store=True
+                                check_before_store=False
                             )
                         return 'delete'
                     return action
