@@ -16,7 +16,7 @@ class DSK8(CaseTable, TableBase):
     case_status = Column(String)
     status_date = Column(Date, nullable=True)
     _status_date_str = Column('status_date_str',String)
-    tracking_number = Column(BigInteger, nullable=True)
+    tracking_number = Column(String, nullable=True)
     complaint_number = Column(String, nullable=True)
     district_case_number = Column(String, nullable=True) # TODO eventually make a ForeignKey relation
     filing_date = Column(Date, nullable=True)
