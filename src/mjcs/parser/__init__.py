@@ -17,12 +17,14 @@ from .DSCR import DSCRParser
 from .DSK8 import DSK8Parser
 from .DSCIVIL import DSCIVILParser
 from .CC import CCParser
+from .ODYTRAF import ODYTRAFParser
 
 parsers = [
     ('DSCR',DSCRParser),
     ('DSK8',DSK8Parser),
     ('DSCIVIL',DSCIVILParser),
-    ('CC',CCParser)
+    ('CC',CCParser),
+    ('ODYTRAF',ODYTRAFParser)
 ]
 
 def parse_case_from_html(case_number, detail_loc, html):
