@@ -259,7 +259,7 @@ class DSCRParser(CaseDetailsParser):
                 charge.court_costs = self.value_column(fine_row,'Court Costs:',money=True)
                 charge.cicf = self.value_column(fine_row,'CICF:',money=True)
 
-                suspended_fine_row = self.row_label(disposition_table,'Amt Suspended:')
+                suspended_fine_row = self.row_first_label(disposition_table,'Amt Suspended:')
                 charge.suspended_fine = self.value_column(suspended_fine_row,'Fine:',money=True)
                 charge.suspended_court_costs = self.value_column(suspended_fine_row,'Court Costs:',money=True)
                 charge.suspended_cicf = self.value_column(suspended_fine_row,'CICF:',money=True)
@@ -268,12 +268,12 @@ class DSCRParser(CaseDetailsParser):
                 charge.probation_end_date_str = self.value_column(disposition_table,'Probation End Date:')
                 charge.restitution_amount = self.value_column(disposition_table,'Restitution Amount:',money=True)
 
-                jail_term_row = self.row_label(disposition_table,'Jail Term:')
+                jail_term_row = self.row_first_label(disposition_table,'Jail Term:')
                 charge.jail_term_years = self.value_column(jail_term_row,'Yrs:')
                 charge.jail_term_months = self.value_column(jail_term_row,'Mos:')
                 charge.jail_term_days = self.value_column(jail_term_row,'Days:')
 
-                suspended_term_row = self.row_label(disposition_table,'Suspended Term:')
+                suspended_term_row = self.row_first_label(disposition_table,'Suspended Term:')
                 charge.suspended_term_years = self.value_column(suspended_term_row,'Yrs:')
                 charge.suspended_term_months = self.value_column(suspended_term_row,'Mos:')
                 charge.suspended_term_days = self.value_column(suspended_term_row,'Days:')

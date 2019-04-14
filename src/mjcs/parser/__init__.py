@@ -136,7 +136,7 @@ class Parser:
 
             if missing_case_type:
                 with db_session() as db:
-                    query = db.query(Case.case_number,Case.detail_loc).filter(Case.case_number._in([x for x in missing_case_type.keys()]))
+                    query = db.query(Case.case_number,Case.detail_loc).filter(Case.case_number.in_([x for x in missing_case_type.keys()]))
                     for case_number, case_type in query:
                         if detail_loc == case_type:
                             cases.append({

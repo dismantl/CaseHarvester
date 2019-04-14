@@ -397,7 +397,7 @@ class DSCIVILParser(CaseDetailsParser):
                 p.state = self.value_column(t1,'State:')
                 p.zip_code = self.value_column(t1,'Zip Code:')
             try:
-                attorney_row = self.row_label(t1,'If Person is Attorney:')
+                attorney_row = self.row_first_label(t1,'If Person is Attorney:')
             except ParserError:
                 pass
             else:

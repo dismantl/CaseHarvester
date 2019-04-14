@@ -363,7 +363,7 @@ class DSK8Parser(CaseDetailsParser):
             charge.fine = self.value_column(section,'Fine:',ignore_missing=True,money=True)
 
             try:
-                sentence_table = self.row_label(section,'Sentence Time:')
+                sentence_table = self.row_first_label(section,'Sentence Time:')
             except ParserError:
                 pass
             else:
@@ -373,7 +373,7 @@ class DSK8Parser(CaseDetailsParser):
                 charge.confinement = self.value_column(sentence_table,'Confinement') # has space between label and :
 
             try:
-                suspended_table = self.row_label(section,'Suspended Time:')
+                suspended_table = self.row_first_label(section,'Suspended Time:')
             except ParserError:
                 pass
             else:
@@ -382,7 +382,7 @@ class DSK8Parser(CaseDetailsParser):
                 charge.suspended_days = self.value_column(suspended_table,'Days:')
 
             try:
-                probation_table = self.row_label(section,'Probation Time:')
+                probation_table = self.row_first_label(section,'Probation Time:')
             except ParserError:
                 pass
             else:

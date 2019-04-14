@@ -195,11 +195,20 @@ class CaseDetailsParser(ABC):
         except AttributeError:
             raise ParserError('Table with prompt "%s" not found' % prompt)
 
-    def row_label(self, base, first_column_prompt):
+    def row_first_label(self, base, first_column_prompt):
         prompt_span = base\
             .find('span',class_='FirstColumnPrompt',string=re.compile(first_column_prompt))
         if not prompt_span:
             raise ParserError('Row header "%s" not found' % first_column_prompt)
+        self.mark_for_deletion(prompt_span)
+        return prompt_span\
+            .find_parent('tr')
+
+    def row_label(self, base, prompt):
+        prompt_span = base\
+            .find('span',class_='Prompt',string=re.compile(prompt))
+        if not prompt_span:
+            raise ParserError('Row header "%s" not found' % prompt)
         self.mark_for_deletion(prompt_span)
         return prompt_span\
             .find_parent('tr')
