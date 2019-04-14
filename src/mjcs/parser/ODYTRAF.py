@@ -74,31 +74,25 @@ class ODYTRAFDefendant(ODYTRAFCaseTable, Defendant, TableBase):
 
     height = Column(String, nullable=True)
 
-class ODYTRAFDefendantAlias(ODYTRAFCaseTable, TableBase):
-    __tablename__ = 'odytraf_defendant_aliases'
-
-    id = Column(Integer, primary_key=True)
-    alias = Column(String, nullable=False)
-    alias_type = Column(String, nullable=False)
-
-class ODYTRAFNAmeAddress:
+class ODYTRAFNameAddress:
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    address = Column(String, nullable=True)
+    address_1 = Column(String, nullable=True)
+    address_2 = Column(String, nullable=True)
     city = Column(String, nullable=True)
     state = Column(String, nullable=True)
     zip_code = Column(String, nullable=True)
 
-class ODYTRAFBondsman(ODYTRAFCaseTable, ODYTRAFNAmeAddress, TableBase):
+class ODYTRAFBondsman(ODYTRAFCaseTable, ODYTRAFNameAddress, TableBase):
     __tablename__ = 'odytraf_bondsmen'
 
-class ODYTRAFSurety(ODYTRAFCaseTable, ODYTRAFNAmeAddress, TableBase):
+class ODYTRAFSurety(ODYTRAFCaseTable, ODYTRAFNameAddress, TableBase):
     __tablename__ = 'odytraf_sureties'
 
-class ODYTRAFProbationOfficer(ODYTRAFCaseTable, ODYTRAFNAmeAddress, TableBase):
+class ODYTRAFProbationOfficer(ODYTRAFCaseTable, ODYTRAFNameAddress, TableBase):
     __tablename__ = 'odytraf_probation_officers'
 
-class ODYTRAFInterpreter(ODYTRAFCaseTable, ODYTRAFNAmeAddress, TableBase):
+class ODYTRAFInterpreter(ODYTRAFCaseTable, ODYTRAFNameAddress, TableBase):
     __tablename__ = 'odytraf_interpreters'
 
 class ODYTRAFPlaintiff(ODYTRAFCaseTable, TableBase):
@@ -120,6 +114,18 @@ class ODYTRAFOfficer(ODYTRAFCaseTable, TableBase):
     zip_code = Column(String, nullable=True)
     role = Column(String, nullable=False)
 
+class ODYTRAFAlias(ODYTRAFCaseTable, TableBase):
+    __tablename__ = 'odytraf_aliases'
+
+    id = Column(Integer, primary_key=True)
+    alias = Column(String, nullable=False)
+    alias_type = Column(String, nullable=False)
+    defendant_id = Column(Integer, ForeignKey('odytraf_defendants.id'),nullable=True)
+    bondsman_id = Column(Integer, ForeignKey('odytraf_defendants.id'),nullable=True)
+    surety_id = Column(Integer, ForeignKey('odytraf_defendants.id'),nullable=True)
+    probation_officer_id = Column(Integer, ForeignKey('odytraf_defendants.id'),nullable=True)
+    interpreter_id = Column(Integer, ForeignKey('odytraf_defendants.id'),nullable=True)
+
 class ODYTRAFAttorney(ODYTRAFCaseTable, TableBase):
     __tablename__ = 'odytraf_attorneys'
 
@@ -133,6 +139,7 @@ class ODYTRAFAttorney(ODYTRAFCaseTable, TableBase):
     city = Column(String, nullable=True)
     state = Column(String, nullable=True)
     zip_code = Column(String, nullable=True)
+
 
 class ODYTRAFCourtSchedule(ODYTRAFCaseTable, TableBase):
     __tablename__ = 'odytraf_court_schedule'
@@ -196,6 +203,31 @@ class ODYTRAFCharge(ODYTRAFCaseTable, TableBase):
     disposition_date = Column(Date, nullable=True)
     _disposition_date_str = Column('disposition_date_str', String, nullable=True)
     converted_disposition = Column(String, nullable=True)
+    probation_start_date = Column(Date, nullable=True)
+    _probation_start_date_str = Column('probation_start_date_str', String, nullable=True)
+    probation_supervised_years = Column(Integer, nullable=True)
+    probation_supervised_months = Column(Integer, nullable=True)
+    probation_supervised_days = Column(Integer, nullable=True)
+    probation_supervised_hours = Column(Integer, nullable=True)
+    probation_unsupervised_years = Column(Integer, nullable=True)
+    probation_unsupervised_months = Column(Integer, nullable=True)
+    probation_unsupervised_days = Column(Integer, nullable=True)
+    probation_unsupervised_hours = Column(Integer, nullable=True)
+    jail_life_death = Column(String, nullable=True)
+    jail_start_date = Column(Date, nullable=True)
+    _jail_start_date_str = Column('jail_start_date_str', String, nullable=True)
+    jail_years = Column(Integer, nullable=True)
+    jail_months = Column(Integer, nullable=True)
+    jail_days = Column(Integer, nullable=True)
+    jail_hours = Column(Integer, nullable=True)
+    jail_suspended_years = Column(Integer, nullable=True)
+    jail_suspended_months = Column(Integer, nullable=True)
+    jail_suspended_days = Column(Integer, nullable=True)
+    jail_suspended_hours = Column(Integer, nullable=True)
+    jail_suspend_all_but_years = Column(Integer, nullable=True)
+    jail_suspend_all_but_months = Column(Integer, nullable=True)
+    jail_suspend_all_but_days = Column(Integer, nullable=True)
+    jail_suspend_all_but_hours = Column(Integer, nullable=True)
 
     @hybrid_property
     def plea_date_str(self):
@@ -212,6 +244,22 @@ class ODYTRAFCharge(ODYTRAFCaseTable, TableBase):
     def disposition_date_str(self,val):
         self.disposition_date = date_from_str(val)
         self._disposition_date_str = val
+
+    @hybrid_property
+    def probation_start_date_str(self):
+        return self._probation_start_date_str
+    @probation_start_date_str.setter
+    def probation_start_date_str(self,val):
+        self.probation_start_date = date_from_str(val)
+        self._probation_start_date_str = val
+
+    @hybrid_property
+    def jail_start_date_str(self):
+        return self._jail_start_date_str
+    @jail_start_date_str.setter
+    def jail_start_date_str(self,val):
+        self.jail_start_date = date_from_str(val)
+        self._jail_start_date_str = val
 
 class ODYTRAFWarrant(ODYTRAFCaseTable, TableBase):
     __tablename__ = 'odytraf_warrants'
@@ -239,6 +287,24 @@ class ODYTRAFWarrant(ODYTRAFCaseTable, TableBase):
     def status_date_str(self,val):
         self.status_date = date_from_str(val)
         self._status_date_str = val
+
+class ODYTRAFBailBond(ODYTRAFCaseTable, TableBase):
+    __tablename__ = 'odytraf_bail_bonds'
+
+    id = Column(Integer, primary_key=True)
+    bond_type = Column(String)
+    bond_amount_set = Column(String)
+    bond_status_date = Column(Date, nullable=True)
+    _bond_status_date_str = Column('bond_status_date_str', String, nullable=True)
+    bond_status = Column(String)
+
+    @hybrid_property
+    def bond_status_date_str(self):
+        return self._bond_status_date_str
+    @bond_status_date_str.setter
+    def bond_status_date_str(self,val):
+        self.bond_status_date = date_from_str(val)
+        self._bond_status_date_str = val
 
 class ODYTRAFBondSetting(ODYTRAFCaseTable, TableBase):
     __tablename__ = 'odytraf_bond_settings'
@@ -271,7 +337,6 @@ class ODYTRAFDocument(ODYTRAFCaseTable, TableBase):
 # Note that consumers may not be called in order
 class ODYTRAFParser(CaseDetailsParser):
     def __init__(self, case_number, html):
-        # <body> should only have a single child div that holds the data
         self.case_number = case_number
         strainer = SoupStrainer('div',class_='BodyWindow')
         self.soup = BeautifulSoup(html,'html.parser',parse_only=strainer)
@@ -346,6 +411,14 @@ class ODYTRAFParser(CaseDetailsParser):
                 ref_num = ODYTRAFReferenceNumber(self.case_number)
                 ref_num.ref_num = self.value_first_column(t,'Related Case')
                 ref_num.ref_num_type = 'Related Case'
+            elif t.find('span',class_='FirstColumnPrompt',string=re.compile('Jury Trial Prayer')):
+                ref_num = ODYTRAFReferenceNumber(self.case_number)
+                ref_num.ref_num = self.value_first_column(t,'Jury Trial Prayer')
+                ref_num.ref_num_type = 'Jury Trial Prayer'
+            elif t.find('span',class_='FirstColumnPrompt',string=re.compile('Judgment')):
+                ref_num = ODYTRAFReferenceNumber(self.case_number)
+                ref_num.ref_num = self.value_first_column(t,'Judgment')
+                ref_num.ref_num_type = 'Judgment'
             else:
                 break
             db.add(ref_num)
@@ -382,36 +455,14 @@ class ODYTRAFParser(CaseDetailsParser):
             defendant.sex = self.value_column(demographics_table,'Sex:')
             defendant.height = self.value_column(demographics_table,'Height:')
             defendant.weight = self.value_column(demographics_table,'Weight:')
-            defendant.DOB_str = self.value_combined_first_column(demographics_table,'DOB:')
+            defendant.DOB_str = self.value_combined_first_column(demographics_table,'DOB:',ignore_missing=True)
         db.add(defendant)
         db.flush()
 
         # Defendent Aliases
-        try:
-            subsection_header = self.first_level_header(soup,'Aliases')
-        except ParserError:
-            pass
-        else:
-            prev_obj = subsection_header
-            while True:
-                try:
-                    alias_table = self.immediate_sibling(prev_obj,'table')
-                except ParserError:
-                    break
-                if alias_table.find('span',class_='FirstColumnPrompt',string=re.compile('Nickname')):
-                    def_alias = ODYTRAFDefendantAlias(self.case_number)
-                    def_alias.alias = self.value_first_column(alias_table,'Nickname')
-                    def_alias.alias_type = 'Nickname'
-                elif alias_table.find('span',class_='FirstColumnPrompt',string=re.compile('Standard')):
-                    def_alias = ODYTRAFDefendantAlias(self.case_number)
-                    def_alias.alias = self.value_first_column(alias_table,'Standard')
-                    def_alias.alias_type = 'Standard'
-                else:
-                    break
-                db.add(def_alias)
-                prev_obj = alias_table
+        self.party_alias(db, demographics_table, 'defendant_id', defendant.id)
 
-        # Defendant attorney(s)
+        # Attorney(s) for the Defendant
         try:
             subsection_header = self.first_level_header(soup,'Attorney\(s\) for the\s+Defendant')
         except ParserError:
@@ -497,82 +548,112 @@ class ODYTRAFParser(CaseDetailsParser):
                 attorney.zip_code = self.value_column(city_row,'Zip Code:')
                 db.add(attorney)
 
-        # Bond Remitter/Bondsman
-        try:
-            subsection_header = self.second_level_header(soup,'Bond Remitter/Bondsman')
-        except ParserError:
-            pass
-        else:
-            bondsman = ODYTRAFBondsman(self.case_number)
-            name_table = self.table_next_first_column_prompt(subsection_header,'Name:')
-            bondsman.name = self.value_first_column(name_table,'Name:')
-            address_table = self.table_next_first_column_prompt(name_table,'Address:')
-            bondsman.address = self.value_first_column(address_table,'Address:')
-            bondsman.city = self.value_first_column(address_table,'City:')
-            bondsman.state = self.value_column(address_table,'State:')
-            bondsman.zip_code = self.value_column(address_table,'Zip Code:')
-            db.add(bondsman)
+    def name_address(self, db, soup, title, cls, foreign_key):
+        section_headers = soup.find_all('h5',string=title)
+        if not section_headers:
+            return
+        for section_header in section_headers:
+            self.mark_for_deletion(section_header)
+            obj = cls(self.case_number)
+            name_table = self.table_next_first_column_prompt(section_header,'Name:')
+            obj.name = self.value_first_column(name_table,'Name:')
+            try:
+                address_table = self.table_next_first_column_prompt(name_table,'Address:')
+            except ParserError:
+                prev_obj = name_table
+            else:
+                prev_obj = address_table
+                obj.address_1 = self.value_first_column(address_table,'Address:')
+                addr_spans = address_table.find_all('span',class_='FirstColumnPrompt',string='Address:')
+                if len(addr_spans) == 2:
+                    row_2 = addr_spans[1].find_parent('tr')
+                    obj.address_2 = self.value_first_column(row_2,'Address:')
+                obj.city = self.value_first_column(address_table,'City:')
+                obj.state = self.value_column(address_table,'State:')
+                obj.zip_code = self.value_column(address_table,'Zip Code:')
+            db.add(obj)
+            db.flush()
+            self.party_alias(db, prev_obj, foreign_key, obj.id)
 
-        # Surety
+    def party_alias(self, db, prev_obj, foreign_key, id):
         try:
-            subsection_header = self.second_level_header(soup,'Surety')
+            alias_header = self.immediate_sibling(prev_obj,'table')
         except ParserError:
             pass
         else:
-            surety = ODYTRAFSurety(self.case_number)
-            name_table = self.table_next_first_column_prompt(subsection_header,'Name:')
-            surety.name = self.value_first_column(name_table,'Name:')
-            address_table = self.table_next_first_column_prompt(name_table,'Address:')
-            surety.address = self.value_first_column(address_table,'Address:')
-            surety.city = self.value_first_column(address_table,'City:')
-            surety.state = self.value_column(address_table,'State:')
-            surety.zip_code = self.value_column(address_table,'Zip Code:')
-            db.add(surety)
+            strings = list(alias_header.stripped_strings)
+            if len(strings) == 1 and strings[0] == 'Aliases':
+                self.mark_for_deletion(alias_header)
+                alias_table = self.immediate_sibling(alias_header,'table')
+                for span in alias_table.find_all('span',class_='FirstColumnPrompt'):
+                    row = span.find_parent('tr')
+                    alias_ = ODYTRAFAlias(self.case_number)
+                    setattr(alias_, foreign_key, id)
+                    if row.find('span',class_='FirstColumnPrompt',string=re.compile('Nickname')):
+                        alias_.alias = self.value_first_column(row,'Nickname')
+                        alias_.alias_type = 'Nickname'
+                    elif row.find('span',class_='FirstColumnPrompt',string=re.compile('Standard')):
+                        alias_.alias = self.value_first_column(row,'Standard')
+                        alias_.alias_type = 'Standard'
+                    db.add(alias_)
 
-        # Probation Officer
-        try:
-            subsection_header = self.second_level_header(soup,'Probation Officer')
-        except ParserError:
-            pass
-        else:
-            officer = ODYTRAFProbationOfficer(self.case_number)
-            name_table = self.table_next_first_column_prompt(subsection_header,'Name:')
-            officer.name = self.value_first_column(name_table,'Name:')
-            address_table = self.table_next_first_column_prompt(name_table,'Address:')
-            officer.address = self.value_first_column(address_table,'Address:')
-            officer.city = self.value_first_column(address_table,'City:')
-            officer.state = self.value_column(address_table,'State:')
-            officer.zip_code = self.value_column(address_table,'Zip Code:')
-            db.add(officer)
+    #########################################################
+    # BOND REMITTER/BONDSMAN
+    #########################################################
+    @consumer
+    def bondsman(self, db, soup):
+        return self.name_address(db, soup, 'Bond Remitter/Bondsman', ODYTRAFBondsman, 'bondsman_id')
+
+    #########################################################
+    # SURETY
+    #########################################################
+    @consumer
+    def surety(self, db, soup):
+        return self.name_address(db, soup, 'Surety', ODYTRAFSurety, 'surety_id')
+
+    #########################################################
+    # PROBATION OFFICER
+    #########################################################
+    @consumer
+    def probation_officer(self, db, soup):
+        return self.name_address(db, soup, 'Probation Officer', ODYTRAFProbationOfficer, 'probation_officer_id')
+
+    #########################################################
+    # INTERPRETER
+    #########################################################
+    @consumer
+    def interpeter(self, db, soup):
+        return self.name_address(db, soup, 'Interpreter', ODYTRAFInterpreter, 'interpreter_id')
 
     #########################################################
     # OFFICER - ARRESTING/COMPLAINT
     #########################################################
     @consumer
     def arresting_officer(self, db, soup):
-        try:
-            section_header = self.second_level_header(soup, 'Officer - Arresting/Complainant')
-        except ParserError:
+        officer_headers = soup.find_all('h5',string='Officer - Arresting/Complainant')
+        if not officer_headers:
             return
-        officer = ODYTRAFOfficer(self.case_number)
-        officer.role = 'Officer - Arresting/Complainant'
-        name_table = self.table_next_first_column_prompt(section_header,'Name:')
-        officer.name = self.value_first_column(name_table,'Name:')
-        officer.agency_name = self.value_first_column(name_table,'AgencyName:')
-        try:
-            address_table = self.table_next_first_column_prompt(name_table,'Address:')
-        except ParserError:
-            pass
-        else:
-            officer.address_1 = self.value_first_column(address_table,'Address:')
-            addr_spans = address_table.find_all('span',class_='FirstColumnPrompt',string='Address:')
-            if len(addr_spans) == 2:
-                row_2 = addr_spans[1].find_parent('tr')
-                officer.address_2 = self.value_first_column(row_2,'Address:')
-            officer.city = self.value_first_column(address_table,'City:')
-            officer.state = self.value_column(address_table,'State:')
-            officer.zip_code = self.value_column(address_table,'Zip Code:')
-        db.add(officer)
+        for section_header in officer_headers:
+            self.mark_for_deletion(section_header)
+            officer = ODYTRAFOfficer(self.case_number)
+            officer.role = 'Officer - Arresting/Complainant'
+            name_table = self.table_next_first_column_prompt(section_header,'Name:')
+            officer.name = self.value_first_column(name_table,'Name:')
+            officer.agency_name = self.value_first_column(name_table,'AgencyName:')
+            try:
+                address_table = self.table_next_first_column_prompt(name_table,'Address:')
+            except ParserError:
+                pass
+            else:
+                officer.address_1 = self.value_first_column(address_table,'Address:')
+                addr_spans = address_table.find_all('span',class_='FirstColumnPrompt',string='Address:')
+                if len(addr_spans) == 2:
+                    row_2 = addr_spans[1].find_parent('tr')
+                    officer.address_2 = self.value_first_column(row_2,'Address:')
+                officer.city = self.value_first_column(address_table,'City:')
+                officer.state = self.value_column(address_table,'State:')
+                officer.zip_code = self.value_column(address_table,'Zip Code:')
+            db.add(officer)
 
     #########################################################
     # POLICE OFFICER
@@ -599,25 +680,6 @@ class ODYTRAFParser(CaseDetailsParser):
             officer.state = self.value_column(address_table,'State:')
             officer.zip_code = self.value_column(address_table,'Zip Code:')
             db.add(officer)
-
-    #########################################################
-    # INTERPRETER
-    #########################################################
-    @consumer
-    def interpeter(self, db, soup):
-        try:
-            section_header = self.second_level_header(soup, 'Interpreter')
-        except ParserError:
-            return
-        interpreter = ODYTRAFInterpreter(self.case_number)
-        name_table = self.table_next_first_column_prompt(section_header,'Name:')
-        interpreter.name = self.value_first_column(name_table,'Name:')
-        address_table = self.table_next_first_column_prompt(name_table,'Address:')
-        interpreter.address = self.value_first_column(address_table,'Address:')
-        interpreter.city = self.value_first_column(address_table,'City:')
-        interpreter.state = self.value_column(address_table,'State:')
-        interpreter.zip_code = self.value_column(address_table,'Zip Code:')
-        db.add(interpreter)
 
     #########################################################
     # COURT SCHEDULING INFORMATION
@@ -717,6 +779,60 @@ class ODYTRAFParser(CaseDetailsParser):
             charge.converted_disposition = self.format_value(span.string)
             self.mark_for_deletion(span)
 
+        # Probation
+        try:
+            subsection_header = soup.find('i',string='Probation:').find_parent('left')
+        except (ParserError, AttributeError):
+            pass
+        else:
+            self.mark_for_deletion(subsection_header)
+            t = self.immediate_sibling(subsection_header,'table')
+            charge.probation_start_date_str = self.value_multi_column(t,'Start Date:')
+            supervised_row = self.row_label(t,'Supervised')
+            charge.probation_supervised_years = self.value_column(supervised_row,'Yrs:')
+            charge.probation_supervised_months = self.value_column(supervised_row,'Mos:')
+            charge.probation_supervised_days = self.value_column(supervised_row,'Days:')
+            charge.probation_supervised_hours = self.value_column(supervised_row,'Hours:')
+            unsupervised_row = self.row_label(t,'UnSupervised')
+            charge.probation_unsupervised_years = self.value_column(unsupervised_row,'Yrs:')
+            charge.probation_unsupervised_months = self.value_column(unsupervised_row,'Mos:')
+            charge.probation_unsupervised_days = self.value_column(unsupervised_row,'Days:')
+            charge.probation_unsupervised_hours = self.value_column(unsupervised_row,'Hours:')
+
+        # Jail
+        try:
+            subsection_header = soup.find('i',string='Jail').find_parent('left')
+        except (ParserError, AttributeError):
+            pass
+        else:
+            self.mark_for_deletion(subsection_header)
+            t = self.immediate_sibling(subsection_header,'table')
+            charge.jail_life_death = self.value_multi_column(t,'Life/Death:')
+            charge.jail_start_date_str = self.value_multi_column(t,'Start Date:')
+            jail_row = self.row_label(t,'Jail Term:')
+            charge.jail_years = self.value_column(jail_row,'Yrs:')
+            charge.jail_months = self.value_column(jail_row,'Mos:')
+            charge.jail_days = self.value_column(jail_row,'Days:')
+            charge.jail_hours = self.value_column(jail_row,'Hours:')
+            try:
+                suspended_row = self.row_label(t,'Suspended Term:')
+            except ParserError:
+                pass
+            else:
+                charge.jail_suspended_years = self.value_column(suspended_row,'Yrs:')
+                charge.jail_suspended_months = self.value_column(suspended_row,'Mos:')
+                charge.jail_suspended_days = self.value_column(suspended_row,'Days:')
+                charge.jail_suspended_hours = self.value_column(suspended_row,'Hours:')
+            try:
+                suspend_all_but_row = self.row_label(t,'Suspend All But:')
+            except ParserError:
+                pass
+            else:
+                charge.jail_suspend_all_but_years = self.value_column(suspend_all_but_row,'Yrs:')
+                charge.jail_suspend_all_but_months = self.value_column(suspend_all_but_row,'Mos:')
+                charge.jail_suspend_all_but_days = self.value_column(suspend_all_but_row,'Days:')
+                charge.jail_suspend_all_but_hours = self.value_column(suspend_all_but_row,'Hours:')
+
     #########################################################
     # WARRANTS INFORMATION
     #########################################################
@@ -743,6 +859,34 @@ class ODYTRAFParser(CaseDetailsParser):
             warrant.last_status = self.format_value(vals[2].string)
             warrant.status_date_str = self.format_value(vals[3].string)
             db.add(warrant)
+            prev_obj = row
+
+    #########################################################
+    # BAIL BOND INFORMATION
+    #########################################################
+    @consumer
+    def bail_bond(self, db, soup):
+        try:
+            subsection_header = self.first_level_header(soup,'Bail Bond Information')
+        except ParserError:
+            return
+        subsection_container = self.immediate_sibling(subsection_header,'div',class_='AltBodyWindow1')
+        header_row = subsection_container.find('tr')
+        self.mark_for_deletion(header_row)
+        prev_obj = header_row
+        while True:
+            try:
+                row = self.immediate_sibling(prev_obj,'tr')
+            except ParserError:
+                break
+            self.mark_for_deletion(row)
+            vals = row.find_all('span',class_='Value')
+            bail_bond = ODYTRAFBailBond(self.case_number)
+            bail_bond.bond_type = self.format_value(vals[0].string)
+            bail_bond.bond_amount_set = self.format_value(vals[1].string,money=True)
+            bail_bond.bond_status_date_str = self.format_value(vals[2].string)
+            bail_bond.bond_status = self.format_value(vals[3].string)
+            db.add(bail_bond)
             prev_obj = row
 
     #########################################################
