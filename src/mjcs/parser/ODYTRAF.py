@@ -334,6 +334,14 @@ class ODYTRAFDocument(ODYTRAFCaseTable, TableBase):
     document_name = Column(String,nullable=True)
     comment = Column(String,nullable=True)
 
+    @hybrid_property
+    def file_date_str(self):
+        return self._file_date_str
+    @file_date_str.setter
+    def file_date_str(self,val):
+        self.file_date = date_from_str(val)
+        self._file_date_str = val
+
 # Note that consumers may not be called in order
 class ODYTRAFParser(CaseDetailsParser):
     def __init__(self, case_number, html):
