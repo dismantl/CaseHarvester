@@ -359,9 +359,7 @@ class ODYCRIMParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        a = datetime.now()
         self.delete_previous(db, ODYCRIM)
-        print("Took %s seconds to delete previous ODYCRIM" % (datetime.now() - a).total_seconds())
 
         case = ODYCRIM(self.case_number)
         section_header = self.first_level_header(soup,'Case Information')
@@ -402,7 +400,7 @@ class ODYCRIMParser(CaseDetailsParser):
                 break
             ref_num = ODYCRIMReferenceNumber(self.case_number)
             ref_num.ref_num = self.value_first_column(t, prompt_span.string)
-            ref_num.ref_num_type = prompt_re.fullmatch(prompt_span.string)[1]
+            ref_num.ref_num_type = prompt_re.fullmatch(prompt_span.string).group(1)
             db.add(ref_num)
 
     #########################################################
@@ -492,7 +490,7 @@ class ODYCRIMParser(CaseDetailsParser):
                         self.mark_for_deletion(rows[1])
                     party.city = self.value_first_column(address_table,'City:')
                     party.state = self.value_column(address_table,'State:')
-                    party.zip_code = self.value_column(address_table,'Zip Code:')
+                    party.zip_code = self.value_column(address_table,'Zip Code:',ignore_missing=True)
 
             db.add(party)
             db.flush()
@@ -524,7 +522,7 @@ class ODYCRIMParser(CaseDetailsParser):
                             alias_.party_id = party.id
                         prompt_re = re.compile('^([\w ]+)\s*:\s*$')
                         alias_.alias = self.value_first_column(row, span.string)
-                        alias_.alias_type = prompt_re.fullmatch(span.string)[1]
+                        alias_.alias_type = prompt_re.fullmatch(span.string).group(1)
                         db.add(alias_)
                 elif 'Attorney(s) for the' in subsection_name:
                     for span in subsection_table.find_all('span',class_='FirstColumnPrompt',string='Name:'):
