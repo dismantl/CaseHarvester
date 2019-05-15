@@ -507,10 +507,7 @@ class ODYCRIMParser(CaseDetailsParser):
                 except ParserError:
                     break
                 prev_obj = subsection_table
-                try:
-                    subsection_name = subsection_header.find('h5').string
-                except:
-                    import pdb; pdb.set_trace()
+                subsection_name = subsection_header.find('h5').string
                 self.mark_for_deletion(subsection_header)
                 if subsection_name == 'Aliases':
                     for span in subsection_table.find_all('span',class_='FirstColumnPrompt'):
