@@ -5,7 +5,6 @@ from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignK
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
-from datetime import *
 import re
 
 class DSCR(CaseTable, TableBase):
@@ -156,9 +155,7 @@ class DSCRParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        a = datetime.now()
         self.delete_previous(db, DSCR)
-        print("Took %s seconds to delete previous DSCR" % (datetime.now() - a).total_seconds())
 
         case = DSCR(self.case_number)
         section_header = self.first_level_header(soup,'Case Information')

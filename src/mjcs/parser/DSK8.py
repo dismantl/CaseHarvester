@@ -5,7 +5,6 @@ from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignK
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
-from datetime import *
 import re
 
 class DSK8(CaseTable, TableBase):
@@ -240,9 +239,7 @@ class DSK8Parser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        a = datetime.now()
         self.delete_previous(db, DSK8)
-        print("Took %s seconds to delete previous DSK8" % (datetime.now() - a).total_seconds())
 
         case = DSK8(self.case_number)
         section_header = self.second_level_header(soup,'Case Information')

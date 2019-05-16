@@ -224,9 +224,7 @@ class DSCIVILParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        a = datetime.now()
         self.delete_previous(db, DSCIVIL)
-        print("Took %s seconds to delete previous DSCIVIL" % (datetime.now() - a).total_seconds())
 
         section_header = self.first_level_header(soup,'Case Information')
         t1 = self.table_next_first_column_prompt(section_header,'Court System:')
