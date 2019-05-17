@@ -26,12 +26,14 @@ The parser component is another Lambda function that parses the case details fro
 ![Parser diagram](./img/parser.svg)
 
 Case details in the MJCS are displayed differently depending on the county and type of case (e.g. district vs circuit court, criminal vs civil, etc.). MJCS assigns a code to each of these different case types, which can be thought of as schemas for rendering case details. Case Harvester currently has [parsers](src/mjcs/parser) for the following schemas:
-* CC: Circuit court civil cases
-* DSCIVIL: District court civil cases
-* DSCR: District court criminal cases
-* DSK8: Circuit court criminal cases
+* CC: Circuit court civil cases (Baltimore City)
+* DSCIVIL: District court civil cases (Baltimore City)
+* DSCR: District court criminal cases (Baltimore City)
+* DSK8: Circuit court criminal cases (Baltimore City)
+* ODYCRIM: Criminal cases (outside Baltimore City)
+* ODYTRAF: Traffic cases (outside Baltimore City)
 
-Each different parser breaks down the case details to a granular level and stores the data in a number of database tables. This [schematic diagram](https://disman.tl/mjcs/docs/relationships.html) illustrates how this data is represented in the database.
+Each different parser breaks down the case details to a granular level and stores the data in a number of database tables. This [schematic diagram](https://disman.tl/caseharvester/relationships.html) illustrates how this data is represented in the database.
 
 # Installation
 Case Harvester can be run or deployed from any workstation running Python 3, [GNU Make](https://www.gnu.org/software/make/), and [jq](https://stedolan.github.io/jq/). The required Python 3 modules are in `requirements.txt` and can be installed with `pip3 install -r requirements.txt`.
