@@ -139,6 +139,27 @@ class DSCREvent(DSCRCaseTable, Event, TableBase):
 class DSCRTrial(DSCRCaseTable, Trial, TableBase):
     __tablename__ = 'dscr_trials'
 
+class DSCRBailEvent(DSCRCaseTable, TableBase):
+    __tablename__ = 'dscr_bail_events'
+
+    id = Column(Integer, primary_key=True)
+    event_name = Column(String)
+    date = Column(Date)
+    _date_str = Column('date_str',String)
+    bail_amount = Column(Numeric)
+    code = Column(String)
+    percentage_required = Column(Numeric)
+    type_of_bond = Column(String)
+    judge_id = Column(String)
+
+    @hybrid_property
+    def date_str(self):
+        return self._date_str
+    @date_str.setter
+    def date_str(self,val):
+        self.date = date_from_str(val)
+        self._date_str = val
+
 # Note that consumers may not be called in order
 class DSCRParser(CaseDetailsParser):
     def header(self, soup):
