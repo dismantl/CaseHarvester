@@ -6,6 +6,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
 import re
+import datetime
 
 class DSCR(CaseTable, TableBase):
     __tablename__ = 'dscr'
@@ -450,4 +451,17 @@ class DSCRParser(CaseDetailsParser):
             self.mark_for_deletion(event_fields[1])
             event.comment = self.format_value(event_fields[2].string)
             self.mark_for_deletion(event_fields[2])
+            if event.event_name == 'BALR' or event.event_name == 'BSET' or event.event_name == 'INIT':
+                match = re.fullmatch(r'(?P<date>\d{6});(?P<amount>\d+\.\d\d);\s*(?P<code>[A-Z]+)\s*;(?P<percent>[\d\.]+);\s*(?P<bond>[A-Z]*)\s*;(?P<judge>[A-Z0-9]+)\s*', event.comment)
+                bail_event = DSCRBailEvent(self.case_number)
+                bail_event.event_name = event.event_name
+                bail_event.date_str = self.format_value(match.group('date'))
+                bail_event.date = datetime.datetime.strptime(match.group('date'), '%y%m%d').date()
+                bail_event.bail_amount = self.format_value(match.group('amount'), money=True)
+                bail_event.code = self.format_value(match.group('code'))
+                bail_event.percentage_required = self.format_value(match.group('percent'), numeric=True)
+                type_of_bond = self.format_value(match.group('bond'))
+                bail_event.type_of_bond = None if not type_of_bond else type_of_bond
+                bail_event.judge_id = self.format_value(match.group('judge'))
+                db.add(bail_event)
             db.add(event)
