@@ -6,7 +6,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
 import re
-import datetime
+from datetime import *
 
 class DSCR(CaseTable, TableBase):
     __tablename__ = 'dscr'
@@ -177,7 +177,9 @@ class DSCRParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
+        a = datetime.now()
         self.delete_previous(db, DSCR)
+        print("Took %s seconds to delete previous DSCR" % (datetime.now() - a).total_seconds())
 
         case = DSCR(self.case_number)
         section_header = self.first_level_header(soup,'Case Information')
@@ -456,7 +458,7 @@ class DSCRParser(CaseDetailsParser):
                 bail_event = DSCRBailEvent(self.case_number)
                 bail_event.event_name = event.event_name
                 bail_event.date_str = self.format_value(match.group('date'))
-                bail_event.date = datetime.datetime.strptime(match.group('date'), '%y%m%d').date()
+                bail_event.date = datetime.strptime(match.group('date'), '%y%m%d').date()
                 bail_event.bail_amount = self.format_value(match.group('amount'), money=True)
                 bail_event.code = self.format_value(match.group('code'))
                 bail_event.percentage_required = self.format_value(match.group('percent'), numeric=True)

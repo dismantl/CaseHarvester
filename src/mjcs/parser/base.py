@@ -4,6 +4,8 @@ from ..db import db_session
 from ..case import Case
 import re
 from datetime import *
+import inspect
+import sys
 
 class ParserError(Exception):
     def __init__(self, message, content=None):
@@ -73,8 +75,12 @@ class CaseDetailsParser(ABC):
         raise NotImplementedError
 
     def delete_previous(self, db, case_table_class):
-        db.execute(case_table_class.__table__.delete()\
-            .where(case_table_class.case_number == self.case_number))
+        # Disable foreign key on delete cascade triggers for performance
+        db.execute('SET session_replication_role = replica')
+        for cls_name, cls in inspect.getmembers(inspect.getmodule(self), lambda obj: hasattr(obj, '__tablename__')):
+            db.execute(cls.__table__.delete()\
+            .where(cls.case_number == self.case_number))
+        db.execute('SET session_replication_role = DEFAULT')
 
     def immediate_previous_sibling(self, next_sibling, *args, **kwargs):
         obj_prev = next_sibling.find_previous_sibling(True)

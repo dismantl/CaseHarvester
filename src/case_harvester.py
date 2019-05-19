@@ -62,6 +62,7 @@ def create_database_and_user(db_hostname, db_name, master_username,
     print("Creating user",username)
     conn.execute(text("create user %s with password :pw" % username), pw=password)
     conn.execute("grant all privileges on database %s to %s" % (db_name,username))
+    conn.execute("grant rds_superuser to %s" % (username))
     conn.execute(text("create user %s with password :pw" % ro_username), pw=ro_password)
     conn.close()
 

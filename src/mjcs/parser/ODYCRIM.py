@@ -359,7 +359,9 @@ class ODYCRIMParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
+        a = datetime.now()
         self.delete_previous(db, ODYCRIM)
+        print("Took %s seconds to delete previous ODYCRIM" % (datetime.now() - a).total_seconds())
 
         case = ODYCRIM(self.case_number)
         section_header = self.first_level_header(soup,'Case Information')

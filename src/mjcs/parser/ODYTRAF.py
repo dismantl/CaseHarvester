@@ -354,7 +354,9 @@ class ODYTRAFParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
+        a = datetime.now()
         self.delete_previous(db, ODYTRAF)
+        print("Took %s seconds to delete previous ODYTRAF" % (datetime.now() - a).total_seconds())
 
         case = ODYTRAF(self.case_number)
         section_header = self.first_level_header(soup,'Case Information')
