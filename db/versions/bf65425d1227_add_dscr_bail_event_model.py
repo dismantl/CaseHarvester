@@ -52,7 +52,10 @@ SELECT
     TO_DATE(bail[1], 'YYMMDD'),
     CAST(bail[2] AS NUMERIC),
     TRIM(bail[3]),
-    CAST(bail[4] AS NUMERIC),
+    CASE
+        WHEN bail[4] = ' ' THEN NULL
+        ELSE CAST(bail[4] AS NUMERIC)
+    END,
     TRIM(bail[5]),
     TRIM(bail[6])
 FROM (
