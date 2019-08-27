@@ -142,6 +142,7 @@ class ODYCRIMCharge(ODYCRIMCaseTable, TableBase):
     jail_months = Column(Integer, nullable=True)
     jail_days = Column(Integer, nullable=True)
     jail_hours = Column(Integer, nullable=True)
+    jail_suspended_term = Column(String, nullable=True)
     jail_suspended_years = Column(Integer, nullable=True)
     jail_suspended_months = Column(Integer, nullable=True)
     jail_suspended_days = Column(Integer, nullable=True)

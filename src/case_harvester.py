@@ -186,6 +186,8 @@ def run_scraper(args):
         scraper.scrape_from_scraper_queue()
     elif args.failed_queue:
         scraper.scrape_from_failed_queue()
+    elif args.case:
+        scraper.scrape_specific_case(args.case)
     else:
         raise Exception("Must specify --invoke-lambda, --missing, --queue, or --failed-queue.")
 
@@ -223,6 +225,8 @@ def run_parser(args):
         parser.parse_failed_queue(args.type)
     elif args.invoke_lambda:
         invoke_parser_lambda(args.type)
+    elif args.case:
+        parser.parse_case(args.case)
     else:
         parser.parse_unparsed_cases(args.type)
 
@@ -286,6 +290,7 @@ if __name__ == '__main__':
         help="Invoke scraper lambda function")
     parser_scraper.add_argument('--threads', type=int, default=1,
         help="Number of threads (default: 1)")
+    parser_scraper.add_argument('--case', '-c', help="Scrape specific case number")
     parser_scraper.set_defaults(func=run_scraper)
 
     parser_parser = subparsers.add_parser('parser', help=\
@@ -302,6 +307,7 @@ if __name__ == '__main__':
         help="Use Lambda function to parse all unparsed cases")
     parser_parser.add_argument('--threads', type=int, default=1,
         help="Number of threads for parsing unparsed cases (default: 1)")
+    parser_parser.add_argument('--case', '-c', help="Parse a specific case number")
     parser_parser.set_defaults(func=run_parser)
 
     if os.getenv('DEV_MODE'):

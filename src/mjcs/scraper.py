@@ -1,6 +1,7 @@
 from .config import config
 from .session import Session
-from .util import db_session, fetch_from_queue, NoItemsInQueue, cases_batch, cases_batch_filter, process_cases
+from .util import (db_session, fetch_from_queue, NoItemsInQueue, cases_batch,
+                   cases_batch_filter, process_cases, get_detail_loc)
 from .models import ScrapeVersion, Scrape, Case
 from sqlalchemy import and_, select
 from hashlib import sha256
@@ -273,6 +274,10 @@ class Scraper:
                 except Exception as e:
                     e.html = response.text
                     raise e
+
+    def scrape_specific_case(self, case_number):
+        detail_loc = get_detail_loc(case_number)
+        return self.scrape_case(case_number, detail_loc)
 
     def scrape_case_thread(self, case):
         case_number = case['case_number']

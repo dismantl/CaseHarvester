@@ -72,6 +72,9 @@ class Parser:
         self.on_error = on_error
         self.threads = threads
 
+    def parse_case(self, case_number):
+        return parse_case(case_number)
+
     def parse_unparsed_cases(self, detail_loc=None):
         if detail_loc:
             filter = and_(Case.last_parse == None, Case.last_scrape != None,

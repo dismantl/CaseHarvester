@@ -343,10 +343,16 @@ class ODYCRIMParser(CaseDetailsParser):
                 except ParserError:
                     pass
                 else:
-                    charge.jail_suspended_years = self.value_column(suspended_row,'Yrs:', ignore_missing=True)
-                    charge.jail_suspended_months = self.value_column(suspended_row,'Mos:', ignore_missing=True)
-                    charge.jail_suspended_days = self.value_column(suspended_row,'Days:', ignore_missing=True)
-                    charge.jail_suspended_hours = self.value_column(suspended_row,'Hours:', ignore_missing=True)
+                    col1 = suspended_row.find_all('td')[1]
+                    value_span = col1.find('span',class_='Value')
+                    if value_span:
+                        self.mark_for_deletion(value_span)
+                        charge.jail_suspended_term = self.format_value(value_span.string)
+                    else:
+                        charge.jail_suspended_years = self.value_column(suspended_row,'Yrs:')
+                        charge.jail_suspended_months = self.value_column(suspended_row,'Mos:')
+                        charge.jail_suspended_days = self.value_column(suspended_row,'Days:')
+                        charge.jail_suspended_hours = self.value_column(suspended_row,'Hours:')
                 try:
                     suspend_all_but_row = self.row_label(t,'Suspend All But:')
                 except ParserError:
