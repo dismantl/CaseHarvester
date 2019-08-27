@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 from mjcs.config import config
-from mjcs.db import TableBase, db_session
+from mjcs.models import Case
+from mjcs.models.common import TableBase
+from mjcs.util import db_session
 from mjcs.spider import Spider
-from mjcs.case import Case
 from mjcs.scraper import Scraper, delete_latest_scrape
 from mjcs.parser import Parser, invoke_parser_lambda
-import mjcs.models
 import boto3
 from datetime import *
 import sys

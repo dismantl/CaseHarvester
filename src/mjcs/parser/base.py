@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from bs4 import BeautifulSoup, SoupStrainer
-from ..db import db_session
-from ..case import Case
+from ..util import db_session
+from ..models import Case
 import re
 from datetime import *
 import inspect

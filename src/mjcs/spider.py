@@ -1,7 +1,7 @@
 from .config import config
-from .db import db_session
-from .search import SearchItem, SearchItemStatus, active_count, active_items, failed_count, failed_items, clear_queue
-from .case import Case
+from .util import db_session
+from .models import SearchItemStatus, Case
+from .search import SearchItem, active_count, active_items, failed_count, failed_items, clear_queue
 from .run import Run
 from .session import AsyncSession
 import trio
@@ -66,10 +66,7 @@ class Spider:
         except asks.errors.RequestTimeout:
             item.handle_timeout(db)
             raise FailedSearchTimeout
-        except asks.errors.BadHttpResponse as e:
-            item.handle_unknown_err(e)
-            raise FailedSearchUnknownError
-        except h11.RemoteProtocolError as e:
+        except (asks.errors.BadHttpResponse, h11.RemoteProtocolError, trio.BrokenStreamError) as e:
             item.handle_unknown_err(e)
             raise FailedSearchUnknownError
 

@@ -4,9 +4,11 @@ LIB_DIR=lib
 DOCS_DIR=docs
 SPIDER_DEPS=
 SCRAPER_DEPS=$(addprefix $(CODE_SRC)/,scraper/scraper_lambda.py \
-	$(addprefix mjcs/,__init__.py scraper.py config.py db.py case.py util.py session.py))
+	$(addprefix mjcs/,__init__.py scraper.py config.py util.py session.py) \
+	$(addprefix mjcs/models/,__init__.py scraper.py case.py))
 PARSER_DEPS=$(addprefix $(CODE_SRC)/,parser/parser_lambda.py \
-	$(addprefix mjcs/,__init__.py config.py db.py case.py util.py parser/*.py))
+	$(addprefix mjcs/,__init__.py config.py util.py parser/*.py) \
+	$(addprefix mjcs/models/,__init__.py case.py))
 SECRETS_FILE=secrets.json
 STACK_PREFIX=caseharvester-stack
 AWS_REGION=us-east-1
@@ -27,6 +29,7 @@ cp $(CODE_SRC)/$(component)/$(component)_lambda.py $(PACKAGE_DIR)/$(component)/
 cp -r $(CODE_SRC)/mjcs $(PACKAGE_DIR)/$(component)/
 rm -rf $(PACKAGE_DIR)/mjcs/_pycache_
 rm -rf $(PACKAGE_DIR)/mjcs/parsers/_pycache_
+rm -rf $(PACKAGE_DIR)/mjcs/models/_pycache_
 endef
 
 define deploy_stack_f

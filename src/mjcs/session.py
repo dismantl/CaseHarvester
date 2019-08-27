@@ -35,13 +35,16 @@ class AsyncSession:
 
     async def renew(self):
         for _ in range(0,5):
-            response = await self.post(
-                'http://casesearch.courts.state.md.us/casesearch/processDisclaimer.jis',
-                data = {
-                    'disclaimer':'Y',
-                    'action':'Continue'
-                }
-            )
+            try:
+                response = await self.post(
+                    'http://casesearch.courts.state.md.us/casesearch/processDisclaimer.jis',
+                    data = {
+                        'disclaimer':'Y',
+                        'action':'Continue'
+                    }
+                )
+            except asks.errors.BadHttpResponse:
+                continue
             if response.status_code != 200:
                 # raise Exception(
                     print("!!! Failed to authenticate with MJCS: code = %d, body = %s" % (response.status_code, response.text))

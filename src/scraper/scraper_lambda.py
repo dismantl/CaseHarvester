@@ -1,5 +1,6 @@
 from mjcs.config import config
-from mjcs.scraper import Scraper, NoItemsInQueue
+from mjcs.scraper import Scraper
+from mjcs.util import NoItemsInQueue
 import json
 from datetime import *
 

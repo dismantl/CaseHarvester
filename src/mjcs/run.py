@@ -1,24 +1,9 @@
-from .db import TableBase
-from .search import active_count
-from .case import total_cases
-from sqlalchemy import Column, Date, Integer, String, Boolean, DateTime
 from datetime import *
+from .search import active_count
+from .util import total_cases
+from .models import BaseRun
 
-class Run(TableBase):
-    __tablename__ = 'runs'
-
-    id = Column(Integer, primary_key=True)
-    query_start_date = Column(Date, nullable=True)
-    query_end_date = Column(Date, nullable=True)
-    court = Column(String, nullable=True)
-    run_start = Column(DateTime)
-    run_seconds = Column(Integer)
-    queue_still_active = Column(Integer)
-    queue_finished = Column(Integer)
-    cases_added = Column(Integer)
-    results_processed = Column(Integer)
-    retry_failed = Column(Boolean)
-
+class Run(BaseRun):
     def __init__(self,
             db,
             start_date=None,

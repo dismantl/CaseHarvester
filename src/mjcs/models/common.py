@@ -1,10 +1,11 @@
-from .base import ParserError, consumer
 from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy.ext.declarative import declared_attr, declarative_base
 import re
 from datetime import *
+
+TableBase = declarative_base()
 
 def date_from_str(date_str):
     if date_str:

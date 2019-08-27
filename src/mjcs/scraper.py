@@ -1,9 +1,8 @@
 from .config import config
-from .db import db_session, TableBase
-from .case import Case, cases_batch, cases_batch_filter, process_cases
 from .session import Session
-from .util import fetch_from_queue, NoItemsInQueue
-from sqlalchemy import and_, select, Column, DateTime, Integer, Numeric, String, ForeignKey, Index
+from .util import db_session, fetch_from_queue, NoItemsInQueue, cases_batch, cases_batch_filter, process_cases
+from .models import ScrapeVersion, Scrape, Case
+from sqlalchemy import and_, select
 from hashlib import sha256
 import requests
 import boto3
@@ -14,25 +13,6 @@ from queue import Queue
 import concurrent.futures
 
 MJCS_AUTH_TARGET = 'http://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp'
-
-class ScrapeVersion(TableBase):
-    __tablename__ = 'scrape_versions'
-
-    s3_version_id = Column(String, primary_key=True)
-    case_number = Column(String, ForeignKey('cases.case_number', ondelete='CASCADE'), index=True)
-    length = Column(Integer)
-    sha256 = Column(String)
-
-class Scrape(TableBase):
-    __tablename__ = 'scrapes'
-
-    id = Column(Integer, primary_key=True)
-    case_number = Column(String, ForeignKey('cases.case_number', ondelete='CASCADE'), index=True)
-    s3_version_id = Column(String, ForeignKey('scrape_versions.s3_version_id', ondelete='CASCADE'))
-    timestamp = Column(DateTime)
-    duration = Column(Numeric, nullable=True) # seconds
-
-Index('ix_scrape_timestamp', Scrape.case_number, Scrape.timestamp.desc())
 
 class ScraperItem:
     def __init__(self, case_number, detail_loc):

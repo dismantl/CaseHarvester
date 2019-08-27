@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # Import our models and database objects
 from mjcs.config import config as my_config
-from mjcs.db import TableBase
+from mjcs.models.common import TableBase
 from mjcs.models import *
 if os.getenv('PRODUCTION_ENV'):
     my_config.initialize_from_environment('production')

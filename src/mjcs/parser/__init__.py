@@ -1,7 +1,6 @@
 from ..config import config
-from ..db import db_session
-from ..case import Case, cases_batch_filter, get_detail_loc, process_cases
-from ..util import fetch_from_queue, NoItemsInQueue
+from ..util import fetch_from_queue, NoItemsInQueue, db_session, cases_batch_filter, get_detail_loc, process_cases
+from ..models import Case
 from sqlalchemy import and_
 import json
 import time
