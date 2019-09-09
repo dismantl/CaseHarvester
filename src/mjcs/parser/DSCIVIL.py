@@ -1,4 +1,5 @@
-from ..models import DSCIVIL, Complaint, Hearing, Judgment, DSCIVILRelatedPerson, DSCIVILEvent, DSCIVILTrial
+from ..models import (DSCIVIL, DSCIVILComplaint, DSCIVILHearing, DSCIVILJudgment,
+                      DSCIVILRelatedPerson, DSCIVILEvent, DSCIVILTrial)
 from .base import CaseDetailsParser, consumer, ParserError
 from datetime import *
 import re
@@ -74,7 +75,7 @@ class DSCIVILParser(CaseDetailsParser):
             except ParserError:
                 break
 
-            c = Complaint(self.case_number)
+            c = DSCIVILComplaint(self.case_number)
             try:
                 subsection_header = self.third_level_header(subsection,'Complaint Information')
                 t1 = self.immediate_sibling(subsection_header,'table')
@@ -118,7 +119,7 @@ class DSCIVILParser(CaseDetailsParser):
             except ParserError:
                 break
 
-            h = Hearing(self.case_number, complaint_id)
+            h = DSCIVILHearing(self.case_number, complaint_id)
             h.date_str = self.value_first_column(t1,'Date:')
             h.time_str = self.value_column(t1,'Time:')
             h.room = self.value_column(t1,'Room:')
@@ -134,7 +135,7 @@ class DSCIVILParser(CaseDetailsParser):
             return
         t1 = self.immediate_sibling(subsection_header,'table')
 
-        j = Judgment(self.case_number, complaint_id)
+        j = DSCIVILJudgment(self.case_number, complaint_id)
         j.judgment_type = self.value_first_column(t1,'Judgment Type:')
         j.judgment_date_str = self.value_column(t1,'Judgment Date:')
         j.judgment_amount = self.value_first_column(t1,'Judgment Amount:',money=True)

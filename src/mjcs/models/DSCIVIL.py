@@ -28,7 +28,7 @@ class DSCIVILCaseTable(CaseTable):
     def case_number(cls):
         return Column(String, ForeignKey('dscivil.case_number', ondelete='CASCADE'), index=True)
 
-class Complaint(DSCIVILCaseTable, TableBase):
+class DSCIVILComplaint(DSCIVILCaseTable, TableBase):
     __tablename__ = 'dscivil_complaints'
 
     id = Column(Integer, primary_key=True)
@@ -69,7 +69,7 @@ class Complaint(DSCIVILCaseTable, TableBase):
         self.last_activity_date = date_from_str(val)
         self._last_activity_date_str = val
 
-class Hearing(DSCIVILCaseTable, TableBase):
+class DSCIVILHearing(DSCIVILCaseTable, TableBase):
     __tablename__ = 'dscivil_hearings'
 
     id = Column(Integer, primary_key=True)
@@ -109,7 +109,7 @@ class Hearing(DSCIVILCaseTable, TableBase):
         self.case_number = case_number
         self.complaint_id = complaint_id
 
-class Judgment(DSCIVILCaseTable, TableBase):
+class DSCIVILJudgment(DSCIVILCaseTable, TableBase):
     __tablename__ = 'dscivil_judgments'
 
     id = Column(Integer, primary_key=True)
