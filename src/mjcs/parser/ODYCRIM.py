@@ -36,7 +36,7 @@ class ODYCRIMParser(CaseDetailsParser):
         self.delete_previous(db, ODYCRIM)
         print("Took %s seconds to delete previous ODYCRIM" % (datetime.now() - a).total_seconds())
 
-        case = ODYCRIM(self.case_number)
+        case = ODYCRIM(case_number=self.case_number)
         section_header = self.first_level_header(soup,'Case Information')
 
         case_info_table = self.table_next_first_column_prompt(section_header,'Court System:')
@@ -73,7 +73,7 @@ class ODYCRIMParser(CaseDetailsParser):
             prompt_span = t.find('span',class_='FirstColumnPrompt',string=prompt_re)
             if not prompt_span:
                 break
-            ref_num = ODYCRIMReferenceNumber(self.case_number)
+            ref_num = ODYCRIMReferenceNumber(case_number=self.case_number)
             ref_num.ref_num = self.value_first_column(t, prompt_span.string)
             ref_num.ref_num_type = prompt_re.fullmatch(prompt_span.string).group(1)
             db.add(ref_num)
@@ -112,15 +112,15 @@ class ODYCRIMParser(CaseDetailsParser):
             # print(party_type)
             # Attorneys for defendants and plaintiffs are listed in two different ways
             if party_type == 'Attorney for Defendant' and plaintiff_id:
-                party = ODYCRIMAttorney(self.case_number)
+                party = ODYCRIMAttorney(case_number=self.case_number)
                 party.party_id = defendant_id
             elif party_type == 'Attorney for Plaintiff' and plaintiff_id:
-                party = ODYCRIMAttorney(self.case_number)
+                party = ODYCRIMAttorney(case_number=self.case_number)
                 party.party_id = plaintiff_id
             elif party_type == 'Defendant':
-                party = ODYCRIMDefendant(self.case_number)
+                party = ODYCRIMDefendant(case_number=self.case_number)
             else:
-                party = ODYCRIMInvolvedParty(self.case_number)
+                party = ODYCRIMInvolvedParty(case_number=self.case_number)
                 party.party_type = party_type
             party.name = self.value_first_column(name_table,'Name:')
             party.agency_name = self.value_first_column(name_table,'AgencyName:',ignore_missing=True)
@@ -187,7 +187,7 @@ class ODYCRIMParser(CaseDetailsParser):
                 if subsection_name == 'Aliases':
                     for span in subsection_table.find_all('span',class_='FirstColumnPrompt'):
                         row = span.find_parent('tr')
-                        alias_ = ODYCRIMAlias(self.case_number)
+                        alias_ = ODYCRIMAlias(case_number=self.case_number)
                         if type(party) == ODYCRIMDefendant:
                             alias_.defendant_id = party.id
                         else:
@@ -198,7 +198,7 @@ class ODYCRIMParser(CaseDetailsParser):
                         db.add(alias_)
                 elif 'Attorney(s) for the' in subsection_name:
                     for span in subsection_table.find_all('span',class_='FirstColumnPrompt',string='Name:'):
-                        attorney = ODYCRIMAttorney(self.case_number)
+                        attorney = ODYCRIMAttorney(case_number=self.case_number)
                         if type(party) == ODYCRIMDefendant:
                             attorney.defendant_id = party.id
                         else:
@@ -253,7 +253,7 @@ class ODYCRIMParser(CaseDetailsParser):
             prev_obj = row
             self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
-            schedule = ODYCRIMCourtSchedule(self.case_number)
+            schedule = ODYCRIMCourtSchedule(case_number=self.case_number)
             schedule.event_type = self.format_value(vals[0].string)
             schedule.date_str = self.format_value(vals[1].string)
             schedule.time_str = self.format_value(vals[2].string)
@@ -282,7 +282,7 @@ class ODYCRIMParser(CaseDetailsParser):
                 break
             prev_obj = container
             t1 = container.find('table')
-            charge = ODYCRIMCharge(self.case_number)
+            charge = ODYCRIMCharge(case_number=self.case_number)
             charge.charge_number = self.value_multi_column(t1,'Charge No:')
             charge.cjis_code = self.value_column(t1,'CJIS Code:')
             charge.statute_code = self.value_column(t1,'Statute Code:')
@@ -379,7 +379,7 @@ class ODYCRIMParser(CaseDetailsParser):
             r1 = span.find_parent('tr')
             supervised_row = self.immediate_sibling(r1,'tr')
             unsupervised_row = self.immediate_sibling(supervised_row,'tr')
-            probation = ODYCRIMProbation(self.case_number)
+            probation = ODYCRIMProbation(case_number=self.case_number)
             probation.probation_start_date_str = self.value_multi_column(r1,'Start Date:')
             probation_supervised = self.value_multi_column(supervised_row,'^Supervised\s*:\s*')
             probation.probation_supervised = True if probation_supervised == 'true' else False
@@ -408,7 +408,7 @@ class ODYCRIMParser(CaseDetailsParser):
         t = self.immediate_sibling(section_header,'table')
         if len(list(t.stripped_strings)) > 0:
             for row in t.find_all('tr'):
-                restitution = ODYCRIMRestitution(self.case_number)
+                restitution = ODYCRIMRestitution(case_number=self.case_number)
                 restitution.restitution_amount = self.value_multi_column(row,'Restitution Amount:',money=True)
                 restitution.restitution_entered_date_str = self.value_column(row,'Entered Date:')
                 db.add(restitution)
@@ -434,7 +434,7 @@ class ODYCRIMParser(CaseDetailsParser):
             prev_obj = row
             self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
-            warrant = ODYCRIMWarrant(self.case_number)
+            warrant = ODYCRIMWarrant(case_number=self.case_number)
             warrant.warrant_type = self.format_value(vals[0].string)
             warrant.issue_date_str = self.format_value(vals[1].string)
             warrant.last_status = self.format_value(vals[2].string)
@@ -462,7 +462,7 @@ class ODYCRIMParser(CaseDetailsParser):
             prev_obj = row
             self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
-            bail_bond = ODYCRIMBailBond(self.case_number)
+            bail_bond = ODYCRIMBailBond(case_number=self.case_number)
             bail_bond.bond_type = self.format_value(vals[0].string)
             bail_bond.bond_amount_posted = self.format_value(vals[1].string,money=True)
             bail_bond.bond_status_date_str = self.format_value(vals[2].string)
@@ -481,7 +481,7 @@ class ODYCRIMParser(CaseDetailsParser):
         section_container = section_header.find_parent('div',class_='AltBodyWindow1')
         for span in section_container.find_all('span',class_='FirstColumnPrompt',string='Bail Date:'):
             t = span.find_parent('table')
-            bond_setting = ODYCRIMBondSetting(self.case_number)
+            bond_setting = ODYCRIMBondSetting(case_number=self.case_number)
             bond_setting.bail_date_str = self.value_first_column(t,'Bail Date:')
             bond_setting.bail_setting_type = self.value_first_column(t,'Bail Setting Type:')
             bond_setting.bail_amount = self.value_first_column(t,'Bail Amount:',money=True)
@@ -505,7 +505,7 @@ class ODYCRIMParser(CaseDetailsParser):
             except ParserError:
                 break
             prev_obj = separator
-            doc = ODYCRIMDocument(self.case_number)
+            doc = ODYCRIMDocument(case_number=self.case_number)
             doc.file_date_str = self.value_first_column(t,'File Date:')
             doc.filed_by = self.value_first_column(t,'Filed By:')
             doc.document_name = self.value_first_column(t,'Document Name:')
@@ -533,7 +533,7 @@ class ODYCRIMParser(CaseDetailsParser):
             prev_obj = row
             self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
-            service = ODYCRIMService(self.case_number)
+            service = ODYCRIMService(case_number=self.case_number)
             service.service_type = self.format_value(vals[0].string)
             service.issued_date_str = self.format_value(vals[1].string,money=True)
             service.service_status = self.format_value(vals[2].string)

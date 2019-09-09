@@ -29,7 +29,7 @@ class CCParser(CaseDetailsParser):
         section_header = self.second_level_header(soup,'Case Information')
         t1 = self.table_next_first_column_prompt(section_header,'Court System:')
 
-        case = CC(self.case_number)
+        case = CC(case_number=self.case_number)
         case.court_system = self.value_first_column(t1,'Court System:',remove_newlines=True)
         case_number = self.value_first_column(t1,'Case Number:')
         if case_number != self.case_number:
@@ -47,7 +47,7 @@ class CCParser(CaseDetailsParser):
             row = self.row_first_columm_prompt(t1,'District Case No:')
             while row:
                 self.mark_for_deletion(row)
-                d = CCDistrictCaseNumber(self.case_number)
+                d = CCDistrictCaseNumber(case_number=self.case_number)
                 d.district_case_number = self.format_value(row.find('span',class_='Value').string)
                 db.add(d)
                 try:
@@ -108,19 +108,20 @@ class CCParser(CaseDetailsParser):
             separator = self.immediate_sibling(prev_obj,'hr')
             prev_obj = separator
 
-            p = party_cls(self.case_number)
+            p = party_cls(case_number=self.case_number)
             p.party_type = self.value_first_column(t1,'Party Type:')
             p.party_number = self.value_column(t1,'Party No.:',ignore_missing=True)
             if name_table:
                 p.name = self.value_first_column(name_table,'Name:',ignore_missing=True)
                 p.business_org_name = self.value_first_column(name_table,'Business or Organization Name:',ignore_missing=True)
             db.add(p)
+            db.flush()
 
             if address_table:
                 for address_span in address_table.find_all('span',class_='FirstColumnPrompt',string='Address:'):
                     r1 = address_span.find_parent('tr')
                     r2 = self.immediate_sibling(r1,'tr')
-                    addr = CCPartyAddress(self.case_number)
+                    addr = CCPartyAddress(case_number=self.case_number)
                     setattr(addr,party_id_param,p.id)
                     addr.address = self.value_first_column(r1,'Address:')
                     addr.city = self.value_first_column(r2,'City:')
@@ -130,14 +131,14 @@ class CCParser(CaseDetailsParser):
 
             if alias_table:
                 for row in alias_table.find_all('tr'):
-                    alias = CCPartyAlias(self.case_number)
+                    alias = CCPartyAlias(case_number=self.case_number)
                     setattr(alias,party_id_param,p.id)
                     alias.name = self.value_first_column(row,'Name:')
                     db.add(alias)
 
             if attorney_table:
                 for name in attorney_table.find_all('span',class_='FirstColumnPrompt',string='Name:'):
-                    a = CCAttorney(self.case_number)
+                    a = CCAttorney(case_number=self.case_number)
                     setattr(a,party_id_param,p.id)
                     row = name.find_parent('tr')
                     a.name = self.value_first_column(row,'Name:')
@@ -212,7 +213,7 @@ class CCParser(CaseDetailsParser):
             except ParserError:
                 break
 
-            s = CCCourtSchedule(self.case_number)
+            s = CCCourtSchedule(case_number=self.case_number)
             s.event_type = self.value_first_column(t1,'Event Type:')
             s.notice_date_str = self.value_column(t1,'Notice Date:')
             s.event_date_str = self.value_first_column(t1,'Event Date:')
@@ -240,7 +241,7 @@ class CCParser(CaseDetailsParser):
                 prev_obj = separator
             except ParserError:
                 break
-            o = CCSupportOrder(self.case_number)
+            o = CCSupportOrder(case_number=self.case_number)
             o.order_id = self.value_first_column(t1,'Order ID:')
             o.version = self.value_column(t1,'Ver:')
             o.order_date_str = self.value_first_column(t1,'Order Date:')
@@ -296,7 +297,7 @@ class CCParser(CaseDetailsParser):
             t1 = judgment.find_parent('table')
             self.mark_for_deletion(judgment)
             self.mark_for_deletion(t1.find('h6',string='ORIGINAL JUDGMENT'))
-            j = CCJudgment(self.case_number)
+            j = CCJudgment(case_number=self.case_number)
             j.judgment_type = judgment_str
             j.entered_date_str = self.value_first_column(t1,'Judgment Entered Date:')
             j.other_fee = self.value_first_column(t1,'Other Fee:',money=True)
@@ -322,6 +323,7 @@ class CCParser(CaseDetailsParser):
                     j.total_indexed_judgment = 0
             j.comments = self.value_first_column(t1,'Comments:',ignore_missing=True)
             db.add(j)
+            db.flush()
 
             against_prompt = t1.find('span',class_='FirstColumnPrompt',string='Judgment Against:')
             self.mark_for_deletion(against_prompt)
@@ -329,7 +331,7 @@ class CCParser(CaseDetailsParser):
             for value in t2.find_all('span',class_='Value'):
                 if value.string:
                     self.mark_for_deletion(value)
-                    j_against = CCJudgmentAgainst(self.case_number)
+                    j_against = CCJudgmentAgainst(case_number=self.case_number)
                     j_against.judgment_id = j.id
                     j_against.name = self.format_value(value.string).rstrip(',')
                     db.add(j_against)
@@ -340,7 +342,7 @@ class CCParser(CaseDetailsParser):
             for value in t2.find_all('span',class_='Value'):
                 if value.string:
                     self.mark_for_deletion(value)
-                    j_in_favor = CCJudgmentAgainst(self.case_number)
+                    j_in_favor = CCJudgmentAgainst(case_number=self.case_number)
                     j_in_favor.judgment_id = j.id
                     j_in_favor.name = self.format_value(value.string).rstrip(',')
                     db.add(j_in_favor)
@@ -357,7 +359,7 @@ class CCParser(CaseDetailsParser):
                     prev_obj = t2
                 except ParserError:
                     break
-                m = CCJudgmentModification(self.case_number)
+                m = CCJudgmentModification(case_number=self.case_number)
                 m.judgment_id = j.id
                 m.judgment_against = self.value_first_column(t2,'Against:')
                 m.judgment_for = self.value_first_column(t2,'For:')
@@ -394,7 +396,7 @@ class CCParser(CaseDetailsParser):
             except ParserError:
                 break
 
-            d = CCDocument(self.case_number)
+            d = CCDocument(case_number=self.case_number)
             doc_seq = self.value_first_column(t1,'Doc No./Seq No.:')
             d.document_number, d.sequency_number = doc_seq.split('/')
             d.file_date_str = self.value_first_column(t1,'File Date:',ignore_missing=True)

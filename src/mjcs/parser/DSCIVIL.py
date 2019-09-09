@@ -27,7 +27,7 @@ class DSCIVILParser(CaseDetailsParser):
         t1 = self.table_next_first_column_prompt(section_header,'Court System:')
         t2 = self.table_next_first_column_prompt(t1,'Case Number:')
 
-        case = DSCIVIL(self.case_number)
+        case = DSCIVIL(case_number=self.case_number)
         case.court_system = self.value_first_column(t1,'Court System:',remove_newlines=True)
         case_number = self.value_first_column(t2,'Case Number:')
         if case_number != self.case_number:
@@ -50,7 +50,7 @@ class DSCIVILParser(CaseDetailsParser):
         except ParserError:
             return
         t1 = self.table_next_first_column_prompt(section_header,'Date:')
-        trial = DSCIVILTrial(self.case_number)
+        trial = DSCIVILTrial(case_number=self.case_number)
         trial.date_str = self.value_first_column(t1,'Date:')
         trial.time_str = self.value_column(t1,'Time:')
         trial.room = self.value_column(t1,'Room:',ignore_missing=True)
@@ -75,7 +75,7 @@ class DSCIVILParser(CaseDetailsParser):
             except ParserError:
                 break
 
-            c = DSCIVILComplaint(self.case_number)
+            c = DSCIVILComplaint(case_number=self.case_number)
             try:
                 subsection_header = self.third_level_header(subsection,'Complaint Information')
                 t1 = self.immediate_sibling(subsection_header,'table')
@@ -98,6 +98,7 @@ class DSCIVILParser(CaseDetailsParser):
                 c.amount = self.value_column(t1,'Amount',money=True) # no colon after label
                 c.last_activity_date_str = self.value_column(t1,'Last Activity Date:')
             db.add(c)
+            db.flush()
 
             self.hearing(db, subsection, c.id)
             self.judgment(db, subsection, c.id)
@@ -119,7 +120,7 @@ class DSCIVILParser(CaseDetailsParser):
             except ParserError:
                 break
 
-            h = DSCIVILHearing(self.case_number, complaint_id)
+            h = DSCIVILHearing(case_number=self.case_number, complaint_id=complaint_id)
             h.date_str = self.value_first_column(t1,'Date:')
             h.time_str = self.value_column(t1,'Time:')
             h.room = self.value_column(t1,'Room:')
@@ -135,7 +136,7 @@ class DSCIVILParser(CaseDetailsParser):
             return
         t1 = self.immediate_sibling(subsection_header,'table')
 
-        j = DSCIVILJudgment(self.case_number, complaint_id)
+        j = DSCIVILJudgment(case_number=self.case_number, complaint_id=complaint_id)
         j.judgment_type = self.value_first_column(t1,'Judgment Type:')
         j.judgment_date_str = self.value_column(t1,'Judgment Date:')
         j.judgment_amount = self.value_first_column(t1,'Judgment Amount:',money=True)
@@ -180,7 +181,7 @@ class DSCIVILParser(CaseDetailsParser):
             except ParserError:
                 break
 
-            p = DSCIVILRelatedPerson(self.case_number, complaint_id)
+            p = DSCIVILRelatedPerson(case_number=self.case_number, complaint_id=complaint_id)
             p.name = self.value_first_column(t1,'Name:')
             p.connection = self.value_first_column(t1,'Connection to Complaint:')
             if t1.find('table'): # Address is inside another table
@@ -223,7 +224,7 @@ class DSCIVILParser(CaseDetailsParser):
             except ParserError:
                 break
 
-            event = DSCIVILEvent(self.case_number)
+            event = DSCIVILEvent(case_number=self.case_number)
             event.event_name = self.value_first_column(t1,'Type:')
             event.complaint_number = self.value_column(t1,'Complaint No.:')
             event.date_str = self.value_first_column(t1,'Date:')

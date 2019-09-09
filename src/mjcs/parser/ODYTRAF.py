@@ -35,7 +35,7 @@ class ODYTRAFParser(CaseDetailsParser):
         self.delete_previous(db, ODYTRAF)
         print("Took %s seconds to delete previous ODYTRAF" % (datetime.now() - a).total_seconds())
 
-        case = ODYTRAF(self.case_number)
+        case = ODYTRAF(case_number=self.case_number)
         section_header = self.first_level_header(soup,'Case Information')
 
         case_info_table = self.table_next_first_column_prompt(section_header,'Court System:')
@@ -77,7 +77,7 @@ class ODYTRAFParser(CaseDetailsParser):
             prompt_span = t.find('span',class_='FirstColumnPrompt',string=prompt_re)
             if not prompt_span:
                 break
-            ref_num = ODYTRAFReferenceNumber(self.case_number)
+            ref_num = ODYTRAFReferenceNumber(case_number=self.case_number)
             ref_num.ref_num = self.value_first_column(t, prompt_span.string)
             ref_num.ref_num_type = prompt_re.fullmatch(prompt_span.string).group(1)
             db.add(ref_num)
@@ -123,15 +123,15 @@ class ODYTRAFParser(CaseDetailsParser):
                 # print(party_type)
                 # Attorneys for defendants and plaintiffs are listed in two different ways
                 if party_type == 'Attorney for Defendant' and plaintiff_id:
-                    party = ODYTRAFAttorney(self.case_number)
+                    party = ODYTRAFAttorney(case_number=self.case_number)
                     party.party_id = defendant_id
                 elif party_type == 'Attorney for Plaintiff' and plaintiff_id:
-                    party = ODYTRAFAttorney(self.case_number)
+                    party = ODYTRAFAttorney(case_number=self.case_number)
                     party.party_id = plaintiff_id
                 elif party_type == 'Defendant':
-                    party = ODYTRAFDefendant(self.case_number)
+                    party = ODYTRAFDefendant(case_number=self.case_number)
                 else:
-                    party = ODYTRAFInvolvedParty(self.case_number)
+                    party = ODYTRAFInvolvedParty(case_number=self.case_number)
                     party.party_type = party_type
                 party.name = self.value_first_column(name_table,'Name:')
                 party.agency_name = self.value_first_column(name_table,'AgencyName:',ignore_missing=True)
@@ -188,7 +188,7 @@ class ODYTRAFParser(CaseDetailsParser):
                     if subsection_name == 'Aliases':
                         for span in subsection_table.find_all('span',class_='FirstColumnPrompt'):
                             row = span.find_parent('tr')
-                            alias_ = ODYTRAFAlias(self.case_number)
+                            alias_ = ODYTRAFAlias(case_number=self.case_number)
                             if type(party) == ODYTRAFDefendant:
                                 alias_.defendant_id = party.id
                             else:
@@ -199,7 +199,7 @@ class ODYTRAFParser(CaseDetailsParser):
                             db.add(alias_)
                     elif 'Attorney(s) for the' in subsection_name:
                         for span in subsection_table.find_all('span',class_='FirstColumnPrompt',string='Name:'):
-                            attorney = ODYTRAFAttorney(self.case_number)
+                            attorney = ODYTRAFAttorney(case_number=self.case_number)
                             if type(party) == ODYTRAFDefendant:
                                 attorney.defendant_id = party.id
                             else:
@@ -254,7 +254,7 @@ class ODYTRAFParser(CaseDetailsParser):
             prev_obj = row
             self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
-            schedule = ODYTRAFCourtSchedule(self.case_number)
+            schedule = ODYTRAFCourtSchedule(case_number=self.case_number)
             schedule.event_type = self.format_value(vals[0].string)
             schedule.date_str = self.format_value(vals[1].string)
             schedule.time_str = self.format_value(vals[2].string)
@@ -282,7 +282,7 @@ class ODYTRAFParser(CaseDetailsParser):
                 break
             prev_obj = container
             t1 = container.find('table')
-            charge = ODYTRAFCharge(self.case_number)
+            charge = ODYTRAFCharge(case_number=self.case_number)
             charge.charge_number = self.value_multi_column(t1,'Charge No:')
             charge.statute_code = self.value_column(t1,'Statute Code:')
             t2 = self.immediate_sibling(t1,'table')
@@ -412,7 +412,7 @@ class ODYTRAFParser(CaseDetailsParser):
             prev_obj = row
             self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
-            warrant = ODYTRAFWarrant(self.case_number)
+            warrant = ODYTRAFWarrant(case_number=self.case_number)
             warrant.warrant_type = self.format_value(vals[0].string)
             warrant.issue_date_str = self.format_value(vals[1].string)
             warrant.last_status = self.format_value(vals[2].string)
@@ -440,7 +440,7 @@ class ODYTRAFParser(CaseDetailsParser):
             prev_obj = row
             self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
-            bail_bond = ODYTRAFBailBond(self.case_number)
+            bail_bond = ODYTRAFBailBond(case_number=self.case_number)
             bail_bond.bond_type = self.format_value(vals[0].string)
             bail_bond.bond_amount_set = self.format_value(vals[1].string,money=True)
             bail_bond.bond_status_date_str = self.format_value(vals[2].string)
@@ -459,7 +459,7 @@ class ODYTRAFParser(CaseDetailsParser):
         subsection_container = subsection_header.find_parent('div',class_='AltBodyWindow1')
         for span in subsection_container.find_all('span',class_='FirstColumnPrompt',string='Bail Date:'):
             t = span.find_parent('table')
-            bond_setting = ODYTRAFBondSetting(self.case_number)
+            bond_setting = ODYTRAFBondSetting(case_number=self.case_number)
             bond_setting.bail_date_str = self.value_first_column(t,'Bail Date:')
             bond_setting.bail_setting_type = self.value_first_column(t,'Bail Setting Type:')
             bond_setting.bail_amount = self.value_first_column(t,'Bail Amount:',money=True)
@@ -476,7 +476,7 @@ class ODYTRAFParser(CaseDetailsParser):
             return
         container = self.immediate_sibling(section_header,'div',class_='AltBodyWindow1')
         for t in container.find_all('table'):
-            doc = ODYTRAFDocument(self.case_number)
+            doc = ODYTRAFDocument(case_number=self.case_number)
             doc.file_date_str = self.value_first_column(t,'File Date:')
             doc.filed_by = self.value_first_column(t,'Filed By:')
             doc.document_name = self.value_first_column(t,'Document Name:')
@@ -505,7 +505,7 @@ class ODYTRAFParser(CaseDetailsParser):
             prev_obj = row
             self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
-            service = ODYTRAFService(self.case_number)
+            service = ODYTRAFService(case_number=self.case_number)
             service.service_type = self.format_value(vals[0].string)
             service.requested_by = self.format_value(vals[1].string)
             service.issued_date_str = self.format_value(vals[2].string,money=True)

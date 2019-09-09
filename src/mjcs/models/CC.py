@@ -1,5 +1,6 @@
 from .common import TableBase, CaseTable, date_from_str, RelatedPerson, Event, Trial
 from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger, Text
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
 
@@ -7,15 +8,17 @@ class CC(CaseTable, TableBase):
     __tablename__ = 'cc'
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String)
-    title = Column(String)
-    case_type = Column(String,nullable=True)
-    filing_date = Column(Date,nullable=True)
-    _filing_date_str = Column('filing_date_str',String,nullable=True)
-    case_status = Column(String,nullable=True)
-    case_disposition = Column(String,nullable=True)
-    disposition_date = Column(Date,nullable=True)
-    _disposition_date_str = Column('disposition_date_str',String,nullable=True)
+    court_system = Column(String, index=True)
+    title = Column(String, index=True)
+    case_type = Column(String,nullable=True, index=True)
+    filing_date = Column(Date,nullable=True, index=True)
+    _filing_date_str = Column('filing_date_str',String,nullable=True, index=True)
+    case_status = Column(String,nullable=True, index=True)
+    case_disposition = Column(String,nullable=True, index=True)
+    disposition_date = Column(Date,nullable=True, index=True)
+    _disposition_date_str = Column('disposition_date_str',String,nullable=True, index=True)
+
+    case = relationship('Case', backref=backref('cc', uselist=False))
 
     @hybrid_property
     def filing_date_str(self):
@@ -40,6 +43,7 @@ class CCCaseTable(CaseTable):
 
 class CCDistrictCaseNumber(CCCaseTable, TableBase):
     __tablename__ = 'cc_district_case_numbers'
+    cc = relationship('CC', backref='district_case_numbers')
 
     id = Column(Integer, primary_key=True)
     district_case_number = Column(String) # TODO eventually make a ForeignKey relation
@@ -51,14 +55,29 @@ class Party:
     name = Column(String,nullable=True)
     business_org_name = Column(String,nullable=True)
 
+    @declared_attr
+    def aliases(cls):
+        return relationship('CCPartyAlias')
+
+    @declared_attr
+    def addresses(cls):
+        return relationship('CCPartyAddress')
+
+    @declared_attr
+    def attorneys(cls):
+        return relationship('CCAttorney')
+
 class CCPlaintiff(Party, CCCaseTable, TableBase):
     __tablename__ = 'cc_plaintiffs'
+    cc = relationship('CC', backref='plaintiffs')
 
 class CCDefendant(Party, CCCaseTable, TableBase):
     __tablename__ = 'cc_defendants'
+    cc = relationship('CC', backref='defendants')
 
 class CCRelatedPerson(Party, CCCaseTable, TableBase):
     __tablename__ = 'cc_related_persons'
+    cc = relationship('CC', backref='related_persons')
 
 class CCPartyAlias(CCCaseTable, TableBase):
     __tablename__ = 'cc_party_alias'
@@ -118,6 +137,7 @@ class CCAttorney(CCCaseTable, TableBase):
 
 class CCCourtSchedule(CCCaseTable, TableBase):
     __tablename__ = 'cc_court_schedule'
+    cc = relationship('CC', backref='court_schedules')
 
     id = Column(Integer, primary_key=True)
     event_type = Column(String)
@@ -171,6 +191,7 @@ class CCCourtSchedule(CCCaseTable, TableBase):
 
 class CCDocument(CCCaseTable, TableBase):
     __tablename__ = 'cc_documents'
+    cc = relationship('CC', backref='documents')
 
     id = Column(Integer, primary_key=True)
     document_number = Column(Integer)
@@ -187,6 +208,7 @@ class CCDocument(CCCaseTable, TableBase):
 
 class CCJudgment(CCCaseTable, TableBase):
     __tablename__ = 'cc_judgments'
+    cc = relationship('CC', backref='judgments')
 
     id = Column(Integer, primary_key=True)
     judgment_type = Column(String)
@@ -204,6 +226,9 @@ class CCJudgment(CCCaseTable, TableBase):
     total_indexed_judgment = Column(Numeric)
     tij_other = Column(String,nullable=True)
     comments = Column(String,nullable=True)
+    judgment_modifications = relationship('CCJudgmentModification')
+    judgments_against = relationship('CCJudgmentAgainst')
+    judgments_in_favor = relationship('CCJudgmentInFavor')
 
     @hybrid_property
     def entered_date_str(self):
@@ -261,6 +286,7 @@ class CCJudgmentInFavor(CCCaseTable, TableBase):
 
 class CCSupportOrder(CCCaseTable, TableBase):
     __tablename__ = 'cc_support_orders'
+    cc = relationship('CC', backref='support_orders')
 
     id = Column(Integer, primary_key=True)
     order_id = Column(Integer)

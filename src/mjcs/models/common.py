@@ -20,9 +20,6 @@ class CaseTable:
     def case_number(cls):
         return Column(String, ForeignKey('cases.case_number', ondelete='CASCADE'), index=True, unique=True)
 
-    def __init__(self,case_number):
-        self.case_number = case_number
-
 class Defendant:
     id = Column(Integer, primary_key=True)
     name = Column(String)

@@ -1,5 +1,6 @@
 from .common import TableBase, CaseTable, date_from_str, RelatedPerson, Event, Trial
 from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
 
@@ -7,13 +8,15 @@ class DSCIVIL(CaseTable, TableBase):
     __tablename__ = 'dscivil'
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String)
-    claim_type = Column(String,nullable=True)
-    district_code = Column(Integer,nullable=True)
-    location_code = Column(Integer,nullable=True)
-    filing_date = Column(Date,nullable=True)
-    _filing_date_str = Column('filing_date_str',String,nullable=True)
-    case_status = Column(String,nullable=True)
+    court_system = Column(String, index=True)
+    claim_type = Column(String,nullable=True, index=True)
+    district_code = Column(Integer,nullable=True, index=True)
+    location_code = Column(Integer,nullable=True, index=True)
+    filing_date = Column(Date,nullable=True, index=True)
+    _filing_date_str = Column('filing_date_str',String,nullable=True, index=True)
+    case_status = Column(String,nullable=True, index=True)
+
+    case = relationship('Case', backref=backref('dscivil', uselist=False))
 
     @hybrid_property
     def filing_date_str(self):
@@ -30,6 +33,7 @@ class DSCIVILCaseTable(CaseTable):
 
 class DSCIVILComplaint(DSCIVILCaseTable, TableBase):
     __tablename__ = 'dscivil_complaints'
+    dscivil = relationship('DSCIVIL', backref='complaints')
 
     id = Column(Integer, primary_key=True)
     complaint_number = Column(Integer,nullable=True)
@@ -71,6 +75,7 @@ class DSCIVILComplaint(DSCIVILCaseTable, TableBase):
 
 class DSCIVILHearing(DSCIVILCaseTable, TableBase):
     __tablename__ = 'dscivil_hearings'
+    dscivil_complaint = relationship('DSCIVILComplaint', backref='hearings')
 
     id = Column(Integer, primary_key=True)
     complaint_id = Column(Integer, ForeignKey('dscivil_complaints.id'))
@@ -105,12 +110,9 @@ class DSCIVILHearing(DSCIVILCaseTable, TableBase):
                 pass
         self._time_str = val
 
-    def __init__(self,case_number,complaint_id):
-        self.case_number = case_number
-        self.complaint_id = complaint_id
-
 class DSCIVILJudgment(DSCIVILCaseTable, TableBase):
     __tablename__ = 'dscivil_judgments'
+    dscivil_complaint = relationship('DSCIVILComplaint', backref='judgments')
 
     id = Column(Integer, primary_key=True)
     complaint_id = Column(Integer, ForeignKey('dscivil_complaints.id'))
@@ -183,23 +185,18 @@ class DSCIVILJudgment(DSCIVILCaseTable, TableBase):
         self.satisfaction_date = date_from_str(val)
         self._satisfaction_date_str = val
 
-    def __init__(self,case_number,complaint_id):
-        self.case_number = case_number
-        self.complaint_id = complaint_id
-
 class DSCIVILRelatedPerson(DSCIVILCaseTable, RelatedPerson, TableBase):
     __tablename__ = 'dscivil_related_persons'
+    dscivil_complaint = relationship('DSCIVILComplaint', backref='related_persons')
 
     complaint_id = Column(Integer, ForeignKey('dscivil_complaints.id'))
 
-    def __init__(self,case_number,complaint_id):
-        self.case_number = case_number
-        self.complaint_id = complaint_id
-
 class DSCIVILEvent(DSCIVILCaseTable, Event, TableBase):
     __tablename__ = 'dscivil_events'
+    dscivil = relationship('DSCIVIL', backref='events')
 
     complaint_number = Column(Integer,nullable=True)
 
 class DSCIVILTrial(DSCIVILCaseTable, Trial, TableBase):
     __tablename__ = 'dscivil_trials'
+    dscivil = relationship('DSCIVIL', backref='trials')

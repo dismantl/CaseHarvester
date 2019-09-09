@@ -1,5 +1,6 @@
 from .common import TableBase, CaseTable, Trial, Event, date_from_str, Defendant, DefendantAlias, RelatedPerson
 from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
 
@@ -7,16 +8,18 @@ class DSCR(CaseTable, TableBase):
     __tablename__ = 'dscr'
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String)
-    tracking_number = Column(String, nullable=True)
-    case_type = Column(String, nullable=True)
-    district_code = Column(Integer, nullable=True)
-    location_code = Column(Integer, nullable=True)
-    document_type = Column(String, nullable=True)
-    issued_date = Column(Date, nullable=True)
-    _issued_date_str = Column('issued_date_str',String, nullable=True)
-    case_status = Column(String, nullable=True)
-    case_disposition = Column(String, nullable=True)
+    court_system = Column(String, index=True)
+    tracking_number = Column(String, nullable=True, index=True)
+    case_type = Column(String, nullable=True, index=True)
+    district_code = Column(Integer, nullable=True, index=True)
+    location_code = Column(Integer, nullable=True, index=True)
+    document_type = Column(String, nullable=True, index=True)
+    issued_date = Column(Date, nullable=True, index=True)
+    _issued_date_str = Column('issued_date_str',String, nullable=True, index=True)
+    case_status = Column(String, nullable=True, index=True)
+    case_disposition = Column(String, nullable=True, index=True)
+
+    case = relationship('Case', backref=backref('dscr', uselist=False))
 
     @hybrid_property
     def issued_date_str(self):
@@ -33,6 +36,7 @@ class DSCRCaseTable(CaseTable):
 
 class DSCRCharge(DSCRCaseTable, TableBase):
     __tablename__ = 'dscr_charges'
+    dscr = relationship('DSCR', backref='charges')
 
     id = Column(Integer, primary_key=True)
     charge_number = Column(Integer)
@@ -122,21 +126,27 @@ class DSCRCharge(DSCRCaseTable, TableBase):
 
 class DSCRDefendant(DSCRCaseTable, Defendant, TableBase):
     __tablename__ = 'dscr_defendants'
+    dscr = relationship('DSCR', backref='defendants')
 
 class DSCRDefendantAlias(DSCRCaseTable, DefendantAlias, TableBase):
     __tablename__ = 'dscr_defendant_aliases'
+    dscr = relationship('DSCR', backref='defendant_aliases')
 
 class DSCRRelatedPerson(DSCRCaseTable, RelatedPerson, TableBase):
     __tablename__ = 'dscr_related_persons'
+    dscr = relationship('DSCR', backref='related_persons')
 
 class DSCREvent(DSCRCaseTable, Event, TableBase):
     __tablename__ = 'dscr_events'
+    dscr = relationship('DSCR', backref='events')
 
 class DSCRTrial(DSCRCaseTable, Trial, TableBase):
     __tablename__ = 'dscr_trials'
+    dscr = relationship('DSCR', backref='trials')
 
 class DSCRBailEvent(DSCRCaseTable, TableBase):
     __tablename__ = 'dscr_bail_events'
+    dscr = relationship('DSCR', backref='bail_events')
 
     id = Column(Integer, primary_key=True)
     event_name = Column(String)

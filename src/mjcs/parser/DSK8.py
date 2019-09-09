@@ -24,7 +24,7 @@ class DSK8Parser(CaseDetailsParser):
         self.delete_previous(db, DSK8)
         print("Took %s seconds to delete previous DSK8" % (datetime.now() - a).total_seconds())
 
-        case = DSK8(self.case_number)
+        case = DSK8(case_number=self.case_number)
         section_header = self.second_level_header(soup,'Case Information')
 
         t1 = self.table_next_first_column_prompt(section_header,'Court System:')
@@ -52,7 +52,7 @@ class DSK8Parser(CaseDetailsParser):
     @consumer
     def defendant_and_aliases(self, db, soup):
         section_header = self.second_level_header(soup,'Defendant Information')
-        defendant = DSK8Defendant(self.case_number)
+        defendant = DSK8Defendant(case_number=self.case_number)
 
         t1 = self.table_next_first_column_prompt(section_header,'Defendant Name:')
         t2 = self.immediate_sibling(t1,'table')
@@ -86,7 +86,7 @@ class DSK8Parser(CaseDetailsParser):
                 break
 
             if list(t1.stripped_strings) or list(t2.stripped_strings) or list(t3.stripped_strings):
-                alias = DSK8DefendantAlias(self.case_number)
+                alias = DSK8DefendantAlias(case_number=self.case_number)
                 alias.alias_name = self.value_first_column(t1,'ALIAS:',ignore_missing=True)
                 alias.address_1 = self.value_combined_first_column(t2,'Address:',ignore_missing=True)
                 alias.city = self.value_first_column(t3,'City:',ignore_missing=True)
@@ -98,7 +98,7 @@ class DSK8Parser(CaseDetailsParser):
                 addresses = t2.find_all('span',class_='FirstColumnPrompt',string='Address:')
                 if len(addresses) > 1:
                     for address in addresses[1:]:
-                        new_alias = DSK8DefendantAlias(self.case_number)
+                        new_alias = DSK8DefendantAlias(case_number=self.case_number)
                         new_alias.address_1 = self.value_combined_first_column(address.find_parent('td'),'Address:')
                         new_alias.city = alias.city
                         new_alias.state = alias.state
@@ -125,7 +125,7 @@ class DSK8Parser(CaseDetailsParser):
             except ParserError:
                 break
 
-            charge = DSK8Charge(self.case_number)
+            charge = DSK8Charge(case_number=self.case_number)
             charge.charge_number = self.value_first_column(section,'Charge No:')
             charge.cjis_traffic_code = self.value_first_column(section,'CJIS/Traffic Code:',ignore_missing=True)
             charge.arrest_citation_number = self.value_multi_column(section,'Arrest/Citation No:',ignore_missing=True)
@@ -192,7 +192,7 @@ class DSK8Parser(CaseDetailsParser):
                 prev_obj = separator
             except ParserError:
                 break
-            trial = DSK8Trial(self.case_number)
+            trial = DSK8Trial(case_number=self.case_number)
             trial.date_str = self.value_first_column(t1,'Court Date:')
             trial.time_str = self.value_column(t1,'Court Time:')
             trial.room = self.value_column(t1,'Room:')
@@ -222,7 +222,7 @@ class DSK8Parser(CaseDetailsParser):
                 prev_obj = separator
             except ParserError:
                 break
-            person = DSK8RelatedPerson(self.case_number)
+            person = DSK8RelatedPerson(case_number=self.case_number)
             person.name = self.value_combined_first_column(t1,'Name:') # Can be null
             person.connection = self.value_combined_first_column(t1,'Connection:')
             person.address_1 = self.value_combined_first_column(t2,'Address:',ignore_missing=True)
@@ -235,7 +235,7 @@ class DSK8Parser(CaseDetailsParser):
             addresses = t2.find_all('span',class_='FirstColumnPrompt',string='Address:')
             if len(addresses) > 1:
                 for address in addresses[1:]:
-                    new_person = DSK8RelatedPerson(self.case_number)
+                    new_person = DSK8RelatedPerson(case_number=self.case_number)
                     new_person.address_1 = self.value_combined_first_column(address.find_parent('td'),'Address:')
                     new_person.city = person.city
                     new_person.state = person.state
@@ -265,7 +265,7 @@ class DSK8Parser(CaseDetailsParser):
             t2 = self.table_next_first_column_prompt(t1,'Bond Type:')
             t3 = self.immediate_sibling(t2,'table')
 
-            b = DSK8BailAndBond(self.case_number)
+            b = DSK8BailAndBond(case_number=self.case_number)
 
             b.bail_amount = self.value_first_column(section,'Bail Amount:',money=True)
             b.bail_number = self.value_multi_column(section,'Bail Number:',ignore_missing=True)
@@ -286,6 +286,7 @@ class DSK8Parser(CaseDetailsParser):
             b.bondsman_company_name = self.value_first_column(section,'CompanyName:',ignore_missing=True)
             b.judgment_date_str = self.value_multi_column(section,'JudgementDate:',ignore_missing=True)
             db.add(b)
+            db.flush()
 
             prev_obj_2 = None
             while True:
@@ -300,7 +301,7 @@ class DSK8Parser(CaseDetailsParser):
                     prev_obj_2 = t5
                 except ParserError:
                     break
-                bondsman = DSK8Bondsman(self.case_number, b.id)
+                bondsman = DSK8Bondsman(case_number=self.case_number, bail_and_bond_id=b.id)
                 bondsman.name = self.value_first_column(t4,'Bail Bondsman:')
                 bondsman.address_1 = self.value_first_column(t4,'Street:')
                 bondsman.city = self.value_first_column(t5,'City:')
@@ -329,7 +330,7 @@ class DSK8Parser(CaseDetailsParser):
                 prev_obj = event_row
             except ParserError:
                 break
-            event = DSK8Event(self.case_number)
+            event = DSK8Event(case_number=self.case_number)
             event_fields = list(event_row.find_all('span',class_='Value'))
             event.event_name = self.format_value(event_fields[0].string)
             self.mark_for_deletion(event_fields[0])

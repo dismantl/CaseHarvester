@@ -1,5 +1,6 @@
 from .common import TableBase, CaseTable, Trial, Event, date_from_str, Defendant, DefendantAlias, RelatedPerson
 from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
 
@@ -7,14 +8,16 @@ class ODYCRIM(CaseTable, TableBase):
     __tablename__ = 'odycrim'
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String)
-    location = Column(String)
-    case_title = Column(String)
-    case_type = Column(String, nullable=True)
-    filing_date = Column(Date, nullable=True)
-    _filing_date_str = Column('filing_date_str',String, nullable=True)
-    case_status = Column(String, nullable=True)
-    tracking_numbers = Column(String, nullable=True)
+    court_system = Column(String, index=True)
+    location = Column(String, index=True)
+    case_title = Column(String, index=True)
+    case_type = Column(String, nullable=True, index=True)
+    filing_date = Column(Date, nullable=True, index=True)
+    _filing_date_str = Column('filing_date_str',String, nullable=True, index=True)
+    case_status = Column(String, nullable=True, index=True)
+    tracking_numbers = Column(String, nullable=True, index=True)
+
+    case = relationship('Case', backref=backref('odycrim', uselist=False))
 
     @hybrid_property
     def filing_date_str(self):
@@ -31,6 +34,7 @@ class ODYCRIMCaseTable(CaseTable):
 
 class ODYCRIMReferenceNumber(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_reference_numbers'
+    odycrim = relationship('ODYCRIM', backref='reference_numbers')
 
     id = Column(Integer, primary_key=True)
     ref_num = Column(String, nullable=False)
@@ -38,13 +42,17 @@ class ODYCRIMReferenceNumber(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMDefendant(ODYCRIMCaseTable, Defendant, TableBase):
     __tablename__ = 'odycrim_defendants'
+    odycrim = relationship('ODYCRIM', backref='defendants')
 
     height = Column(String, nullable=True)
     hair_color = Column(String, nullable=True)
     eye_color = Column(String, nullable=True)
+    aliases = relationship('ODYCRIMAlias')
+    attorneys = relationship('ODYCRIMAttorney')
 
 class ODYCRIMInvolvedParty(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_involved_parties'
+    odycrim = relationship('ODYCRIM', backref='involved_parties')
 
     id = Column(Integer, primary_key=True)
     party_type = Column(String, nullable=False)
@@ -55,6 +63,8 @@ class ODYCRIMInvolvedParty(ODYCRIMCaseTable, TableBase):
     city = Column(String, nullable=True)
     state = Column(String, nullable=True)
     zip_code = Column(String, nullable=True)
+    aliases = relationship('ODYCRIMAlias')
+    attorneys = relationship('ODYCRIMAttorney')
 
 class ODYCRIMAlias(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_aliases'
@@ -81,6 +91,7 @@ class ODYCRIMAttorney(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMCourtSchedule(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_court_schedule'
+    odycrim = relationship('ODYCRIM', backref='court_schedules')
 
     id = Column(Integer, primary_key=True)
     event_type = Column(String, nullable=False)
@@ -113,6 +124,7 @@ class ODYCRIMCourtSchedule(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMCharge(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_charges'
+    odycrim = relationship('ODYCRIM', backref='charges')
 
     id = Column(Integer, primary_key=True)
     charge_number = Column(Integer)
@@ -194,6 +206,7 @@ class ODYCRIMCharge(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMProbation(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_probation'
+    odycrim = relationship('ODYCRIM', backref='probation')
 
     id = Column(Integer, primary_key=True)
     probation_start_date = Column(Date, nullable=True)
@@ -219,6 +232,7 @@ class ODYCRIMProbation(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMRestitution(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_restitutions'
+    odycrim = relationship('ODYCRIM', backref='restitutions')
 
     id = Column(Integer, primary_key=True)
     restitution_amount = Column(Numeric, nullable=True)
@@ -235,6 +249,7 @@ class ODYCRIMRestitution(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMWarrant(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_warrants'
+    odycrim = relationship('ODYCRIM', backref='warrants')
 
     id = Column(Integer, primary_key=True)
     warrant_type = Column(String)
@@ -262,6 +277,7 @@ class ODYCRIMWarrant(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMBailBond(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_bail_bonds'
+    odycrim = relationship('ODYCRIM', backref='bail_bonds')
 
     id = Column(Integer, primary_key=True)
     bond_type = Column(String)
@@ -280,6 +296,7 @@ class ODYCRIMBailBond(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMBondSetting(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_bond_settings'
+    odycrim = relationship('ODYCRIM', backref='bond_settings')
 
     id = Column(Integer, primary_key=True)
     bail_date = Column(Date, nullable=True)
@@ -298,6 +315,7 @@ class ODYCRIMBondSetting(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMDocument(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_documents'
+    odycrim = relationship('ODYCRIM', backref='documents')
 
     id = Column(Integer, primary_key=True)
     file_date = Column(Date,nullable=True)
@@ -315,6 +333,7 @@ class ODYCRIMDocument(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMService(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_services'
+    odycrim = relationship('ODYCRIM', backref='services')
 
     id = Column(Integer, primary_key=True)
     service_type = Column(String, nullable=False)

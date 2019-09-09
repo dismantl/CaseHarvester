@@ -1,5 +1,6 @@
 from .common import TableBase, CaseTable, date_from_str, Defendant, DefendantAlias, RelatedPerson, Trial, Event
 from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
 
@@ -7,17 +8,19 @@ class DSK8(CaseTable, TableBase):
     __tablename__ = 'dsk8'
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String)
-    case_status = Column(String)
-    status_date = Column(Date, nullable=True)
-    _status_date_str = Column('status_date_str',String)
-    tracking_number = Column(String, nullable=True)
-    complaint_number = Column(String, nullable=True)
-    district_case_number = Column(String, nullable=True) # TODO eventually make a ForeignKey relation
-    filing_date = Column(Date, nullable=True)
-    _filing_date_str = Column('filing_date_str',String)
-    incident_date = Column(Date, nullable=True)
-    _incident_date_str = Column('incident_date_str',String)
+    court_system = Column(String, index=True)
+    case_status = Column(String, index=True)
+    status_date = Column(Date, nullable=True, index=True)
+    _status_date_str = Column('status_date_str',String, index=True)
+    tracking_number = Column(String, nullable=True, index=True)
+    complaint_number = Column(String, nullable=True, index=True)
+    district_case_number = Column(String, nullable=True, index=True) # TODO eventually make a ForeignKey relation
+    filing_date = Column(Date, nullable=True, index=True)
+    _filing_date_str = Column('filing_date_str',String, index=True)
+    incident_date = Column(Date, nullable=True, index=True)
+    _incident_date_str = Column('incident_date_str',String, index=True)
+
+    case = relationship('Case', backref=backref('dsk8', uselist=False))
 
     @hybrid_property
     def status_date_str(self):
@@ -50,6 +53,7 @@ class DSK8CaseTable(CaseTable):
 
 class DSK8Charge(DSK8CaseTable, TableBase):
     __tablename__ = 'dsk8_charges'
+    dsk8 = relationship('DSK8', backref='charges')
 
     id = Column(Integer, primary_key=True)
     charge_number = Column(Integer)
@@ -126,6 +130,7 @@ class DSK8Charge(DSK8CaseTable, TableBase):
 
 class DSK8BailAndBond(DSK8CaseTable, TableBase):
     __tablename__ = 'dsk8_bail_and_bond'
+    dsk8 = relationship('DSK8', backref='bail_and_bonds')
 
     id = Column(Integer, primary_key=True)
     bail_amount = Column(Integer)
@@ -192,6 +197,7 @@ class DSK8BailAndBond(DSK8CaseTable, TableBase):
 
 class DSK8Bondsman(DSK8CaseTable, TableBase):
     __tablename__ = 'dsk8_bondsman'
+    bail_and_bond = relationship('DSK8BailAndBond', backref='bondsman')
 
     id = Column(Integer, primary_key=True)
     bail_and_bond_id = Column(Integer, ForeignKey('dsk8_bail_and_bond.id'))
@@ -201,21 +207,22 @@ class DSK8Bondsman(DSK8CaseTable, TableBase):
     state = Column(String, nullable=True)
     zip_code = Column(String, nullable=True)
 
-    def __init__(self,case_number,bail_and_bond_id):
-        self.case_number = case_number
-        self.bail_and_bond_id = bail_and_bond_id
-
 class DSK8Defendant(DSK8CaseTable, Defendant, TableBase):
     __tablename__ = 'dsk8_defendants'
+    dsk8 = relationship('DSK8', backref='defendants')
 
 class DSK8DefendantAlias(DSK8CaseTable, DefendantAlias, TableBase):
     __tablename__ = 'dsk8_defendant_aliases'
+    dsk8 = relationship('DSK8', backref='defendant_aliases')
 
 class DSK8RelatedPerson(DSK8CaseTable, RelatedPerson, TableBase):
     __tablename__ = 'dsk8_related_persons'
+    dsk8 = relationship('DSK8', backref='related_persons')
 
 class DSK8Event(DSK8CaseTable, Event, TableBase):
     __tablename__ = 'dsk8_events'
+    dsk8 = relationship('DSK8', backref='events')
 
 class DSK8Trial(DSK8CaseTable, Trial, TableBase):
     __tablename__ = 'dsk8_trials'
+    dsk8 = relationship('DSK8', backref='trials')

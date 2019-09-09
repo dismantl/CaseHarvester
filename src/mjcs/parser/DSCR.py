@@ -23,7 +23,7 @@ class DSCRParser(CaseDetailsParser):
         self.delete_previous(db, DSCR)
         print("Took %s seconds to delete previous DSCR" % (datetime.now() - a).total_seconds())
 
-        case = DSCR(self.case_number)
+        case = DSCR(case_number=self.case_number)
         section_header = self.first_level_header(soup,'Case Information')
 
         court_system_table = self.table_next_first_column_prompt(section_header,'Court System:')
@@ -52,7 +52,7 @@ class DSCRParser(CaseDetailsParser):
             section_header = self.first_level_header(soup, 'Court Scheduling Information')
         except ParserError:
             return
-        schedule = DSCRTrial(self.case_number)
+        schedule = DSCRTrial(case_number=self.case_number)
 
         table1 = self.table_next_first_column_prompt(section_header, 'Trial Date:')
         schedule.date_str = self.value_first_column(table1, 'Trial Date:')
@@ -85,7 +85,7 @@ class DSCRParser(CaseDetailsParser):
             except ParserError:
                 break
 
-            charge = DSCRCharge(self.case_number)
+            charge = DSCRCharge(case_number=self.case_number)
             charge_table_1 = self.table_first_columm_prompt(charge_section,'Charge No:')
             charge.charge_number = self.value_first_column(charge_table_1,'Charge No:')
             charge.charge_description = self.value_column(charge_table_1,'Description:')
@@ -149,7 +149,7 @@ class DSCRParser(CaseDetailsParser):
     #########################################################
     @consumer
     def defendant_and_aliases(self, db, soup):
-        defendant = DSCRDefendant(self.case_number)
+        defendant = DSCRDefendant(case_number=self.case_number)
         section_header = self.first_level_header(soup,'Defendant Information')
 
         name_table = self.table_next_first_column_prompt(section_header,'Defendant Name:')
@@ -191,7 +191,7 @@ class DSCRParser(CaseDetailsParser):
                 alias_table = self.table_next_first_column_prompt(prev_obj,'ALIAS:')
             except ParserError:
                 break
-            alias = DSCRDefendantAlias(self.case_number)
+            alias = DSCRDefendantAlias(case_number=self.case_number)
             alias.alias_name = self.value_first_column(alias_table,'ALIAS:')
 
             try:
@@ -242,7 +242,7 @@ class DSCRParser(CaseDetailsParser):
                 prev_obj = separator
             except ParserError:
                 break
-            person = DSCRRelatedPerson(self.case_number)
+            person = DSCRRelatedPerson(case_number=self.case_number)
             person.name = self.value_combined_first_column(table_1,'Name:') # Can be null
             person.connection = self.value_combined_first_column(table_1,'Connection:')
             if list(table_2.stripped_strings): # Address
@@ -287,7 +287,7 @@ class DSCRParser(CaseDetailsParser):
                 prev_obj = event_row
             except ParserError:
                 break
-            event = DSCREvent(self.case_number)
+            event = DSCREvent(case_number=self.case_number)
             event_fields = list(event_row.find_all('span',class_='Value'))
             event.event_name = self.format_value(event_fields[0].string)
             self.mark_for_deletion(event_fields[0])
@@ -297,7 +297,7 @@ class DSCRParser(CaseDetailsParser):
             self.mark_for_deletion(event_fields[2])
             if event.event_name == 'BALR' or event.event_name == 'BSET' or event.event_name == 'INIT':
                 match = re.fullmatch(r'(?P<date>\d{6});(?P<amount>\d+\.\d\d);\s*(?P<code>[A-Z]+)\s*;(?P<percent>[\d\.]+);\s*(?P<bond>[A-Z]*)\s*;(?P<judge>[A-Z0-9]+)\s*', event.comment)
-                bail_event = DSCRBailEvent(self.case_number)
+                bail_event = DSCRBailEvent(case_number=self.case_number)
                 bail_event.event_name = event.event_name
                 bail_event.date_str = self.format_value(match.group('date'))
                 bail_event.date = datetime.strptime(match.group('date'), '%y%m%d').date()
