@@ -9,7 +9,7 @@ DYNAMODB_KEY='worker'
 
 # on_error returns 'delete' so the case is removed from scraper queue regardless
 # of if the scrape succeeded or failed
-scraper = Scraper(threads=config.SCRAPER_DEFAULT_CONCURRENCY, on_error=lambda e,c: 'delete')
+scraper = Scraper(threads=config.SCRAPER_DEFAULT_CONCURRENCY, on_error=lambda e,c: 'delete', quiet=True)
 
 def mark_complete():
     print("Marking lambda invocation chain complete")

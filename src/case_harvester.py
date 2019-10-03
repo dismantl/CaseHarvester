@@ -2,9 +2,9 @@
 from mjcs.config import config
 from mjcs.models import Case
 from mjcs.models.common import TableBase
-from mjcs.util import db_session
+from mjcs.util import db_session, delete_latest_scrape
 from mjcs.spider import Spider
-from mjcs.scraper import Scraper, delete_latest_scrape
+from mjcs.scraper import Scraper
 from mjcs.parser import Parser, invoke_parser_lambda
 import boto3
 from datetime import *

@@ -15,6 +15,7 @@ import string
 import xml.etree.ElementTree as ET
 import h11
 import json
+import os
 
 def prompt_continue(prompt):
     answer = input(prompt+' (y/N) ')
@@ -52,8 +53,8 @@ class Spider:
         + string.punctuation.replace('_','').replace('%','') \
         + ' '
 
-    def print_details(msg):
-        if not self.quiet:
+    def print_details(self, msg):
+        if not self.quiet or os.getenv('VERBOSE'):
             print(msg)
 
     async def __query_mjcs(self, db, item, session, url, method='POST', post_params={}, xml=False):

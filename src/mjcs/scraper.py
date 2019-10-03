@@ -3,12 +3,13 @@ from .session import Session
 from .util import (db_session, fetch_from_queue, NoItemsInQueue, cases_batch,
                    cases_batch_filter, process_cases, get_detail_loc)
 from .models import ScrapeVersion, Scrape, Case
-from sqlalchemy import and_, select
+from sqlalchemy import and_
 from hashlib import sha256
 import requests
 import boto3
 import re
 import json
+import os
 from datetime import *
 from queue import Queue
 import concurrent.futures
@@ -55,137 +56,93 @@ class CompletedScrape(Exception):
 class ExpiredSession(Exception):
     pass
 
-def check_scrape_sanity(case_number, html):
-    if "Acceptance of the following agreement is required" in html:
-        raise ExpiredSession
-    elif len(html) < 1000:
-        raise FailedScrapeTooShort
-    elif "An unexpected error occurred" in html:
-        raise FailedScrapeUnexpectedError
-    elif "Note: Initial Sort is by Last Name." in html:
-        raise FailedScrapeSearchResults
-    else:
-        # case numbers will often be displayed with dashes and/or spaces between parts of it
-        if re.search(r'[\- ]*'.join(case_number),html):
-            return
-        if re.search(r'[\- ]*'.join(case_number.lower()),html):
-            return
-        raise FailedScrapeNoCaseNumber
-
-def delete_latest_scrape(db, case_number):
-    versions = [_ for _, in db.query(ScrapeVersion.s3_version_id)\
-        .filter(ScrapeVersion.case_number == case_number)]
-    last_version_id = versions[0]
-    last_version_obj = config.s3.ObjectVersion(
-        config.CASE_DETAILS_BUCKET,
-        case_number,
-        last_version_id
-    )
-    last_version_obj.delete()
-    db.execute(
-        ScrapeVersion.__table__.delete()\
-            .where(
-                and_(
-                    ScrapeVersion.case_number == case_number,
-                    ScrapeVersion.s3_version_id == last_version_id
-                )
-            )
-    )
-    if len(versions) > 1:
-        # set last_scrape to timestamp of previous version
-        db.execute(
-            Case.__table__.update()\
-                .where(Case.case_number == case_number)\
-                .values(
-                    last_scrape = select([Scrape.timestamp])\
-                        .where(
-                            and_(
-                                Scrape.case_number == case_number,
-                                Scrape.s3_version_id == versions[1]
-                            )
-                        ).as_scalar()
-                )
-        )
-    elif len(versions) == 1:
-        db.execute(
-            Case.__table__.update()\
-                .where(Case.case_number == case_number)\
-                .values(last_scrape=None)
-        )
-
-def has_scrape(case_number):
-    try:
-        config.case_details_bucket.Object(case_number).get()
-    except config.s3.meta.client.exceptions.NoSuchKey:
-        return False
-    else:
-        return True
-
-def store_case_details(case_number, detail_loc, html, scrape_duration=None, check_before_store=True):
-    boto_session = boto3.session.Session(profile_name=config.aws_profile) # https://boto3.readthedocs.io/en/latest/guide/resources.html#multithreading-multiprocessing
-    s3 = boto_session.resource('s3')
-    case_details_bucket = s3.Bucket(config.CASE_DETAILS_BUCKET)
-    if check_before_store:
-        add = False
-        try:
-            previous_fetch = case_details_bucket.Object(case_number).get()
-        except s3.meta.client.exceptions.NoSuchKey:
-            print("Case details for %s not found, adding..." % case_number)
-            add = True
-        else:
-            if previous_fetch['Body'].read().decode('utf-8') != html:
-                print("Found new version of case %s, replacing..." % case_number)
-                add = True
-    else:
-        add = True
-
-    if add:
-        timestamp = datetime.now()
-        obj = case_details_bucket.put_object(
-            Body = html,
-            Key = case_number,
-            Metadata = {
-                'timestamp': timestamp.isoformat(),
-                'detail_loc': detail_loc
-            }
-        )
-        while True: # during multithreading sometimes obj.version_id throws an exception
-            try:
-                obj_version_id = obj.version_id
-            except:
-                pass
-            else:
-                break
-        with db_session() as db:
-            scrape_version = ScrapeVersion(
-                s3_version_id = obj_version_id,
-                case_number = case_number,
-                length = len(html),
-                sha256 = sha256(html.encode('utf-8')).hexdigest()
-            )
-            scrape = Scrape(
-                case_number = case_number,
-                s3_version_id = obj_version_id,
-                timestamp = timestamp,
-                duration = scrape_duration
-            )
-            db.add(scrape_version)
-            db.flush() # to satisfy foreign key constraint of scrapes
-            db.add(scrape)
-            db.execute(
-                Case.__table__.update()\
-                    .where(Case.case_number == case_number)\
-                    .values(last_scrape = timestamp)
-            )
-
 class Scraper:
-    def __init__(self, on_error=None, threads=1, log_failed_scrapes=True):
+    def __init__(self, on_error=None, threads=1, log_failed_scrapes=True, quiet=False):
         self.on_error = on_error
         self.threads = threads
         self.log_failed_scrapes = log_failed_scrapes
+        self.quiet = quiet
+
+    def print_details(self, msg):
+        if not self.quiet or os.getenv('VERBOSE'):
+            print(msg)
+
+    def check_scrape_sanity(self, case_number, html):
+        if "Acceptance of the following agreement is required" in html:
+            raise ExpiredSession
+        elif len(html) < 1000:
+            raise FailedScrapeTooShort
+        elif "An unexpected error occurred" in html:
+            raise FailedScrapeUnexpectedError
+        elif "Note: Initial Sort is by Last Name." in html:
+            raise FailedScrapeSearchResults
+        else:
+            # case numbers will often be displayed with dashes and/or spaces between parts of it
+            if re.search(r'[\- ]*'.join(case_number),html):
+                return
+            if re.search(r'[\- ]*'.join(case_number.lower()),html):
+                return
+            raise FailedScrapeNoCaseNumber
+
+    def store_case_details(self, case_number, detail_loc, html, scrape_duration=None, check_before_store=True):
+        boto_session = boto3.session.Session(profile_name=config.aws_profile) # https://boto3.readthedocs.io/en/latest/guide/resources.html#multithreading-multiprocessing
+        s3 = boto_session.resource('s3')
+        case_details_bucket = s3.Bucket(config.CASE_DETAILS_BUCKET)
+        if check_before_store:
+            add = False
+            try:
+                previous_fetch = case_details_bucket.Object(case_number).get()
+            except s3.meta.client.exceptions.NoSuchKey:
+                self.print_details("Case details for %s not found, adding..." % case_number)
+                add = True
+            else:
+                if previous_fetch['Body'].read().decode('utf-8') != html:
+                    self.print_details("Found new version of case %s, replacing..." % case_number)
+                    add = True
+        else:
+            add = True
+
+        if add:
+            timestamp = datetime.now()
+            obj = case_details_bucket.put_object(
+                Body = html,
+                Key = case_number,
+                Metadata = {
+                    'timestamp': timestamp.isoformat(),
+                    'detail_loc': detail_loc
+                }
+            )
+            while True: # during multithreading sometimes obj.version_id throws an exception
+                try:
+                    obj_version_id = obj.version_id
+                except:
+                    pass
+                else:
+                    break
+            with db_session() as db:
+                scrape_version = ScrapeVersion(
+                    s3_version_id = obj_version_id,
+                    case_number = case_number,
+                    length = len(html),
+                    sha256 = sha256(html.encode('utf-8')).hexdigest()
+                )
+                scrape = Scrape(
+                    case_number = case_number,
+                    s3_version_id = obj_version_id,
+                    timestamp = timestamp,
+                    duration = scrape_duration
+                )
+                db.add(scrape_version)
+                db.flush() # to satisfy foreign key constraint of scrapes
+                db.add(scrape)
+                db.execute(
+                    Case.__table__.update()\
+                        .where(Case.case_number == case_number)\
+                        .values(last_scrape = timestamp)
+                )
 
     def log_failed_scrape(self, case_number, detail_loc, error):
-        print("Failed to scrape case %s: %s" % (case_number, error))
+        self.print_details("Failed to scrape case %s: %s" % (case_number, error))
         if self.log_failed_scrapes:
             config.scraper_failed_queue.send_message(
                 MessageBody = json.dumps({
@@ -229,7 +186,7 @@ class Scraper:
         else:
             # Some sanity checks
             try:
-                check_scrape_sanity(scraper_item.case_number, response.text)
+                self.check_scrape_sanity(scraper_item.case_number, response.text)
             except FailedScrape as e:
                 scraper_item.errors += 1
                 if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
@@ -237,7 +194,7 @@ class Scraper:
                         str(type(e)))
                     raise e
             else:
-                store_case_details(scraper_item.case_number, scraper_item.detail_loc, response.text, scrape_duration, check_before_store)
+                self.store_case_details(scraper_item.case_number, scraper_item.detail_loc, response.text, scrape_duration, check_before_store)
                 raise CompletedScrape
 
     def scrape_case(self, case_number, detail_loc, session=None, check_before_store=True):
@@ -246,7 +203,7 @@ class Scraper:
         scraper_item = ScraperItem(case_number, detail_loc)
         while True:
             try:
-                print("Requesting case details for",case_number)
+                self.print_details("Requesting case details for %s" % case_number)
                 begin = datetime.now()
                 response = session.post(
                     'http://casesearch.courts.state.md.us/casesearch/inquiryByCaseNum.jis',
@@ -266,10 +223,10 @@ class Scraper:
                 try:
                     self.handle_scrape_response(scraper_item, response, duration, check_before_store)
                 except ExpiredSession:
-                    print("Renewing session")
+                    self.print_details("Renewing session")
                     session.renew()
                 except CompletedScrape:
-                    print("Completed scraping",case_number)
+                    self.print_details("Completed scraping %s" % case_number)
                     break
                 except Exception as e:
                     e.html = response.text
@@ -333,7 +290,7 @@ class Scraper:
                     action = self.on_error(exception, case['case_number'])
                     if action == 'delete' or action == 'store':
                         if action == 'store':
-                            store_case_details(
+                            self.store_case_details(
                                 case['case_number'],
                                 case['detail_loc'],
                                 exception.html
@@ -395,7 +352,7 @@ class Scraper:
                     action = self.on_error(exception, case['case_number'])
                     if action == 'delete' or action == 'store':
                         if action == 'store':
-                            store_case_details(
+                            self.store_case_details(
                                 case['case_number'],
                                 case['detail_loc'],
                                 exception.html,

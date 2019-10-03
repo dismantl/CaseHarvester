@@ -1,11 +1,11 @@
 import concurrent.futures
 import sqlalchemy
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, select
 from sqlalchemy.sql import select
 from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager
 from .config import config
-from .models import Case
+from .models import Case, ScrapeVersion, Scrape
 
 class NoItemsInQueue(Exception):
     pass
@@ -199,3 +199,52 @@ def column_windows(session, column, windowsize, filter=None):
         else:
             end = None
         yield int_for_range(start, end)
+
+def delete_latest_scrape(db, case_number):
+    versions = [_ for _, in db.query(ScrapeVersion.s3_version_id)\
+        .filter(ScrapeVersion.case_number == case_number)]
+    last_version_id = versions[0]
+    last_version_obj = config.s3.ObjectVersion(
+        config.CASE_DETAILS_BUCKET,
+        case_number,
+        last_version_id
+    )
+    last_version_obj.delete()
+    db.execute(
+        ScrapeVersion.__table__.delete()\
+            .where(
+                and_(
+                    ScrapeVersion.case_number == case_number,
+                    ScrapeVersion.s3_version_id == last_version_id
+                )
+            )
+    )
+    if len(versions) > 1:
+        # set last_scrape to timestamp of previous version
+        db.execute(
+            Case.__table__.update()\
+                .where(Case.case_number == case_number)\
+                .values(
+                    last_scrape = select([Scrape.timestamp])\
+                        .where(
+                            and_(
+                                Scrape.case_number == case_number,
+                                Scrape.s3_version_id == versions[1]
+                            )
+                        ).as_scalar()
+                )
+        )
+    elif len(versions) == 1:
+        db.execute(
+            Case.__table__.update()\
+                .where(Case.case_number == case_number)\
+                .values(last_scrape=None)
+        )
+
+def has_scrape(case_number):
+    try:
+        config.case_details_bucket.Object(case_number).get()
+    except config.s3.meta.client.exceptions.NoSuchKey:
+        return False
+    else:
+        return True
