@@ -37,7 +37,7 @@ Resources:
         - AmazonSQSFullAccess
         - VPCAccessPolicy: {}
       CodeUri: ../pkg/scraper
-      MemorySize: 192
+      MemorySize: 320
       Timeout: 300
       ReservedConcurrentExecutions: 10
       Environment:
