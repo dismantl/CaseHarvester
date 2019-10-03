@@ -23,15 +23,6 @@ Parameters:
       - dev
     ConstraintDescription: must be a prod or dev
 
-Mappings:
-  Environment:
-    ParserFailedQueueName:
-      prod: mjcs_parser_failed_queue
-      dev: dev_mjcs_parser_failed_queue
-    ParserTriggerTopicName:
-      prod: mjcs_parser_trigger
-      dev: dev_mjcs_parser_trigger
-
 Resources:
   Parser:
     Type: AWS::Serverless::Function
@@ -63,7 +54,7 @@ Resources:
               db_name: !Ref DatabaseName
           CASE_DETAILS_BUCKET:
             Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
-          PARSER_FAILED_QUEUE_NAME: !FindInMap [Environment, ParserFailedQueueName, !Ref EnvironmentType]
+          PARSER_FAILED_QUEUE_NAME: !GetAtt ParserFailedQueue.QueueName
           PARSER_TRIGGER_ARN: !Ref ParserTrigger
       Events:
         SNSTrigger:
@@ -83,7 +74,7 @@ Resources:
   ParserTrigger:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: !FindInMap [Environment, ParserTriggerTopicName, !Ref EnvironmentType]
+      TopicName: !Sub mjcs_parser_trigger_${EnvironmentType}
 
   ParserS3Permission:
     Type: AWS::Lambda::Permission
@@ -100,7 +91,7 @@ Resources:
     Properties:
       MessageRetentionPeriod: 1209600
       VisibilityTimeout: 300
-      QueueName: !FindInMap [Environment, ParserFailedQueueName, !Ref EnvironmentType]
+      QueueName: !Sub mjcs_parser_failed_queue_${EnvironmentType}
 
 Outputs:
   ParserArn:
@@ -115,6 +106,6 @@ Outputs:
       Name: !Sub ${AWS::StackName}-ParserTriggerArn
   ParserFailedQueueName:
     Description: Name of the Parser lambda DLQ
-    Value: !FindInMap [Environment, ParserFailedQueueName, !Ref EnvironmentType]
+    Value: !GetAtt ParserFailedQueue.QueueName
     Export:
       Name: !Sub ${AWS::StackName}-ParserFailedQueueName

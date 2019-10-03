@@ -1,4 +1,4 @@
-asks >= 1.3.10
+asks == 1.3.10
 requests >= 2.18.4
 trio == 0.3.0
 sqlalchemy >= 1.2.6

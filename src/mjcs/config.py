@@ -11,7 +11,7 @@ class Config:
     def __init__(self):
         self.initialized = False
         self.aws_profile = None
-        if os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
+        if os.getenv('AWS_LAMBDA_FUNCTION_NAME') or os.getenv('SCHEDULED_SPIDER'):
             self.initialize_from_environment()
 
     # Does not need to be called by lambda functions, only CLI
@@ -46,6 +46,7 @@ class Config:
         self.MJCS_DATABASE_URL = os.getenv('MJCS_DATABASE_URL')
         self.CASE_DETAILS_BUCKET = os.getenv('CASE_DETAILS_BUCKET')
 
+        self.SPIDER_QUEUE_NAME = os.getenv('SPIDER_QUEUE_NAME')
         self.SCRAPER_QUEUE_NAME = os.getenv('SCRAPER_QUEUE_NAME')
         self.SCRAPER_FAILED_QUEUE_NAME = os.getenv('SCRAPER_FAILED_QUEUE_NAME')
         self.SCRAPER_DYNAMODB_TABLE_NAME = os.getenv('SCRAPER_DYNAMODB_TABLE_NAME')
@@ -71,11 +72,16 @@ class Config:
             self.case_details_bucket = self.s3.Bucket(self.CASE_DETAILS_BUCKET)
         if self.__getattribute__('SCRAPER_QUEUE_NAME'):
             self.scraper_queue = self.sqs.get_queue_by_name(QueueName=self.SCRAPER_QUEUE_NAME)
+        if self.__getattribute__('SCRAPER_DYNAMODB_TABLE_NAME'):
             self.scraper_table = self.dynamodb.Table(self.SCRAPER_DYNAMODB_TABLE_NAME)
+        if self.__getattribute__('SCRAPER_FAILED_QUEUE_NAME'):
             self.scraper_failed_queue = self.sqs.get_queue_by_name(QueueName=self.SCRAPER_FAILED_QUEUE_NAME)
         if self.__getattribute__('PARSER_TRIGGER_ARN'):
             self.parser_trigger = self.sns.Topic(self.PARSER_TRIGGER_ARN)
+        if self.__getattribute__('PARSER_FAILED_QUEUE_NAME'):
             self.parser_failed_queue = self.sqs.get_queue_by_name(QueueName=self.PARSER_FAILED_QUEUE_NAME)
+        if self.__getattribute__('SPIDER_QUEUE_NAME'):
+            self.spider_queue = self.sqs.get_queue_by_name(QueueName=self.SPIDER_QUEUE_NAME)
 
         self.initialized = True
 

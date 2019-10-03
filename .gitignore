@@ -2,6 +2,7 @@
 .create-stack-buckets
 .init-*
 .package-*
+.push-docker-image-*
 setup.cfg
 pkg/
 docs/

@@ -329,5 +329,6 @@ if __name__ == '__main__':
     elif args.environment == 'production':
         args.environment_short = 'prod'
 
-    args.func(args)
+    if hasattr(args, 'func'):
+        args.func(args)
     print("Goodbye!")

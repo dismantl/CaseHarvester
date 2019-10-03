@@ -23,21 +23,6 @@ Parameters:
       - dev
     ConstraintDescription: must be a prod or dev
 
-Mappings:
-  Environment:
-    ScraperFailedQueueName:
-      prod: mjcs_scraper_failed_queue
-      dev: dev_mjcs_scraper_failed_queue
-    ScraperQueueName:
-      prod: mjcs_scraper_queue
-      dev: dev_mjcs_scraper_queue
-    ScraperTriggerTopicName:
-      prod: mjcs_scraper_trigger
-      dev: dev_mjcs_scraper_trigger
-    ScraperCronHourlyId:
-      prod: scraper_cron_hourly
-      dev: dev_scraper_cron_hourly
-
 Resources:
   Scraper:
     Type: AWS::Serverless::Function
@@ -72,13 +57,10 @@ Resources:
           SCRAPER_QUEUE_NAME: !GetAtt ScraperQueue.QueueName
       VpcConfig:
         SecurityGroupIds:
-          -
-            Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+          - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
         SubnetIds:
-          -
-            Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
-          -
-            Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+          - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
+          - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
       Events:
         SNSTrigger:
           Type: SNS
@@ -90,26 +72,26 @@ Resources:
     Properties:
       MessageRetentionPeriod: 1209600
       VisibilityTimeout: 300
-      QueueName: !FindInMap [Environment, ScraperFailedQueueName, !Ref EnvironmentType]
+      QueueName: !Sub mjcs_scraper_failed_queue_${EnvironmentType}
 
   ScraperQueue:
     Type: AWS::SQS::Queue
     Properties:
       MessageRetentionPeriod: 1209600
       VisibilityTimeout: 300
-      QueueName: !FindInMap [Environment, ScraperQueueName, !Ref EnvironmentType]
+      QueueName: !Sub mjcs_scraper_queue_${EnvironmentType}
 
   ScraperTrigger:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: !FindInMap [Environment, ScraperTriggerTopicName, !Ref EnvironmentType]
+      TopicName: !Sub mjcs_scraper_trigger_${EnvironmentType}
 
   ScraperItemsAvailableAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
       AlarmActions:
         - !Ref ScraperTrigger
-      AlarmDescription: "Trigger MJCS scraper when items are available in queue"
+      AlarmDescription: Trigger MJCS scraper when items are available in queue
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
         - Name: QueueName
@@ -120,23 +102,6 @@ Resources:
       Period: '60' # seconds
       Statistic: Average
       Threshold: '0'
-
-  ScraperCronHourly:
-    Type: AWS::Events::Rule
-    Properties:
-      Description: "Trigger MJCS scraper once an hour"
-      ScheduleExpression: rate(1 hour)
-      Targets:
-        - Id: !FindInMap [Environment, ScraperCronHourlyId, !Ref EnvironmentType]
-          Arn: !GetAtt Scraper.Arn
-
-  PermissionForEventsToInvokeScraper:
-    Type: "AWS::Lambda::Permission"
-    Properties:
-      FunctionName: !GetAtt Scraper.Arn
-      Action: lambda:InvokeFunction
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt ScraperCronHourly.Arn
 
   ScraperWorkerTable:
     Type: AWS::DynamoDB::Table
@@ -150,6 +115,44 @@ Resources:
       ProvisionedThroughput:
         ReadCapacityUnits: 5
         WriteCapacityUnits: 5
+
+  HourlyScraperRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub hourly_scraper_${EnvironmentType}
+      Description: Trigger MJCS scraper once an hour
+      ScheduleExpression: rate(1 hour)
+      Targets:
+        - Id: scraper_lambda_target
+          Arn: !GetAtt Scraper.Arn
+          Input: '{ "invocation": "scheduled" }'
+
+  DailyScraperRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub daily_scraper_${EnvironmentType}
+      Description: Trigger MJCS scraper once a day
+      ScheduleExpression: cron(0 5 * * ? *)  # 1am EST
+      Targets:
+        - Id: scraper_lambda_target
+          Arn: !GetAtt Scraper.Arn
+          Input: '{ "invocation": "scheduled", "rescrape": { "days_ago_start": 0, "days_ago_end": 30 } }'
+
+  HourlyRulePermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt Scraper.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt HourlyScraperRule.Arn
+
+  DailyRulePermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt Scraper.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DailyScraperRule.Arn
 
 Outputs:
   ScraperDynamoDBTableName:

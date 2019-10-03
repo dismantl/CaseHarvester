@@ -16,7 +16,6 @@ import xml.etree.ElementTree as ET
 import h11
 import json
 
-# TODO non-interactive option for lambda runs, via command line -y?
 def prompt_continue(prompt):
     answer = input(prompt+' (y/N) ')
     if answer == 'n' or answer == 'N' or answer == '':
@@ -53,6 +52,10 @@ class Spider:
         + string.punctuation.replace('_','').replace('%','') \
         + ' '
 
+    def print_details(msg):
+        if not self.quiet:
+            print(msg)
+
     async def __query_mjcs(self, db, item, session, url, method='POST', post_params={}, xml=False):
         if xml:
             post_params['d-16544-e'] = 3
@@ -71,25 +74,25 @@ class Spider:
             raise FailedSearchUnknownError
 
         if response.history and response.history[0].status_code == 302:
-            print("Received 302 redirect, renewing session...")
+            self.print_details("Received 302 redirect, renewing session...")
             await session.renew()
             raise FailedSearchExpiredSession
         elif response.status_code == 500:
-            print("############## Received 500 error #################")
+            self.print_details("############## Received 500 error #################")
             item.handle_500()
             raise FailedSearch500Error
         elif response.status_code != 200:
-            print("Unknown error. response code: %s, response body: %s" % (response.status_code, response.text))
+            self.print_details("Unknown error. response code: %s, response body: %s" % (response.status_code, response.text))
             item.handle_unknown_err("response code: %s, response body: %s" % (response.status_code, response.text))
             raise FailedSearchUnknownError
         else:
             if 'text/html' in response.headers['Content-Type'] \
                     and re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text):
-                print("No cases for search string %s starting on %s" % (item.search_string,item.start_date.strftime("%-m/%-d/%Y")))
+                self.print_details("No cases for search string %s starting on %s" % (item.search_string,item.start_date.strftime("%-m/%-d/%Y")))
                 raise CompletedSearchNoResults
             elif 'text/html' in response.headers['Content-Type'] \
                     and re.search(r'<span class="error">\s*<br>Sorry, but your query has timed out after 2 minute',response.text):
-                print("$$$$$$$$$$$$$$ MJCS Timeout $$$$$$$$$$$$")
+                self.print_details("$$$$$$$$$$$$$$ MJCS Timeout $$$$$$$$$$$$")
                 item.handle_timeout(db)
                 raise FailedSearchTimeout
 
@@ -100,7 +103,7 @@ class Spider:
         session = await self.session_pool.get()
         start_query = datetime.now()
 
-        print("Searching for %s on start date %s" % (item.search_string,item.start_date.strftime("%-m/%-d/%Y")))
+        self.print_details("Searching for %s on start date %s" % (item.search_string,item.start_date.strftime("%-m/%-d/%Y")))
         query_params = {
             'lastName':item.search_string,
             'countyName':item.court,
@@ -137,7 +140,7 @@ class Spider:
             results = []
             results_table = html.find('table',class_='results',id='row')
             if not results_table:
-                print('Error finding results table in returned HTML')
+                self.print_details('Error finding results table in returned HTML')
                 self.session_pool.put_nowait(session)
                 return
             for row in results_table.tbody.find_all('tr'):
@@ -162,7 +165,7 @@ class Spider:
 
             query_time = (datetime.now() - start_query).total_seconds()
             self.session_pool.put_nowait(session)
-            print("Search string %s returned %d items, took %d seconds" % (item.search_string, len(results), query_time))
+            self.print_details("Search string %s returned %d items, took %d seconds" % (item.search_string, len(results), query_time))
 
             processed_cases = []
             for result in results:
@@ -211,7 +214,7 @@ class Spider:
                             loc = loc,
                             detail_loc = detail_loc
                         )
-            print("Submitted %d cases out of %d returned" % (len(processed_cases), len(results)))
+            self.print_details("Submitted %d cases out of %d returned" % (len(processed_cases), len(results)))
 
             if hit_limit:
                 # trailing spaces are trimmed, so <searh_string + ' '> will return same results as <search_string>.
@@ -245,7 +248,7 @@ class Spider:
         )
 
     def __clear_queue(self, db):
-        if active_count(db):
+        if active_count(db) and sys.stdin.isatty():
             prompt_continue("There are existing unsearched items in the queue. Are you sure you want to cancel them?")
             print("Clearing queue...")
             clear_queue(db)
@@ -355,9 +358,10 @@ class Spider:
                 raise Exception("Cannot retry, no failed items in queue")
         self.__run(retry_failed=True)
 
-    def __init__(self, concurrency=None, overwrite=False, force_scrape=False):
+    def __init__(self, concurrency=None, overwrite=False, force_scrape=False, quiet=False):
         self.overwrite = overwrite
         self.force_scrape = force_scrape
+        self.quiet = quiet
         if not concurrency:
             concurrency = config.SPIDER_DEFAULT_CONCURRENCY
         asks.init('trio')

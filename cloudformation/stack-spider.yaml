@@ -1,0 +1,162 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  DatabasePassword:
+    Type: String
+    NoEcho: True
+  DatabaseUsername:
+    Type: String
+    NoEcho: True
+  DatabaseName:
+    Type: String
+    Default: mjcs
+  StaticStackName:
+    Description: Name of the static stack, for getting database and S3 bucket details
+    Type: String
+  ScraperStackName:
+    Description: Name of the scraper stack, for getting scraper queue name
+    Type: String
+  DockerRepoStackName:
+    Description: Name of the docker repo stack, for getting repository name
+    Type: String
+  EnvironmentType:
+    Description: The environment type (prod or dev)
+    Type: String
+    Default: dev
+    AllowedValues:
+      - prod
+      - dev
+    ConstraintDescription: must be a prod or dev
+  AWSRegion:
+    Description: AWS Region
+    Type: String
+    Default: us-east-1
+
+Resources:
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub mjcs_cluster_${EnvironmentType}
+
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub mjcs_ecs_execution_role_${EnvironmentType}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+                - events.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+      Policies:
+        - PolicyName: execution_role_policies
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: "*"
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub mjcs_ecs_task_role_${EnvironmentType}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+
+  ScheduledSpiderTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: !Sub mjcs_spider_container_${EnvironmentType}
+          Command: [ "python", "scheduled_spider.py" ]
+          Environment:
+            - Name: SCHEDULED_SPIDER
+              Value: true
+            - Name: MJCS_DATABASE_URL
+              Value: !Sub
+                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
+                - db_user: !Ref DatabaseUsername
+                  db_pw: !Ref DatabasePassword
+                  db_addr:
+                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+                  db_name: !Ref DatabaseName
+            - Name: SPIDER_QUEUE_NAME
+              Value: !GetAtt SpiderQueue.QueueName
+            - Name: SCRAPER_QUEUE_NAME
+              Value:
+                Fn::ImportValue: !Sub ${ScraperStackName}-ScraperQueueName
+          Image: !Sub
+            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
+            - repo_name:
+                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-region: !Ref AWSRegion
+              awslogs-group: !Sub caseharvester-spider-${EnvironmentType}
+              awslogs-stream-prefix: caseharvester-spider-logs
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 1024
+      Memory: 2048
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      NetworkMode: awsvpc
+      TaskRoleArn: !GetAtt TaskRole.Arn
+
+  SpiderQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      VisibilityTimeout: 300
+      QueueName: !Sub mjcs_spider_queue_${EnvironmentType}
+
+  DailySpiderRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub daily_spider_${EnvironmentType}
+      Description: Spider for cases filed in the last month
+      ScheduleExpression: cron(0 4 * * ? *)  # midnight EST
+      Targets:
+        - Id: spider_queue_target
+          Arn: !GetAtt SpiderQueue.Arn
+          Input: '{ "days_ago_start": 0, "days_ago_end": 30 }'
+        - Id: spider_ecs_task_target
+          Arn: !GetAtt ECSCluster.Arn
+          RoleArn: !GetAtt ExecutionRole.Arn
+          EcsParameters:
+            LaunchType: FARGATE
+            TaskDefinitionArn: !Ref ScheduledSpiderTask
+            TaskCount: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: DISABLED
+                SecurityGroups:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+                Subnets:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
