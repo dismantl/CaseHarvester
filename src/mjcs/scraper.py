@@ -10,6 +10,7 @@ import boto3
 import re
 import json
 import os
+import time
 from datetime import *
 from queue import Queue
 import concurrent.futures
@@ -172,11 +173,8 @@ class Scraper:
                     )
                     raise FailedScrapeUnknownError
         elif re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text):
-            scraper_item.errors += 1
-            if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
-                self.log_failed_scrape(scraper_item.case_number,
-                    scraper_item.detail_loc, "Case details not found")
-                raise FailedScrapeNotFound
+            self.log_failed_scrape(scraper_item.case_number,scraper_item.detail_loc, "Case details not found")
+            raise FailedScrapeNotFound
         elif 'Sorry, but your query has timed out after 2 minute' in response.text:
             scraper_item.timeouts += 1
             if scraper_item.timeouts >= config.QUERY_TIMEOUTS_LIMIT:
@@ -188,11 +186,8 @@ class Scraper:
             try:
                 self.check_scrape_sanity(scraper_item.case_number, response.text)
             except FailedScrape as e:
-                scraper_item.errors += 1
-                if scraper_item.errors >= config.QUERY_ERROR_LIMIT:
-                    self.log_failed_scrape(scraper_item.case_number, scraper_item.detail_loc,
-                        str(type(e)))
-                    raise e
+                self.log_failed_scrape(scraper_item.case_number, scraper_item.detail_loc, str(type(e)))
+                raise e
             else:
                 self.store_case_details(scraper_item.case_number, scraper_item.detail_loc, response.text, scrape_duration, check_before_store)
                 raise CompletedScrape
@@ -215,6 +210,7 @@ class Scraper:
                 end = datetime.now()
                 duration = (begin - end).total_seconds()
             except requests.exceptions.Timeout:
+                time.sleep(0.1) # courtesy
                 scraper_item.timeouts += 1
                 if scraper_item.timeouts >= config.QUERY_TIMEOUTS_LIMIT:
                     self.log_failed_scrape(case_number, detail_loc, "Reached timeout limit")
@@ -230,6 +226,7 @@ class Scraper:
                     break
                 except Exception as e:
                     e.html = response.text
+                    time.sleep(1) #anti hammer
                     raise e
 
     def scrape_specific_case(self, case_number):
