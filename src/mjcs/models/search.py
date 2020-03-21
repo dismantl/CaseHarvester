@@ -39,6 +39,7 @@ class BaseSearchItem(TableBase):
     start_date = Column(Date)
     end_date = Column(Date, nullable=True)
     court = Column(String, nullable=True)
+    site = Column(String, nullable=True)
     status = Column(String, default=SearchItemStatus.new)
     timeouts = Column(Integer, default=0)
     err500s = Column(Integer, default=0)

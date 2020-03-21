@@ -108,6 +108,7 @@ class Spider:
         query_params = {
             'lastName':item.search_string,
             'countyName':item.court,
+            'site':item.site,
             'company':'N',
             'filingStart':item.start_date.strftime("%-m/%-d/%Y") if item.end_date else None,
             'filingEnd':item.end_date.strftime("%-m/%-d/%Y") if item.end_date else None,
@@ -225,6 +226,7 @@ class Spider:
                         start_date = item.start_date,
                         end_date = item.end_date,
                         court = item.court,
+                        site = item.site,
                         status = SearchItemStatus.new
                     ))
                     self.__upsert_search_item(db, SearchItem(
@@ -232,6 +234,7 @@ class Spider:
                         start_date = item.start_date,
                         end_date = item.end_date,
                         court = item.court,
+                        site = item.site,
                         status = SearchItemStatus.new
                     ))
 
@@ -264,7 +267,7 @@ class Spider:
                 )
         )
 
-    def __seed_queue(self, db, start_date, end_date=None, court=None):
+    def __seed_queue(self, db, start_date, end_date=None, court=None, site=None):
         print("Seeding queue")
         if end_date:
             def gen_timeranges(start_date, end_date):
@@ -282,7 +285,8 @@ class Spider:
                         search_string = char,
                         start_date = start,
                         end_date = end,
-                        court = court
+                        court = court,
+                        site = site
                     ))
         else:
             for char in self.__search_chars.replace(' ',''): # don't start queries with a space
@@ -290,7 +294,8 @@ class Spider:
                     search_string = char,
                     start_date = start_date,
                     end_date = None,
-                    court = court
+                    court = court,
+                    site = site
                 ))
         print("Finished seeding queue")
 
@@ -319,7 +324,7 @@ class Spider:
                 with db_session() as db:
                     nitems = failed_count(db) if run.retry_failed else active_count(db)
 
-    def __run(self, start_date=None, end_date=None, court=None, retry_failed=False):
+    def __run(self, start_date=None, end_date=None, court=None, site=None, retry_failed=False):
         print("Starting run")
         with db_session() as db:
             run = Run(
@@ -327,6 +332,7 @@ class Spider:
                 start_date = start_date,
                 end_date = end_date,
                 court = court,
+                site = site,
                 overwrite=self.overwrite,
                 force_scrape=self.force_scrape,
                 retry_failed=retry_failed
@@ -341,11 +347,11 @@ class Spider:
                 db.commit()
         print("Spider run complete")
 
-    def search(self, start_date, end_date=None, court=None):
+    def search(self, start_date, end_date=None, court=None, site=None):
         with db_session() as db:
             self.__clear_queue(db)
-            self.__seed_queue(db, start_date, end_date, court)
-        self.__run(start_date, end_date, court)
+            self.__seed_queue(db, start_date, end_date, court, site)
+        self.__run(start_date, end_date, court, site)
 
     def resume(self):
         with db_session() as db:

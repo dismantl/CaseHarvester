@@ -8,6 +8,7 @@ class BaseRun(TableBase):
     query_start_date = Column(Date, nullable=True)
     query_end_date = Column(Date, nullable=True)
     court = Column(String, nullable=True)
+    site = Column(String, nullable=True)
     run_start = Column(DateTime)
     run_seconds = Column(Integer)
     queue_still_active = Column(Integer)

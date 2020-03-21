@@ -43,7 +43,7 @@ def split_date_range(start_date, end_date):
     return range1, range2
 
 class SearchItem(BaseSearchItem):
-    def __init__(self, search_string, start_date, end_date=None, court=None, status=SearchItemStatus.new):
+    def __init__(self, search_string, start_date, end_date=None, court=None, site=None, status=SearchItemStatus.new):
         id = search_string + start_date.strftime("%-m/%-d/%Y")
         if end_date:
             id += end_date.strftime("%-m/%-d/%Y")
@@ -55,6 +55,7 @@ class SearchItem(BaseSearchItem):
             start_date=start_date,
             end_date=end_date,
             court=court,
+            site=site,
             status=status,
             timeouts = 0,
             err500s = 0
@@ -67,6 +68,7 @@ class SearchItem(BaseSearchItem):
             'start_date': self.start_date,
             'end_date': self.end_date,
             'court': self.court,
+            'site': self.site,
             'status': self.status,
             'timeouts': self.timeouts,
             'err500s': self.err500s,
@@ -94,6 +96,7 @@ class SearchItem(BaseSearchItem):
                 start_date = range1[0],
                 end_date = range1[1],
                 court = self.court,
+                site = self.site,
                 status = SearchItemStatus.new
             ))
             print("Appending %s from %s to %s" % (self.search_string, range2[0], range2[1]))
@@ -102,6 +105,7 @@ class SearchItem(BaseSearchItem):
                 start_date = range2[0],
                 end_date = range2[1],
                 court = self.court,
+                site = self.site,
                 status = SearchItemStatus.new
             ))
             self.status = SearchItemStatus.timeout_split
