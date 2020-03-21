@@ -84,6 +84,7 @@ def rescrape_date_range(days_ago_start, days_ago_end):
             filter(Case.filing_date >= date_start).\
             filter(Case.filing_date < date_end).\
             all()
+    print(f'Found {len(cases)} cases in time range')
 
     def chunks(l, n):
         for i in range(0, len(l), n):
@@ -93,17 +94,19 @@ def rescrape_date_range(days_ago_start, days_ago_end):
     count = 0
     for chunk in chunks(cases, 10):  # can only do 10 messages per batch request
         count += len(chunk)
+        Entries=[
+            {
+                'Id': str(idx),
+                'MessageBody': json.dumps({
+                    'case_number': case[0],
+                    'loc': case[1],
+                    'detail_loc': case[2]
+                })
+            } for idx, case in enumerate(chunk)
+        ]
+        print(Entries)
         config.scraper_queue.send_messages(
-            Entries=[
-                {
-                    'Id': str(idx),
-                    'MessageBody': json.dumps({
-                        'case_number': case[0],
-                        'loc': case[1],
-                        'detail_loc': case[2]
-                    })
-                } for idx, case in enumerate(chunk)
-            ]
+            Entries=Entries
         )
     print(f'Submitted {count} cases for rescraping')
 

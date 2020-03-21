@@ -38,7 +38,7 @@ Resources:
         - VPCAccessPolicy: {}
       CodeUri: ../pkg/scraper
       MemorySize: 320
-      Timeout: 300
+      Timeout: 900
       ReservedConcurrentExecutions: 10
       Environment:
         Variables:
@@ -132,7 +132,7 @@ Resources:
     Properties:
       Name: !Sub daily_scraper_${EnvironmentType}
       Description: Trigger MJCS scraper once a day
-      ScheduleExpression: cron(0 5 * * ? *)  # 1am EST
+      ScheduleExpression: cron(0 16 * * ? *)  # noon EST
       Targets:
         - Id: scraper_lambda_target
           Arn: !GetAtt Scraper.Arn

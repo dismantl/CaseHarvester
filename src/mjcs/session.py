@@ -34,6 +34,7 @@ class AsyncSession:
         return self.session.request(timeout = config.QUERY_TIMEOUT, *args, **kwargs)
 
     async def renew(self):
+        import asks
         for _ in range(0,5):
             try:
                 response = await self.post(

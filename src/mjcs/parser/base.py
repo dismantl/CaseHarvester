@@ -251,7 +251,7 @@ class CaseDetailsParser(ABC):
             numeric=False,
             money=False):
         if boolean_value:
-            return True if val else False
+            return val and val.lower() != 'false'
         if not val:
             return None
         if strip:
