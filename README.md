@@ -1,7 +1,7 @@
 # Case Harvester
 Case Harvester is a project designed to mine the [Maryland Judiciary Case Search](http://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp) (MJCS) and build a near-complete database of Maryland court cases that can be queried and analyzed without the limitations of the MJCS interface. It is designed to leverage [Amazon Web Services (AWS)](https://aws.amazon.com/) for scalability and performance.
 
-If you are a researcher or journalist and would like access to our database, please reach out to us at [info@openjusticebaltimore.org](mailto:info@openjusticebaltimore.org).
+> **NOTE: Unless you are modifying Case Harvester for specific purposes, please do not run your own instance so that MJCS is spared unneccesary load. If you are a values-aligned researcher or journalist, you are welcome to access our public case database scraped from MJCS with defendant information redacted; reach out to us at [dan@acabenterprises.net](mailto:dan@acabenterprises.net).**
 
 # Architecture
 Case Harvester is split into three main components: spider, scraper, and parser. Each component is a part of a pipeline that finds, downloads, and parses case data from the MJCS. The following diagram shows at a high level how each of these components interact:
@@ -100,4 +100,4 @@ By default, `case_harvester.py` runs in your development AWS environment (see [D
 ```
 
 # Questions
-For questions or more information, email [info@openjusticebaltimore.org](mailto:info@openjusticebaltimore.org).
+For questions or more information, email [dan@acabenterprises.net](mailto:dan@acabenterprises.net).
