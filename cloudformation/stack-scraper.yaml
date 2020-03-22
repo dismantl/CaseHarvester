@@ -120,7 +120,7 @@ Resources:
     Type: AWS::Events::Rule
     Properties:
       Name: !Sub hourly_scraper_${EnvironmentType}
-      Description: Trigger MJCS scraper once an hour
+      Description: Trigger scraper hourly to process anything in queue
       ScheduleExpression: rate(1 hour)
       Targets:
         - Id: scraper_lambda_target
@@ -131,12 +131,45 @@ Resources:
     Type: AWS::Events::Rule
     Properties:
       Name: !Sub daily_scraper_${EnvironmentType}
-      Description: Trigger MJCS scraper once a day
-      ScheduleExpression: cron(0 16 * * ? *)  # noon EST
+      Description: Every day, re-scrape last 30 days cases
+      ScheduleExpression: cron(0 22 * * ? *)  # 6pm ET
       Targets:
         - Id: scraper_lambda_target
           Arn: !GetAtt Scraper.Arn
           Input: '{ "invocation": "scheduled", "rescrape": { "days_ago_start": 0, "days_ago_end": 30 } }'
+  
+  WeeklyScraperRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub weekly_scraper_${EnvironmentType}
+      Description: Every week, re-scrape last 6 months cases
+      ScheduleExpression: cron(0 8 ? * SUN *)  # Sunday 4am ET
+      Targets:
+        - Id: scraper_lambda_target
+          Arn: !GetAtt Scraper.Arn
+          Input: '{ "invocation": "scheduled", "rescrape": { "days_ago_start": 31, "days_ago_end": 182 } }'
+  
+  MonthlyScraperRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub monthly_scraper_${EnvironmentType}
+      Description: Every month, re-scrape last 2 years cases
+      ScheduleExpression: cron(0 8 1 * ? *)  # 1st of month 4am ET
+      Targets:
+        - Id: scraper_lambda_target
+          Arn: !GetAtt Scraper.Arn
+          Input: '{ "invocation": "scheduled", "rescrape": { "days_ago_start": 183, "days_ago_end": 720 } }'
+
+  QuarterlyScraperRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub quarterly_scraper_${EnvironmentType}
+      Description: Every 3 months, re-scrape last 6 years cases
+      ScheduleExpression: cron(0 8 1 */3 ? *)  # 1st of every 3rd month 4am ET
+      Targets:
+        - Id: scraper_lambda_target
+          Arn: !GetAtt Scraper.Arn
+          Input: '{ "invocation": "scheduled", "rescrape": { "days_ago_start": 721, "days_ago_end": 2191 } }'
 
   HourlyRulePermissions:
     Type: AWS::Lambda::Permission
@@ -153,6 +186,30 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt DailyScraperRule.Arn
+  
+  WeeklyRulePermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt Scraper.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt WeeklyScraperRule.Arn
+  
+  MonthlyRulePermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt Scraper.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt MonthlyScraperRule.Arn
+  
+  QuarterlyRulePermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt Scraper.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt QuarterlyScraperRule.Arn
 
 Outputs:
   ScraperDynamoDBTableName:

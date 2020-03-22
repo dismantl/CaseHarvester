@@ -104,7 +104,6 @@ def rescrape_date_range(days_ago_start, days_ago_end):
                 })
             } for idx, case in enumerate(chunk)
         ]
-        print(Entries)
         config.scraper_queue.send_messages(
             Entries=Entries
         )
