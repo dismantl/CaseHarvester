@@ -140,11 +140,63 @@ Resources:
     Properties:
       Name: !Sub daily_spider_${EnvironmentType}
       Description: Spider for cases filed in the last month
-      ScheduleExpression: cron(0 4 * * ? *)  # midnight EST
+      ScheduleExpression: cron(0 4 * * ? *)  # midnight ET
       Targets:
         - Id: spider_queue_target
           Arn: !GetAtt SpiderQueue.Arn
           Input: '{ "days_ago_start": 0, "days_ago_end": 30 }'
+        - Id: spider_ecs_task_target
+          Arn: !GetAtt ECSCluster.Arn
+          RoleArn: !GetAtt ExecutionRole.Arn
+          EcsParameters:
+            LaunchType: FARGATE
+            TaskDefinitionArn: !Ref ScheduledSpiderTask
+            TaskCount: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: DISABLED
+                SecurityGroups:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+                Subnets:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+  
+  WeeklySpiderRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub weekly_spider_${EnvironmentType}
+      Description: Every week, spider for cases filed in the last 6 months
+      ScheduleExpression: cron(0 4 ? * SUN *)  # Sunday 00:00 ET
+      Targets:
+        - Id: spider_queue_target
+          Arn: !GetAtt SpiderQueue.Arn
+          Input: '{ "days_ago_start": 31, "days_ago_end": 182 }'
+        - Id: spider_ecs_task_target
+          Arn: !GetAtt ECSCluster.Arn
+          RoleArn: !GetAtt ExecutionRole.Arn
+          EcsParameters:
+            LaunchType: FARGATE
+            TaskDefinitionArn: !Ref ScheduledSpiderTask
+            TaskCount: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: DISABLED
+                SecurityGroups:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+                Subnets:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+
+  MonthlySpiderRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub monthly_spider_${EnvironmentType}
+      Description: Every month, spider for cases filed in the last year
+      ScheduleExpression: cron(0 4 1 * ? *)  # 1st of month 00:00 ET
+      Targets:
+        - Id: spider_queue_target
+          Arn: !GetAtt SpiderQueue.Arn
+          Input: '{ "days_ago_start": 183, "days_ago_end": 365 }'
         - Id: spider_ecs_task_target
           Arn: !GetAtt ECSCluster.Arn
           RoleArn: !GetAtt ExecutionRole.Arn
