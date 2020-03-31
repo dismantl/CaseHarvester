@@ -157,11 +157,11 @@ endef
 	$(call deploy_stack_f,spider,prod)
 	touch $@
 
-.deploy-scraper-dev: .deploy-static-dev .package-scraper cloudformation/stack-scraper.yaml $(SECRETS_FILE)
+.deploy-scraper-dev: .deploy-static-dev .push-docker-image-dev .package-scraper cloudformation/stack-scraper.yaml $(SECRETS_FILE)
 	$(call deploy_stack_f,scraper,dev)
 	touch $@
 
-.deploy-scraper-prod: .deploy-static-prod .package-scraper cloudformation/stack-scraper.yaml $(SECRETS_FILE)
+.deploy-scraper-prod: .deploy-static-prod .push-docker-image-prod .package-scraper cloudformation/stack-scraper.yaml $(SECRETS_FILE)
 	$(call deploy_stack_f,scraper,prod)
 	touch $@
 
