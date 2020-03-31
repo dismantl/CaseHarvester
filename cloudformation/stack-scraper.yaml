@@ -54,7 +54,7 @@ Resources:
     Properties:
       ContainerDefinitions:
         - Name: !Sub mjcs_scraper_container_${EnvironmentType}
-          Command: [ "python", "scraper_service.py" ]
+          Command: [ "python", "-u", "scraper_service.py" ]
           Environment:
             - Name: DOCKER_TASK
               Value: true

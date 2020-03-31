@@ -55,7 +55,7 @@ Resources:
     Properties:
       ContainerDefinitions:
         - Name: !Sub mjcs_spider_container_${EnvironmentType}
-          Command: [ "python", "scheduled_spider.py" ]
+          Command: [ "python", "-u", "scheduled_spider.py" ]
           Environment:
             - Name: DOCKER_TASK
               Value: true
