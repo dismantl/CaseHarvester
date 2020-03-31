@@ -85,10 +85,6 @@ def write_env_file(env_long, env_short, exports, db_name, username, password):
             get_export_val(exports,env_short,'ScraperQueueName')))
         f.write('%s=%s\n' % ('SCRAPER_FAILED_QUEUE_NAME',
             get_export_val(exports,env_short,'ScraperFailedQueueName')))
-        f.write('%s=%s\n' % ('SCRAPER_DYNAMODB_TABLE_NAME',
-            get_export_val(exports,env_short,'ScraperDynamoDBTableName')))
-        f.write('%s=%s\n' % ('SCRAPER_QUEUE_ALARM_NAME',
-            get_export_val(exports,env_short,'ScraperQueueAlarmName')))
         f.write('%s=%s\n' % ('PARSER_FAILED_QUEUE_NAME',
             get_export_val(exports,env_short,'ParserFailedQueueName')))
         f.write('%s=%s\n' % ('PARSER_TRIGGER_ARN',
@@ -110,19 +106,18 @@ def run_spider(args):
     spider = Spider(
         concurrency = args.concurrency,
         overwrite = args.overwrite,
-        force_scrape = args.force_scrape
+        force_scrape = args.force_scrape,
+        ignore_errors = args.ignore_errors
     )
 
-    if args.test:
-        spider.test()
-    elif args.resume:
+    if args.resume:
         spider.resume()
     elif args.failed:
         spider.retry_failed()
     elif args.start_date:
         spider.search(args.start_date, args.end_date, args.court, args.site)
     else:
-        raise Exception("Must specify --resume, --test, or search criteria")
+        raise Exception("Must specify search criteria or --resume")
 
 def scraper_prompt(exception, case_number):
     print(exception)
@@ -171,16 +166,7 @@ def run_scraper(args):
 
     scraper = Scraper(on_error, args.threads)
 
-    if args.invoke_lambda:
-        exports = get_stack_exports()
-        lambda_arn = get_export_val(exports, args.environment_short, 'ScraperArn')
-        boto3.client('lambda').invoke(
-            FunctionName = lambda_arn,
-            InvocationType = 'Event',
-            Payload = '{"invocation":"manual"}'
-        )
-        print("Invoked scraper Lambda function")
-    elif args.missing:
+    if args.missing:
         scraper.scrape_missing_cases()
     elif args.queue:
         scraper.scrape_from_scraper_queue()
@@ -189,7 +175,7 @@ def run_scraper(args):
     elif args.case:
         scraper.scrape_specific_case(args.case)
     else:
-        raise Exception("Must specify --invoke-lambda, --missing, --queue, or --failed-queue.")
+        raise Exception("Must specify --missing, --queue, or --failed-queue.")
 
 def parser_prompt(exception, case_number):
     if type(exception) == NotImplementedError:
@@ -231,10 +217,6 @@ def run_parser(args):
         parser.parse_unparsed_cases(args.type)
 
 if __name__ == '__main__':
-    if len(sys.argv) == 2 and sys.argv[1] == 'db_init':
-        db_init()
-        sys.exit(0)
-
     parser = argparse.ArgumentParser(
         description="Run Case Harvester to spider, scrape, or parse cases from "
             "the Maryland Judiciary Case Search",
@@ -255,8 +237,6 @@ if __name__ == '__main__':
     parser_spider = subparsers.add_parser('spider',
         help='Spider the Maryland Judiciary Case Search database for case numbers')
     parser_spider.add_argument('--concurrency', '-c', type=int, default=10)
-    parser_spider.add_argument('--test','-t',action='store_true',
-        help="Seed queue with test items")
     parser_spider.add_argument('--start-date','-s', type=valid_date,
         help="Start date for search range. If --end-date is not specified, "
         "search for cases on this exact date")
@@ -274,6 +254,8 @@ if __name__ == '__main__':
         help="Force scraping of case details for all found cases")
     parser_spider.add_argument('--failed', action='store_true',
         help="Retry failed search items in queue")
+    parser_spider.add_argument('--ignore-errors', action='store_true',
+        help="Ignore spidering errors")
     parser_spider.set_defaults(func=run_spider)
 
     parser_scraper = subparsers.add_parser('scraper',
@@ -288,8 +270,6 @@ if __name__ == '__main__':
         "Scrape cases in the scraper queue")
     parser_scraper.add_argument('--failed-queue', action='store_true', help=\
         "Scrape cases in the queue of failed cases")
-    parser_scraper.add_argument('--invoke-lambda', action='store_true',
-        help="Invoke scraper lambda function")
     parser_scraper.add_argument('--threads', type=int, default=1,
         help="Number of threads (default: 1)")
     parser_scraper.add_argument('--case', '-c', help="Scrape specific case number")

@@ -70,7 +70,7 @@ class Spider:
         except asks.errors.RequestTimeout:
             item.handle_timeout(db)
             raise FailedSearchTimeout
-        except (asks.errors.BadHttpResponse, h11.RemoteProtocolError, trio.BrokenStreamError) as e:
+        except (asks.errors.BadHttpResponse, h11.RemoteProtocolError, trio.BrokenStreamError, OSError) as e:
             item.handle_unknown_err(e)
             raise FailedSearchUnknownError
 
@@ -316,9 +316,11 @@ class Spider:
             except KeyboardInterrupt:
                 raise
             except trio.MultiError as e:
-                raise # TODO
+                if not self.ignore_errors:
+                    raise
             except:
-                raise # TODO
+                if not self.ignore_errors:
+                    raise
             finally:
 
                 with db_session() as db:
@@ -365,10 +367,11 @@ class Spider:
                 raise Exception("Cannot retry, no failed items in queue")
         self.__run(retry_failed=True)
 
-    def __init__(self, concurrency=None, overwrite=False, force_scrape=False, quiet=False):
+    def __init__(self, concurrency=None, overwrite=False, force_scrape=False, quiet=False, ignore_errors=False):
         self.overwrite = overwrite
         self.force_scrape = force_scrape
         self.quiet = quiet
+        self.ignore_errors = ignore_errors
         if not concurrency:
             concurrency = config.SPIDER_DEFAULT_CONCURRENCY
         asks.init('trio')

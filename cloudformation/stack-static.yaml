@@ -207,6 +207,43 @@ Resources:
       BucketName: !FindInMap [Environment, BucketName, !Ref EnvironmentType]
       VersioningConfiguration:
         Status: Enabled
+  
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub caseharvester_cluster_${EnvironmentType}
+  
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub caseharvester_ecs_execution_role_${EnvironmentType}
+      Description: IAM role used for executing ECS tasks and Cloudwatch rules
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+                - events.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+      Policies:
+        - PolicyName: execution_role_policies
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: "*"
 
 Outputs:
   DatabaseHostname:
@@ -239,3 +276,13 @@ Outputs:
     Value: !GetAtt CaseDetailsBucket.Arn
     Export:
       Name: !Sub ${AWS::StackName}-CaseDetailsBucketArn
+  ECSClusterArn:
+    Description: ECS Cluster used for running spider and scraper
+    Value: !GetAtt ECSCluster.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-ECSClusterArn
+  ExecutionTaskArn:
+    Description: Execution role ARN
+    Value: !GetAtt ExecutionRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-ExecutionRoleArn

@@ -10,7 +10,7 @@ import boto3
 import re
 import json
 import os
-import time
+import time as _time
 from datetime import *
 from queue import Queue
 import concurrent.futures
@@ -210,7 +210,7 @@ class Scraper:
                 end = datetime.now()
                 duration = (begin - end).total_seconds()
             except requests.exceptions.Timeout:
-                time.sleep(0.1) # courtesy
+                _time.sleep(0.1) # courtesy
                 scraper_item.timeouts += 1
                 if scraper_item.timeouts >= config.QUERY_TIMEOUTS_LIMIT:
                     self.log_failed_scrape(case_number, detail_loc, "Reached timeout limit")
@@ -226,7 +226,7 @@ class Scraper:
                     break
                 except Exception as e:
                     e.html = response.text
-                    time.sleep(1) #anti hammer
+                    _time.sleep(1) #anti hammer
                     raise e
 
     def scrape_specific_case(self, case_number):
@@ -306,6 +306,8 @@ class Scraper:
         print("Total number of scraped cases: %d" % counter['count'])
         if counter['count'] == 0:
             raise NoItemsInQueue
+
+        return counter['count']
 
     def scrape_from_scraper_queue(self, nitems=None):
         return self.scrape_from_queue(config.scraper_queue, nitems)

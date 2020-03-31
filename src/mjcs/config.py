@@ -11,7 +11,7 @@ class Config:
     def __init__(self):
         self.initialized = False
         self.aws_profile = None
-        if os.getenv('AWS_LAMBDA_FUNCTION_NAME') or os.getenv('SCHEDULED_SPIDER'):
+        if os.getenv('AWS_LAMBDA_FUNCTION_NAME') or os.getenv('DOCKER_TASK'):
             self.initialize_from_environment()
 
     # Does not need to be called by lambda functions, only CLI
@@ -49,8 +49,6 @@ class Config:
         self.SPIDER_QUEUE_NAME = os.getenv('SPIDER_QUEUE_NAME')
         self.SCRAPER_QUEUE_NAME = os.getenv('SCRAPER_QUEUE_NAME')
         self.SCRAPER_FAILED_QUEUE_NAME = os.getenv('SCRAPER_FAILED_QUEUE_NAME')
-        self.SCRAPER_DYNAMODB_TABLE_NAME = os.getenv('SCRAPER_DYNAMODB_TABLE_NAME')
-        self.SCRAPER_QUEUE_ALARM_NAME = os.getenv('SCRAPER_QUEUE_ALARM_NAME')
         self.PARSER_FAILED_QUEUE_NAME = os.getenv('PARSER_FAILED_QUEUE_NAME')
         self.PARSER_TRIGGER_ARN = os.getenv('PARSER_TRIGGER_ARN')
 
@@ -62,7 +60,6 @@ class Config:
 
         # Generic boto3 resources/clients
         self.sqs = self.boto3_session.resource('sqs')
-        self.dynamodb = self.boto3_session.resource('dynamodb')
         self.s3 = self.boto3_session.resource('s3')
         self.sns = self.boto3_session.resource('sns')
         self.lambda_ = self.boto3_session.client('lambda')
@@ -72,8 +69,6 @@ class Config:
             self.case_details_bucket = self.s3.Bucket(self.CASE_DETAILS_BUCKET)
         if self.__getattribute__('SCRAPER_QUEUE_NAME'):
             self.scraper_queue = self.sqs.get_queue_by_name(QueueName=self.SCRAPER_QUEUE_NAME)
-        if self.__getattribute__('SCRAPER_DYNAMODB_TABLE_NAME'):
-            self.scraper_table = self.dynamodb.Table(self.SCRAPER_DYNAMODB_TABLE_NAME)
         if self.__getattribute__('SCRAPER_FAILED_QUEUE_NAME'):
             self.scraper_failed_queue = self.sqs.get_queue_by_name(QueueName=self.SCRAPER_FAILED_QUEUE_NAME)
         if self.__getattribute__('PARSER_TRIGGER_ARN'):

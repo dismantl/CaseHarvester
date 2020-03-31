@@ -12,6 +12,8 @@ class NoItemsInQueue(Exception):
 
 # Concurrently fetch up to nitems (or 100) messages from queue, 10 per thread
 def fetch_from_queue(queue, nitems=100):
+    if not nitems:
+        nitems = 100
     def queue_receive(n):
         return queue.receive_messages(
             WaitTimeSeconds = config.QUEUE_WAIT,

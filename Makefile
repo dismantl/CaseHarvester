@@ -5,7 +5,7 @@ DOCS_DIR=docs
 SPIDER_DEPS=$(addprefix $(CODE_SRC)/,spider/scheduled_spider.py \
 	$(addprefix mjcs/,__init__.py spider.py config.py util.py run.py search.py \
 		session.py models/*.py))
-SCRAPER_DEPS=$(addprefix $(CODE_SRC)/,scraper/scraper_lambda.py \
+SCRAPER_DEPS=$(addprefix $(CODE_SRC)/,scraper/scraper_lambda.py scraper/scraper_service.py \
 	$(addprefix mjcs/,__init__.py scraper.py config.py util.py session.py models/*.py))
 PARSER_DEPS=$(addprefix $(CODE_SRC)/,parser/parser_lambda.py \
 	$(addprefix mjcs/,__init__.py config.py util.py parser/*.py models/*.py))
@@ -14,7 +14,7 @@ STACK_PREFIX=caseharvester-stack
 AWS_REGION=us-east-1
 DB_NAME=mjcs
 AWS_PROFILE=default
-DOCKER_REPO_NAME=mjcs_spider
+DOCKER_REPO_NAME=caseharvester
 
 .PHONY: package $(addprefix package_,scraper parser) deploy \
 	deploy_production $(addprefix deploy_,static docker-repo spider scraper parser) \
@@ -141,11 +141,11 @@ endef
 	$(call deploy_stack_f,docker-repo,prod)
 	touch $@
 
-.push-docker-image-dev: .deploy-docker-repo-dev Dockerfile $(SPIDER_DEPS)
+.push-docker-image-dev: .deploy-docker-repo-dev Dockerfile $(SPIDER_DEPS) $(SCRAPER_DEPS)
 	$(call push_docker_image_f,dev)
 	touch $@
 
-.push-docker-image-prod: .deploy-docker-repo-prod Dockerfile $(SPIDER_DEPS)
+.push-docker-image-prod: .deploy-docker-repo-prod Dockerfile $(SPIDER_DEPS) $(SCRAPER_DEPS)
 	$(call push_docker_image_f,prod)
 	touch $@
 

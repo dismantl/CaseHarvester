@@ -14,6 +14,9 @@ Parameters:
   StaticStackName:
     Description: Name of the static stack, for getting database and S3 bucket details
     Type: String
+  DockerRepoStackName:
+    Description: Name of the docker repo stack, for getting repository name
+    Type: String
   EnvironmentType:
     Description: The environment type (prod or dev)
     Type: String
@@ -22,18 +25,97 @@ Parameters:
       - prod
       - dev
     ConstraintDescription: must be a prod or dev
+  AWSRegion:
+    Description: AWS Region
+    Type: String
+    Default: us-east-1
 
 Resources:
-  Scraper:
+  ScraperService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub mjcs_scraper_service_${EnvironmentType}
+      Cluster:
+        Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+          Subnets:
+            - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
+            - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+      TaskDefinition: !Ref ScraperTask
+  
+  ScraperTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: !Sub mjcs_scraper_container_${EnvironmentType}
+          Command: [ "python", "scraper_service.py" ]
+          Environment:
+            - Name: DOCKER_TASK
+              Value: true
+            - Name: MJCS_DATABASE_URL
+              Value: !Sub
+                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
+                - db_user: !Ref DatabaseUsername
+                  db_pw: !Ref DatabasePassword
+                  db_addr:
+                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+                  db_name: !Ref DatabaseName
+            - Name: SCRAPER_QUEUE_NAME
+              Value: !GetAtt ScraperQueue.QueueName
+            - Name: SCRAPER_FAILED_QUEUE_NAME
+              Value: !GetAtt ScraperFailedQueue.QueueName
+            - Name: CASE_DETAILS_BUCKET
+              Value:
+                Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
+          Image: !Sub
+            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
+            - repo_name:
+                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-region: !Ref AWSRegion
+              awslogs-group: !Sub caseharvester-scraper-${EnvironmentType}
+              awslogs-stream-prefix: caseharvester-scraper-logs
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 1024
+      Memory: 2048
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+      NetworkMode: awsvpc
+      TaskRoleArn: !GetAtt ScraperTaskRole.Arn
+
+  ScraperTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub mjcs_ecs_scraper_task_role_${EnvironmentType}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+  ScraperLambda:
     Type: AWS::Serverless::Function
     Properties:
       Handler: scraper_lambda.lambda_handler
       Runtime: python3.6
       Policies:
-        - AWSLambdaFullAccess
-        - S3CrudPolicy:
-            BucketName:
-              Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
         - AmazonSQSFullAccess
         - VPCAccessPolicy: {}
       CodeUri: ../pkg/scraper
@@ -49,11 +131,6 @@ Resources:
               db_addr:
                 Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
               db_name: !Ref DatabaseName
-          CASE_DETAILS_BUCKET:
-            Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
-          SCRAPER_DYNAMODB_TABLE_NAME: !Ref ScraperWorkerTable
-          SCRAPER_QUEUE_ALARM_NAME: !Ref ScraperItemsAvailableAlarm
-          SCRAPER_FAILED_QUEUE_NAME: !GetAtt ScraperFailedQueue.QueueName
           SCRAPER_QUEUE_NAME: !GetAtt ScraperQueue.QueueName
       VpcConfig:
         SecurityGroupIds:
@@ -61,11 +138,6 @@ Resources:
         SubnetIds:
           - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
           - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
-      Events:
-        SNSTrigger:
-          Type: SNS
-          Properties:
-            Topic: !Ref ScraperTrigger
 
   ScraperFailedQueue:
     Type: AWS::SQS::Queue
@@ -81,52 +153,6 @@ Resources:
       VisibilityTimeout: 300
       QueueName: !Sub mjcs_scraper_queue_${EnvironmentType}
 
-  ScraperTrigger:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName: !Sub mjcs_scraper_trigger_${EnvironmentType}
-
-  ScraperItemsAvailableAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmActions:
-        - !Ref ScraperTrigger
-      AlarmDescription: Trigger MJCS scraper when items are available in queue
-      ComparisonOperator: GreaterThanThreshold
-      Dimensions:
-        - Name: QueueName
-          Value: !GetAtt ScraperQueue.QueueName
-      EvaluationPeriods: '1'
-      MetricName: ApproximateNumberOfMessagesVisible
-      Namespace: AWS/SQS
-      Period: '60' # seconds
-      Statistic: Average
-      Threshold: '0'
-
-  ScraperWorkerTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      AttributeDefinitions:
-        - AttributeName: id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: id
-          KeyType: HASH
-      ProvisionedThroughput:
-        ReadCapacityUnits: 5
-        WriteCapacityUnits: 5
-
-  HourlyScraperRule:
-    Type: AWS::Events::Rule
-    Properties:
-      Name: !Sub hourly_scraper_${EnvironmentType}
-      Description: Trigger scraper hourly to process anything in queue
-      ScheduleExpression: rate(1 hour)
-      Targets:
-        - Id: scraper_lambda_target
-          Arn: !GetAtt Scraper.Arn
-          Input: '{ "invocation": "scheduled" }'
-
   DailyScraperRule:
     Type: AWS::Events::Rule
     Properties:
@@ -135,8 +161,8 @@ Resources:
       ScheduleExpression: cron(0 22 * * ? *)  # 6pm ET
       Targets:
         - Id: scraper_lambda_target
-          Arn: !GetAtt Scraper.Arn
-          Input: '{ "invocation": "scheduled", "rescrape": { "days_ago_start": 0, "days_ago_end": 30 } }'
+          Arn: !GetAtt ScraperLambda.Arn
+          Input: '{ "command": "rescrape", "options": { "days_ago_start": 0, "days_ago_end": 30 } }'
   
   WeeklyScraperRule:
     Type: AWS::Events::Rule
@@ -146,8 +172,8 @@ Resources:
       ScheduleExpression: cron(0 8 ? * SUN *)  # Sunday 4am ET
       Targets:
         - Id: scraper_lambda_target
-          Arn: !GetAtt Scraper.Arn
-          Input: '{ "invocation": "scheduled", "rescrape": { "days_ago_start": 31, "days_ago_end": 182 } }'
+          Arn: !GetAtt ScraperLambda.Arn
+          Input: '{ "command": "rescrape", "options": { "days_ago_start": 31, "days_ago_end": 182 } }'
   
   MonthlyScraperRule:
     Type: AWS::Events::Rule
@@ -157,8 +183,8 @@ Resources:
       ScheduleExpression: cron(0 8 1 * ? *)  # 1st of month 4am ET
       Targets:
         - Id: scraper_lambda_target
-          Arn: !GetAtt Scraper.Arn
-          Input: '{ "invocation": "scheduled", "rescrape": { "days_ago_start": 183, "days_ago_end": 720 } }'
+          Arn: !GetAtt ScraperLambda.Arn
+          Input: '{ "command": "rescrape", "options": { "days_ago_start": 183, "days_ago_end": 720 } }'
 
   QuarterlyScraperRule:
     Type: AWS::Events::Rule
@@ -168,21 +194,13 @@ Resources:
       ScheduleExpression: cron(0 8 1 */3 ? *)  # 1st of every 3rd month 4am ET
       Targets:
         - Id: scraper_lambda_target
-          Arn: !GetAtt Scraper.Arn
-          Input: '{ "invocation": "scheduled", "rescrape": { "days_ago_start": 721, "days_ago_end": 2191 } }'
-
-  HourlyRulePermissions:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !GetAtt Scraper.Arn
-      Action: lambda:InvokeFunction
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt HourlyScraperRule.Arn
+          Arn: !GetAtt ScraperLambda.Arn
+          Input: '{ "command": "rescrape", "options": { "days_ago_start": 721, "days_ago_end": 2191 } }'
 
   DailyRulePermissions:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt Scraper.Arn
+      FunctionName: !GetAtt ScraperLambda.Arn
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt DailyScraperRule.Arn
@@ -190,7 +208,7 @@ Resources:
   WeeklyRulePermissions:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt Scraper.Arn
+      FunctionName: !GetAtt ScraperLambda.Arn
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt WeeklyScraperRule.Arn
@@ -198,7 +216,7 @@ Resources:
   MonthlyRulePermissions:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt Scraper.Arn
+      FunctionName: !GetAtt ScraperLambda.Arn
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt MonthlyScraperRule.Arn
@@ -206,22 +224,12 @@ Resources:
   QuarterlyRulePermissions:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt Scraper.Arn
+      FunctionName: !GetAtt ScraperLambda.Arn
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt QuarterlyScraperRule.Arn
 
 Outputs:
-  ScraperDynamoDBTableName:
-    Description: Scraper DynamoDB Table name
-    Value: !Ref ScraperWorkerTable
-    Export:
-      Name: !Sub ${AWS::StackName}-ScraperDynamoDBTableName
-  ScraperQueueAlarmName:
-    Description: Scraper queue alarm name
-    Value: !Ref ScraperItemsAvailableAlarm
-    Export:
-      Name: !Sub ${AWS::StackName}-ScraperQueueAlarmName
   ScraperFailedQueueName:
     Description: Scraper failed queue name
     Value: !GetAtt ScraperFailedQueue.QueueName
@@ -232,8 +240,3 @@ Outputs:
     Value: !GetAtt ScraperQueue.QueueName
     Export:
       Name: !Sub ${AWS::StackName}-ScraperQueueName
-  ScraperArn:
-    Description: ARN of Scraper lambda function
-    Value: !GetAtt Scraper.Arn
-    Export:
-      Name: !Sub ${AWS::StackName}-ScraperArn
