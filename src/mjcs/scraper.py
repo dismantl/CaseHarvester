@@ -220,7 +220,7 @@ class Scraper:
                     logger.debug("Renewing session")
                     session.renew()
                 except CompletedScrape:
-                    logger.debug("Completed scraping %s" % case_number)
+                    # logger.debug("Completed scraping %s" % case_number)
                     break
                 except Exception as e:
                     e.html = response.text
