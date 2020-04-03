@@ -3,7 +3,6 @@ from ..models import (ODYTRAF, ODYTRAFReferenceNumber, ODYTRAFDefendant,
                      ODYTRAFCharge, ODYTRAFWarrant, ODYTRAFBailBond,
                      ODYTRAFBondSetting, ODYTRAFDocument, ODYTRAFAlias, ODYTRAFService)
 from .base import CaseDetailsParser, consumer, ParserError
-from datetime import *
 import re
 from bs4 import BeautifulSoup, SoupStrainer
 
@@ -31,9 +30,7 @@ class ODYTRAFParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        a = datetime.now()
         self.delete_previous(db, ODYTRAF)
-        print("Took %s seconds to delete previous ODYTRAF" % (datetime.now() - a).total_seconds())
 
         case = ODYTRAF(case_number=self.case_number)
         section_header = self.first_level_header(soup,'Case Information')

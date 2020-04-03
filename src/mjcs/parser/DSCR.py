@@ -1,7 +1,7 @@
 from ..models import DSCR, DSCRCharge, DSCRDefendant, DSCRDefendantAlias, DSCRRelatedPerson, DSCREvent, DSCRTrial, DSCRBailEvent
 from .base import CaseDetailsParser, consumer, ParserError
+from datetime import datetime
 import re
-from datetime import *
 
 # Note that consumers may not be called in order
 class DSCRParser(CaseDetailsParser):
@@ -19,9 +19,7 @@ class DSCRParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        a = datetime.now()
         self.delete_previous(db, DSCR)
-        print("Took %s seconds to delete previous DSCR" % (datetime.now() - a).total_seconds())
 
         case = DSCR(case_number=self.case_number)
         section_header = self.first_level_header(soup,'Case Information')

@@ -3,7 +3,6 @@ from ..models import (DSK8, DSK8Charge, DSK8BailAndBond, DSK8Bondsman,
                      DSK8Event, DSK8Trial)
 from .base import CaseDetailsParser, consumer, ParserError
 import re
-from datetime import *
 
 class DSK8Parser(CaseDetailsParser):
     def header(self, soup):
@@ -20,9 +19,7 @@ class DSK8Parser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        a = datetime.now()
         self.delete_previous(db, DSK8)
-        print("Took %s seconds to delete previous DSK8" % (datetime.now() - a).total_seconds())
 
         case = DSK8(case_number=self.case_number)
         section_header = self.second_level_header(soup,'Case Information')

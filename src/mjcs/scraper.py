@@ -5,17 +5,20 @@ from .util import (db_session, fetch_from_queue, NoItemsInQueue, cases_batch,
 from .models import ScrapeVersion, Scrape, Case
 from sqlalchemy import and_
 from hashlib import sha256
+import logging
 import requests
 import boto3
 import re
 import json
 import os
-import time as _time
-from datetime import *
+import time
+from datetime import datetime, timedelta
 from queue import Queue
 import concurrent.futures
 
 MJCS_AUTH_TARGET = 'http://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp'
+
+logger = logging.getLogger(__name__)
 
 class ScraperItem:
     def __init__(self, case_number, detail_loc):
@@ -58,15 +61,10 @@ class ExpiredSession(Exception):
     pass
 
 class Scraper:
-    def __init__(self, on_error=None, threads=1, log_failed_scrapes=True, quiet=False):
+    def __init__(self, on_error=None, threads=1, log_failed_scrapes=True):
         self.on_error = on_error
         self.threads = threads
         self.log_failed_scrapes = log_failed_scrapes
-        self.quiet = quiet
-
-    def print_details(self, msg):
-        if not self.quiet or os.getenv('VERBOSE'):
-            print(msg)
 
     def check_scrape_sanity(self, case_number, html):
         if "Acceptance of the following agreement is required" in html:
@@ -94,11 +92,11 @@ class Scraper:
             try:
                 previous_fetch = case_details_bucket.Object(case_number).get()
             except s3.meta.client.exceptions.NoSuchKey:
-                self.print_details("Case details for %s not found, adding..." % case_number)
+                logger.debug("Case details for %s not found, adding..." % case_number)
                 add = True
             else:
                 if previous_fetch['Body'].read().decode('utf-8') != html:
-                    self.print_details("Found new version of case %s, replacing..." % case_number)
+                    logger.debug("Found new version of case %s, updating..." % case_number)
                     add = True
         else:
             add = True
@@ -143,7 +141,7 @@ class Scraper:
                 )
 
     def log_failed_scrape(self, case_number, detail_loc, error):
-        self.print_details("Failed to scrape case %s: %s" % (case_number, error))
+        logger.warning("Failed to scrape case %s: %s" % (case_number, error))
         if self.log_failed_scrapes:
             config.scraper_failed_queue.send_message(
                 MessageBody = json.dumps({
@@ -198,7 +196,7 @@ class Scraper:
         scraper_item = ScraperItem(case_number, detail_loc)
         while True:
             try:
-                self.print_details("Requesting case details for %s" % case_number)
+                logger.debug("Requesting case details for %s" % case_number)
                 begin = datetime.now()
                 response = session.post(
                     'http://casesearch.courts.state.md.us/casesearch/inquiryByCaseNum.jis',
@@ -210,7 +208,7 @@ class Scraper:
                 end = datetime.now()
                 duration = (begin - end).total_seconds()
             except requests.exceptions.Timeout:
-                _time.sleep(0.1) # courtesy
+                time.sleep(0.1) # courtesy
                 scraper_item.timeouts += 1
                 if scraper_item.timeouts >= config.QUERY_TIMEOUTS_LIMIT:
                     self.log_failed_scrape(case_number, detail_loc, "Reached timeout limit")
@@ -219,14 +217,14 @@ class Scraper:
                 try:
                     self.handle_scrape_response(scraper_item, response, duration, check_before_store)
                 except ExpiredSession:
-                    self.print_details("Renewing session")
+                    logger.debug("Renewing session")
                     session.renew()
                 except CompletedScrape:
-                    self.print_details("Completed scraping %s" % case_number)
+                    logger.debug("Completed scraping %s" % case_number)
                     break
                 except Exception as e:
                     e.html = response.text
-                    _time.sleep(1) #anti hammer
+                    time.sleep(1) #anti hammer
                     raise e
 
     def scrape_specific_case(self, case_number):
@@ -251,7 +249,7 @@ class Scraper:
 
     def scrape_from_queue(self, queue, nitems=None):
         session_pool = Queue(self.threads)
-        for i in range(self.threads):
+        for _ in range(self.threads):
             session = Session()
             session.renew() # Renew session immediately bc it was causing errors in Lambda
             session_pool.put_nowait(session)
@@ -263,7 +261,7 @@ class Scraper:
         while True:
             queue_items = fetch_from_queue(queue, nitems)
             if not queue_items:
-                print("No items found in queue")
+                logger.debug("No items found in queue")
                 break
             counter['total'] += len(queue_items)
 
@@ -297,13 +295,13 @@ class Scraper:
                     return action
                 raise exception
 
-            print("Scraping %d cases" % len(cases))
+            logger.debug("Scraping %d cases" % len(cases))
             process_cases(self.scrape_case_thread, cases, queue_on_success, queue_on_error, self.threads, counter)
-            print("Finished scraping %d cases" % counter['total'])
+            logger.debug("Finished scraping %d cases" % counter['total'])
             if nitems:
                 break # don't need to keep looping
 
-        print("Total number of scraped cases: %d" % counter['count'])
+        logger.debug("Total number of scraped cases: %d" % counter['count'])
         if counter['count'] == 0:
             raise NoItemsInQueue
 
@@ -325,21 +323,20 @@ class Scraper:
 
         filter = and_(Case.last_scrape == None, Case.scrape_exempt != True)
         with db_session() as db:
-            print('Getting count of unscraped cases...',end='',flush=True)
+            logger.info('Getting count of unscraped cases...')
             counter = {
                 'total': db.query(Case.case_number).filter(filter).count(),
                 'count': 0
             }
-            print('Done.')
-            print('Generating batch queries...',end='',flush=True)
+            logger.info('Generating batch queries...')
             batch_filters = cases_batch_filter(db, filter)
-            print('Done.')
+            logger.info('Done.')
 
         for batch_filter in batch_filters:
             with db_session() as db:
-                print('Fetching batch of cases...',end='',flush=True)
+                logger.debug('Fetching batch of cases...',end='',flush=True)
                 cases = cases_batch(db, batch_filter)
-                print('Done.')
+                logger.debug('Done.')
             cases = [{
                 'case_number': case.case_number,
                 'detail_loc': case.detail_loc,
@@ -361,3 +358,55 @@ class Scraper:
                     return action
                 raise exception
             process_cases(self.scrape_case_thread, cases, None, _on_error, self.threads, counter)
+
+    def rescrape(self, days_ago_end, days_ago_start=0):
+        # calculate date range
+        today = datetime.now().date()
+        date_end = today - timedelta(days=days_ago_start)
+        date_start = today - timedelta(days=days_ago_end)
+        logger.info(f'Rescraping cases between {date_start} and {date_end}')
+
+        # query DB for cases filed in range
+        with db_session() as db:
+            cases = db.query(Case.case_number, Case.loc, Case.detail_loc).\
+                filter(Case.filing_date >= date_start).\
+                filter(Case.filing_date < date_end).\
+                all()
+        logger.info(f'Found {len(cases)} cases in time range')
+
+        def chunks(l, n):
+            for i in range(0, len(l), n):
+                yield l[i:i + n]
+
+        # add cases to scraper queue
+        count = 0
+        for chunk in chunks(cases, 10):  # can only do 10 messages per batch request
+            count += len(chunk)
+            Entries=[
+                {
+                    'Id': str(idx),
+                    'MessageBody': json.dumps({
+                        'case_number': case[0],
+                        'loc': case[1],
+                        'detail_loc': case[2]
+                    })
+                } for idx, case in enumerate(chunk)
+            ]
+            config.scraper_queue.send_messages(
+                Entries=Entries
+            )
+        logger.info(f'Submitted {count} cases for rescraping')
+    
+    def start_service(self):
+        logger.info('Initiating scraper service.')
+        while True:
+            try:
+                try:
+                    cases_scraped = self.scrape_from_scraper_queue()
+                    logger.info(f'Successfully scraped {cases_scraped} cases.')
+                except NoItemsInQueue:
+                    logger.debug('No items in scraper queue. Waiting...')                    
+                time.sleep(60 * 10)  # 10 mins
+            except KeyboardInterrupt:
+                logger.info("\nCaught KeyboardInterrupt, stopping service.")
+                return

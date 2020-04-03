@@ -1,11 +1,14 @@
 import concurrent.futures
 import sqlalchemy
+import logging
 from sqlalchemy import and_, func, select
 from sqlalchemy.sql import select
 from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager
 from .config import config
 from .models import Case, ScrapeVersion, Scrape
+
+logger = logging.getLogger(__name__)
 
 class NoItemsInQueue(Exception):
     pass
@@ -61,7 +64,7 @@ def process_cases(func, cases, on_success=None, on_error=None, threads=1, counte
             for case in to_process:
                 case_number = case['case_number'] if type(case) == dict else case
                 if counter:
-                    print('Processing case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
+                    logger.debug('Processing case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
                     counter['count'] += 1
                 try:
                     func(case)
@@ -69,9 +72,8 @@ def process_cases(func, cases, on_success=None, on_error=None, threads=1, counte
                 #     pass
                 except Exception as e:
                     continue_processing = False
-                    print(type(e))
-                    print(str(e))
-                    print("!!! Failed to process %s !!!" % case_number)
+                    logger.exception(e)
+                    logger.warning("Failed to process case %s" % case_number)
                     if on_error:
                         action = on_error(e, case)
                         if action == 'delete':
@@ -102,9 +104,8 @@ def process_cases(func, cases, on_success=None, on_error=None, threads=1, counte
                         # cancel all remaining tasks
                         for future in future_to_case:
                             future.cancel()
-                        print(type(e))
-                        print(str(e))
-                        print("!!! Failed to process %s !!!" % case_number)
+                        logger.exception(e)
+                        logger.warning("Failed to process case %s" % case_number)
                         if on_error:
                             action = on_error(e, case)
                             if action == 'delete':
@@ -113,7 +114,7 @@ def process_cases(func, cases, on_success=None, on_error=None, threads=1, counte
                                 continue_processing = True
                             if counter:
                                 counter['count'] += 1
-                                print('Processed case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
+                                logger.debug('Processed case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
                         else:
                             caught_exception = e
                     else:
@@ -122,7 +123,7 @@ def process_cases(func, cases, on_success=None, on_error=None, threads=1, counte
                         to_process.remove(case)
                         if counter:
                             counter['count'] += 1
-                            print('Processed case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
+                            logger.debug('Processed case %s (%s of %s)' % (case_number,counter['count'],counter['total']))
         if caught_exception:
             raise caught_exception
 

@@ -67,6 +67,9 @@ Resources:
       AvailabilityZone: !Ref VPCPublicSubnet1AZ
       CidrBlock: !Ref VPCPublicSubnet1Cidr
       VpcId: !Ref VPC
+      Tags:
+        - Key: subnet_type
+          Value: public
 
   VPCPublicSubnet2:
     Type: AWS::EC2::Subnet
@@ -74,6 +77,9 @@ Resources:
       AvailabilityZone: !Ref VPCPublicSubnet2AZ
       CidrBlock: !Ref VPCPublicSubnet2Cidr
       VpcId: !Ref VPC
+      Tags:
+        - Key: subnet_type
+          Value: public
 
   VPCInternetGateway:
     Type: AWS::EC2::InternetGateway
@@ -115,6 +121,9 @@ Resources:
       AvailabilityZone: !Ref VPCPrivateSubnet1AZ
       CidrBlock: !Ref VPCPrivateSubnet1Cidr
       VpcId: !Ref VPC
+      Tags:
+        - Key: subnet_type
+          Value: private
 
   VPCPrivateSubnet2:
     Type: AWS::EC2::Subnet
@@ -122,6 +131,9 @@ Resources:
       AvailabilityZone: !Ref VPCPrivateSubnet2AZ
       CidrBlock: !Ref VPCPrivateSubnet2Cidr
       VpcId: !Ref VPC
+      Tags:
+        - Key: subnet_type
+          Value: private
 
   VPCEIP:
     Type: AWS::EC2::EIP
@@ -231,6 +243,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
         - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
       Policies:
         - PolicyName: execution_role_policies
           PolicyDocument:

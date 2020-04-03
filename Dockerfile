@@ -9,7 +9,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/mjcs ./mjcs
 COPY src/case_harvester.py .
-COPY src/spider/scheduled_spider.py .
-COPY src/scraper/scraper_service.py .
 
 CMD ["python", "case_harvester.py", "--help"]

@@ -50,15 +50,23 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSQSFullAccess
 
-  ScheduledSpiderTask:
+  DailySpiderTask:
     Type: AWS::ECS::TaskDefinition
     Properties:
       ContainerDefinitions:
         - Name: !Sub mjcs_spider_container_${EnvironmentType}
-          Command: [ "python", "-u", "scheduled_spider.py" ]
+          Command:
+            - python
+            - -u
+            - case_harvester.py
+            - --environment
+            - !Sub ${EnvironmentType}
+            - spider
+            - --start-days-ago
+            - "0"
+            - --end-days-ago
+            - "30"
           Environment:
-            - Name: DOCKER_TASK
-              Value: true
             - Name: MJCS_DATABASE_URL
               Value: !Sub
                 - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
@@ -67,8 +75,6 @@ Resources:
                   db_addr:
                     Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
                   db_name: !Ref DatabaseName
-            - Name: SPIDER_QUEUE_NAME
-              Value: !GetAtt SpiderQueue.QueueName
             - Name: SCRAPER_QUEUE_NAME
               Value:
                 Fn::ImportValue: !Sub ${ScraperStackName}-ScraperQueueName
@@ -81,8 +87,8 @@ Resources:
             Options:
               awslogs-create-group: true
               awslogs-region: !Ref AWSRegion
-              awslogs-group: !Sub caseharvester-spider-${EnvironmentType}
-              awslogs-stream-prefix: caseharvester-spider-logs
+              awslogs-group: !Sub caseharvester-spider-daily-${EnvironmentType}
+              awslogs-stream-prefix: caseharvester-spider-daily-logs
       RequiresCompatibilities:
         - FARGATE
       Cpu: 1024
@@ -92,30 +98,108 @@ Resources:
       NetworkMode: awsvpc
       TaskRoleArn: !GetAtt SpiderTaskRole.Arn
 
-  SpiderQueue:
-    Type: AWS::SQS::Queue
+  WeeklySpiderTask:
+    Type: AWS::ECS::TaskDefinition
     Properties:
-      MessageRetentionPeriod: 1209600
-      VisibilityTimeout: 300
-      QueueName: !Sub mjcs_spider_queue_${EnvironmentType}
-
-  DailySpiderTrigger:
-    Type: AWS::Events::Rule
-    Properties:
-      Name: !Sub daily_spider_trigger_${EnvironmentType}
-      Description: Spider for cases filed in the last month (trigger)
-      ScheduleExpression: cron(0 4 * * ? *)  # midnight ET
-      Targets:
-        - Id: spider_queue_target
-          Arn: !GetAtt SpiderQueue.Arn
-          Input: '{ "days_ago_start": 0, "days_ago_end": 30 }'
+      ContainerDefinitions:
+        - Name: !Sub mjcs_spider_container_${EnvironmentType}
+          Command:
+            - python
+            - -u
+            - case_harvester.py
+            - --environment
+            - !Sub ${EnvironmentType}
+            - spider
+            - --start-days-ago
+            - "31"
+            - --end-days-ago
+            - "182"
+          Environment:
+            - Name: MJCS_DATABASE_URL
+              Value: !Sub
+                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
+                - db_user: !Ref DatabaseUsername
+                  db_pw: !Ref DatabasePassword
+                  db_addr:
+                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+                  db_name: !Ref DatabaseName
+            - Name: SCRAPER_QUEUE_NAME
+              Value:
+                Fn::ImportValue: !Sub ${ScraperStackName}-ScraperQueueName
+          Image: !Sub
+            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
+            - repo_name:
+                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-region: !Ref AWSRegion
+              awslogs-group: !Sub caseharvester-spider-weekly-${EnvironmentType}
+              awslogs-stream-prefix: caseharvester-spider-weekly-logs
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 1024
+      Memory: 2048
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+      NetworkMode: awsvpc
+      TaskRoleArn: !GetAtt SpiderTaskRole.Arn
   
+  MonthlySpiderTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: !Sub mjcs_spider_container_${EnvironmentType}
+          Command:
+            - python
+            - -u
+            - case_harvester.py
+            - --environment
+            - !Sub ${EnvironmentType}
+            - spider
+            - --start-days-ago
+            - "183"
+            - --end-days-ago
+            - "365"
+          Environment:
+            - Name: MJCS_DATABASE_URL
+              Value: !Sub
+                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
+                - db_user: !Ref DatabaseUsername
+                  db_pw: !Ref DatabasePassword
+                  db_addr:
+                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+                  db_name: !Ref DatabaseName
+            - Name: SCRAPER_QUEUE_NAME
+              Value:
+                Fn::ImportValue: !Sub ${ScraperStackName}-ScraperQueueName
+          Image: !Sub
+            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
+            - repo_name:
+                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-region: !Ref AWSRegion
+              awslogs-group: !Sub caseharvester-spider-monthly-${EnvironmentType}
+              awslogs-stream-prefix: caseharvester-spider-monthly-logs
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 1024
+      Memory: 2048
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+      NetworkMode: awsvpc
+      TaskRoleArn: !GetAtt SpiderTaskRole.Arn
+
   DailySpiderRule:
     Type: AWS::Events::Rule
     Properties:
       Name: !Sub daily_spider_${EnvironmentType}
       Description: Spider for cases filed in the last month
-      ScheduleExpression: cron(5 4 * * ? *)  # 5 past midnight ET
+      ScheduleExpression: cron(0 4 * * ? *)  # midnight ET
       Targets:
         - Id: spider_ecs_task_target
           Arn:
@@ -124,7 +208,7 @@ Resources:
             Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
           EcsParameters:
             LaunchType: FARGATE
-            TaskDefinitionArn: !Ref ScheduledSpiderTask
+            TaskDefinitionArn: !Ref DailySpiderTask
             TaskCount: 1
             NetworkConfiguration:
               AwsVpcConfiguration:
@@ -134,24 +218,13 @@ Resources:
                 Subnets:
                   - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
                   - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
-  
-  WeeklySpiderTrigger:
-    Type: AWS::Events::Rule
-    Properties:
-      Name: !Sub weekly_spider_trigger_${EnvironmentType}
-      Description: Every week, spider for cases filed in the last 6 months (trigger)
-      ScheduleExpression: cron(0 4 ? * SUN *)  # Sunday 00:00 ET
-      Targets:
-        - Id: spider_queue_target
-          Arn: !GetAtt SpiderQueue.Arn
-          Input: '{ "days_ago_start": 31, "days_ago_end": 182 }'
   
   WeeklySpiderRule:
     Type: AWS::Events::Rule
     Properties:
       Name: !Sub weekly_spider_${EnvironmentType}
       Description: Every week, spider for cases filed in the last 6 months
-      ScheduleExpression: cron(5 4 ? * SUN *)  # Sunday 00:00 ET
+      ScheduleExpression: cron(0 4 ? * SUN *)  # Sunday 00:00 ET
       Targets:
         - Id: spider_ecs_task_target
           Arn:
@@ -160,7 +233,7 @@ Resources:
             Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
           EcsParameters:
             LaunchType: FARGATE
-            TaskDefinitionArn: !Ref ScheduledSpiderTask
+            TaskDefinitionArn: !Ref WeeklySpiderTask
             TaskCount: 1
             NetworkConfiguration:
               AwsVpcConfiguration:
@@ -171,23 +244,12 @@ Resources:
                   - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
                   - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
 
-  MonthlySpiderTrigger:
-    Type: AWS::Events::Rule
-    Properties:
-      Name: !Sub monthly_spider_trigger_${EnvironmentType}
-      Description: Every month, spider for cases filed in the last year (trigger)
-      ScheduleExpression: cron(0 4 1 * ? *)  # 1st of month 00:00 ET
-      Targets:
-        - Id: spider_queue_target
-          Arn: !GetAtt SpiderQueue.Arn
-          Input: '{ "days_ago_start": 183, "days_ago_end": 365 }'
-
   MonthlySpiderRule:
     Type: AWS::Events::Rule
     Properties:
       Name: !Sub monthly_spider_${EnvironmentType}
       Description: Every month, spider for cases filed in the last year
-      ScheduleExpression: cron(5 4 1 * ? *)  # 1st of month 00:00 ET
+      ScheduleExpression: cron(0 4 1 * ? *)  # 1st of month 00:00 ET
       Targets:
         - Id: spider_ecs_task_target
           Arn:
@@ -196,7 +258,7 @@ Resources:
             Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
           EcsParameters:
             LaunchType: FARGATE
-            TaskDefinitionArn: !Ref ScheduledSpiderTask
+            TaskDefinitionArn: !Ref MonthlySpiderTask
             TaskCount: 1
             NetworkConfiguration:
               AwsVpcConfiguration:

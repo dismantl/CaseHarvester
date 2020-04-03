@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine
 import os
 import boto3
+import logging
 
 class Config:
     def __getattr__(self, name):
@@ -11,14 +12,25 @@ class Config:
     def __init__(self):
         self.initialized = False
         self.aws_profile = None
-        if os.getenv('AWS_LAMBDA_FUNCTION_NAME') or os.getenv('DOCKER_TASK'):
+        if os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
             self.initialize_from_environment()
 
     # Does not need to be called by lambda functions, only CLI
     def initialize_from_environment(self, environment=None, aws_profile=None):
         if aws_profile and not self.__getattribute__('aws_profile'):
             self.aws_profile = aws_profile
-
+        
+        # Set up logging
+        logger = logging.getLogger('mjcs')
+        formatter = logging.Formatter('[%(asctime)s] %(levelname)s:%(name)s: %(message)s')
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        if not logger.level:
+            logger.setLevel(logging.INFO)
+        if os.getenv('VERBOSE'):
+            logger.setLevel(logging.DEBUG)
+        
         if environment:
             from dotenv import load_dotenv # imported here so we don't have to package dotenv with lambda functions
             env_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'env')
@@ -46,7 +58,6 @@ class Config:
         self.MJCS_DATABASE_URL = os.getenv('MJCS_DATABASE_URL')
         self.CASE_DETAILS_BUCKET = os.getenv('CASE_DETAILS_BUCKET')
 
-        self.SPIDER_QUEUE_NAME = os.getenv('SPIDER_QUEUE_NAME')
         self.SCRAPER_QUEUE_NAME = os.getenv('SCRAPER_QUEUE_NAME')
         self.SCRAPER_FAILED_QUEUE_NAME = os.getenv('SCRAPER_FAILED_QUEUE_NAME')
         self.PARSER_FAILED_QUEUE_NAME = os.getenv('PARSER_FAILED_QUEUE_NAME')
@@ -75,8 +86,6 @@ class Config:
             self.parser_trigger = self.sns.Topic(self.PARSER_TRIGGER_ARN)
         if self.__getattribute__('PARSER_FAILED_QUEUE_NAME'):
             self.parser_failed_queue = self.sqs.get_queue_by_name(QueueName=self.PARSER_FAILED_QUEUE_NAME)
-        if self.__getattribute__('SPIDER_QUEUE_NAME'):
-            self.spider_queue = self.sqs.get_queue_by_name(QueueName=self.SPIDER_QUEUE_NAME)
 
         self.initialized = True
 

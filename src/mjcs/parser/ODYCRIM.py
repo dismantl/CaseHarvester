@@ -4,7 +4,6 @@ from ..models import (ODYCRIM, ODYCRIMReferenceNumber, ODYCRIMDefendant,
                      ODYCRIMRestitution, ODYCRIMWarrant, ODYCRIMBailBond,
                      ODYCRIMBondSetting, ODYCRIMDocument, ODYCRIMService)
 from .base import CaseDetailsParser, consumer, ParserError
-from datetime import *
 import re
 from bs4 import BeautifulSoup, SoupStrainer
 
@@ -32,9 +31,7 @@ class ODYCRIMParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        a = datetime.now()
         self.delete_previous(db, ODYCRIM)
-        print("Took %s seconds to delete previous ODYCRIM" % (datetime.now() - a).total_seconds())
 
         case = ODYCRIM(case_number=self.case_number)
         section_header = self.first_level_header(soup,'Case Information')

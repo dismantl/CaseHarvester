@@ -16,6 +16,9 @@ import xml.etree.ElementTree as ET
 import h11
 import json
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 def prompt_continue(prompt):
     answer = input(prompt+' (y/N) ')
@@ -53,10 +56,6 @@ class Spider:
         + string.punctuation.replace('_','').replace('%','') \
         + ' '
 
-    def print_details(self, msg):
-        if not self.quiet or os.getenv('VERBOSE'):
-            print(msg)
-
     async def __query_mjcs(self, db, item, session, url, method='POST', post_params={}, xml=False):
         if xml:
             post_params['d-16544-e'] = 3
@@ -75,25 +74,25 @@ class Spider:
             raise FailedSearchUnknownError
 
         if response.history and response.history[0].status_code == 302:
-            self.print_details("Received 302 redirect, renewing session...")
+            logger.debug("Received 302 redirect, renewing session...")
             await session.renew()
             raise FailedSearchExpiredSession
         elif response.status_code == 500:
-            self.print_details("############## Received 500 error #################")
+            logger.warning("Received 500 error")
             item.handle_500()
             raise FailedSearch500Error
         elif response.status_code != 200:
-            self.print_details("Unknown error. response code: %s, response body: %s" % (response.status_code, response.text))
+            logger.warning("Unknown error. response code: %s, response body: %s" % (response.status_code, response.text))
             item.handle_unknown_err("response code: %s, response body: %s" % (response.status_code, response.text))
             raise FailedSearchUnknownError
         else:
             if 'text/html' in response.headers['Content-Type'] \
                     and re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text):
-                self.print_details("No cases for search string %s starting on %s" % (item.search_string,item.start_date.strftime("%-m/%-d/%Y")))
+                logger.debug("No cases for search string %s starting on %s" % (item.search_string,item.start_date.strftime("%-m/%-d/%Y")))
                 raise CompletedSearchNoResults
             elif 'text/html' in response.headers['Content-Type'] \
                     and re.search(r'<span class="error">\s*<br>Sorry, but your query has timed out after 2 minute',response.text):
-                self.print_details("$$$$$$$$$$$$$$ MJCS Timeout $$$$$$$$$$$$")
+                logger.warning("MJCS Timeout")
                 item.handle_timeout(db)
                 raise FailedSearchTimeout
 
@@ -104,7 +103,7 @@ class Spider:
         session = await self.session_pool.get()
         start_query = datetime.now()
 
-        self.print_details("Searching for %s on start date %s" % (item.search_string,item.start_date.strftime("%-m/%-d/%Y")))
+        logger.debug("Searching for %s on start date %s" % (item.search_string,item.start_date.strftime("%-m/%-d/%Y")))
         query_params = {
             'lastName':item.search_string,
             'countyName':item.court,
@@ -142,7 +141,7 @@ class Spider:
             results = []
             results_table = html.find('table',class_='results',id='row')
             if not results_table:
-                self.print_details('Error finding results table in returned HTML')
+                logger.error('Error finding results table in returned HTML')
                 self.session_pool.put_nowait(session)
                 return
             for row in results_table.tbody.find_all('tr'):
@@ -167,7 +166,7 @@ class Spider:
 
             query_time = (datetime.now() - start_query).total_seconds()
             self.session_pool.put_nowait(session)
-            self.print_details("Search string %s returned %d items, took %d seconds" % (item.search_string, len(results), query_time))
+            logger.debug("Search string %s returned %d items, took %d seconds" % (item.search_string, len(results), query_time))
 
             processed_cases = []
             for result in results:
@@ -216,7 +215,7 @@ class Spider:
                             loc = loc,
                             detail_loc = detail_loc
                         )
-            self.print_details("Submitted %d cases out of %d returned" % (len(processed_cases), len(results)))
+            logger.debug("Submitted %d cases out of %d returned" % (len(processed_cases), len(results)))
 
             if hit_limit:
                 # trailing spaces are trimmed, so <searh_string + ' '> will return same results as <search_string>.
@@ -254,7 +253,7 @@ class Spider:
     def __clear_queue(self, db):
         if active_count(db) and sys.stdin.isatty():
             prompt_continue("There are existing unsearched items in the queue. Are you sure you want to cancel them?")
-            print("Clearing queue...")
+            logger.info("Clearing queue...")
             clear_queue(db)
 
     def __upsert_search_item(self, db, search_item):
@@ -268,7 +267,7 @@ class Spider:
         )
 
     def __seed_queue(self, db, start_date, end_date=None, court=None, site=None):
-        print("Seeding queue")
+        logger.info("Seeding queue")
         if end_date:
             def gen_timeranges(start_date, end_date):
                 for n in range(0,int((end_date - start_date).days),config.SPIDER_DAYS_PER_QUERY):
@@ -297,7 +296,7 @@ class Spider:
                     court = court,
                     site = site
                 ))
-        print("Finished seeding queue")
+        logger.info("Finished seeding queue")
 
     async def __main_task(self, run):
         with db_session() as db:
@@ -308,7 +307,6 @@ class Spider:
                     items = failed_items(db).limit(config.CASE_BATCH_SIZE)
                 else:
                     items = active_items(db).limit(config.CASE_BATCH_SIZE)
-            # print("new batch")
             try:
                 async with trio.open_nursery() as nursery:
                     for item in items:
@@ -327,7 +325,7 @@ class Spider:
                     nitems = failed_count(db) if run.retry_failed else active_count(db)
 
     def __run(self, start_date=None, end_date=None, court=None, site=None, retry_failed=False):
-        print("Starting run")
+        logger.info("Starting run")
         with db_session() as db:
             run = Run(
                 db = db,
@@ -343,11 +341,11 @@ class Spider:
             try:
                 trio.run(self.__main_task, run, restrict_keyboard_interrupt_to_checkpoints=True)
             except KeyboardInterrupt:
-                print("\nCaught KeyboardInterrupt: saving run...")
+                logger.info("\nCaught KeyboardInterrupt: saving run...")
             finally:
                 run.update(db)
                 db.commit()
-        print("Spider run complete")
+        logger.info("Spider run complete")
 
     def search(self, start_date, end_date=None, court=None, site=None):
         with db_session() as db:
@@ -367,10 +365,9 @@ class Spider:
                 raise Exception("Cannot retry, no failed items in queue")
         self.__run(retry_failed=True)
 
-    def __init__(self, concurrency=None, overwrite=False, force_scrape=False, quiet=False, ignore_errors=False):
+    def __init__(self, concurrency=None, overwrite=False, force_scrape=False, ignore_errors=False):
         self.overwrite = overwrite
         self.force_scrape = force_scrape
-        self.quiet = quiet
         self.ignore_errors = ignore_errors
         if not concurrency:
             concurrency = config.SPIDER_DEFAULT_CONCURRENCY

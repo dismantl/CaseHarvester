@@ -1,4 +1,7 @@
 from .config import config
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Session:
     def __init__(self):
@@ -47,9 +50,7 @@ class AsyncSession:
             except asks.errors.BadHttpResponse:
                 continue
             if response.status_code != 200:
-                # raise Exception(
-                    print("!!! Failed to authenticate with MJCS: code = %d, body = %s" % (response.status_code, response.text))
-                # )
+                logger.error("Failed to authenticate with MJCS: code = %d, body = %s" % (response.status_code, response.text))
             else:
                 return
         raise Exception('Failed to authenticate with MJCS 5 times')

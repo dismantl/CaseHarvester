@@ -2,6 +2,9 @@ from datetime import *
 from .search import active_count
 from .util import total_cases
 from .models import BaseRun
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Run(BaseRun):
     def __init__(self,
@@ -39,11 +42,11 @@ class Run(BaseRun):
         self.run_seconds = (current_time - self.run_start).total_seconds()
         self.queue_still_active = active_count(db) # TODO support stats for failed retry runs
         self.cases_added = total_cases(db) - self.start_ncases
-        print("Run updated!")
-        print("Finished in %s seconds" % str(self.run_seconds))
-        print("Number of query items still active in queue: %d" % self.queue_still_active)
-        print("Number of query items finished: %d" % self.queue_finished)
-        print("Number of cases added: %d" % self.cases_added)
-        print("Number of results processed: %d" % self.results_processed)
+        logger.info("Run updated!")
+        logger.info("Finished in %s seconds" % str(self.run_seconds))
+        logger.info("Number of query items still active in queue: %d" % self.queue_still_active)
+        logger.info("Number of query items finished: %d" % self.queue_finished)
+        logger.info("Number of cases added: %d" % self.cases_added)
+        logger.info("Number of results processed: %d" % self.results_processed)
         # TODO average query time
         # TODO # failed searches

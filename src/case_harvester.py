@@ -12,8 +12,11 @@ import sys
 import os
 import json
 import argparse
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.sql import text
+
+logger = logging.getLogger('mjcs')
 
 def get_stack_exports():
     return boto3.client('cloudformation').list_exports()['Exports']
@@ -116,8 +119,15 @@ def run_spider(args):
         spider.retry_failed()
     elif args.start_date:
         spider.search(args.start_date, args.end_date, args.court, args.site)
+    elif args.end_days_ago:
+        today = datetime.now().date()
+        end_date = today - timedelta(days=args.start_days_ago)
+        start_date = today - timedelta(days=args.end_days_ago)
+        logger.info(f'Spidering for cases filed between {start_date} and {end_date}')
+        spider.ignore_errors = True
+        spider.search(start_date=start_date, end_date=end_date)
     else:
-        raise Exception("Must specify search criteria or --resume")
+        raise Exception("Must specify search criteria, --resume, or --start-days-ago/--end-days-ago")
 
 def scraper_prompt(exception, case_number):
     print(exception)
@@ -174,8 +184,13 @@ def run_scraper(args):
         scraper.scrape_from_failed_queue()
     elif args.case:
         scraper.scrape_specific_case(args.case)
+    elif args.rescrape_end:
+        scraper.rescrape(days_ago_start=args.rescrape_start, days_ago_end=args.rescrape_end)
+    elif args.service:
+        scraper.on_error = lambda e,c: 'delete'  # ignore errors when we run as service
+        scraper.start_service()
     else:
-        raise Exception("Must specify --missing, --queue, or --failed-queue.")
+        raise Exception("Must specify --missing, --queue, --failed-queue, or --rescrape-start/--rescrape-end.")
 
 def parser_prompt(exception, case_number):
     if type(exception) == NotImplementedError:
@@ -227,7 +242,7 @@ if __name__ == '__main__':
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument('--environment', '--env', default='development',
-        choices=['production','development'],
+        choices=['production','prod','development','dev'],
         help="Environment to run the case harvester in (e.g. production, development)")
     parser.add_argument('--profile', '-p', default='default',
         help="AWS named profile to use for credentials (see \
@@ -241,7 +256,11 @@ if __name__ == '__main__':
         help="Start date for search range. If --end-date is not specified, "
         "search for cases on this exact date")
     parser_spider.add_argument('--end-date','-e', type=valid_date,
-        help="Optional. End date for search range")
+        help="End date for search range (optional)")
+    parser_spider.add_argument('--start-days-ago', type=int, default=0,
+        help="Spider for cases starting this many days ago (default 0)")
+    parser_spider.add_argument('--end-days-ago', type=int,
+        help="Spider for cases ending this many days ago")
     parser_spider.add_argument('--resume','-r', action='store_true',
         help="Use existing queue items in database")
     parser_spider.add_argument('--court', #choices=['BALTIMORE CITY'],
@@ -256,6 +275,8 @@ if __name__ == '__main__':
         help="Retry failed search items in queue")
     parser_spider.add_argument('--ignore-errors', action='store_true',
         help="Ignore spidering errors")
+    parser_spider.add_argument('--verbose', '-v', action='store_true',
+        help="Print debug information")
     parser_spider.set_defaults(func=run_spider)
 
     parser_scraper = subparsers.add_parser('scraper',
@@ -270,9 +291,17 @@ if __name__ == '__main__':
         "Scrape cases in the scraper queue")
     parser_scraper.add_argument('--failed-queue', action='store_true', help=\
         "Scrape cases in the queue of failed cases")
-    parser_scraper.add_argument('--threads', type=int, default=1,
-        help="Number of threads (default: 1)")
+    parser_scraper.add_argument('--threads', type=int, default=10,
+        help="Number of threads for scraping cases (default: 10)")
     parser_scraper.add_argument('--case', '-c', help="Scrape specific case number")
+    parser_scraper.add_argument('--verbose', '-v', action='store_true',
+        help="Print debug information")
+    parser_scraper.add_argument('--rescrape-start', type=int, default=0,
+        help="Send existing cases to scraper queue for rescraping, starting this many days ago (default 0)")
+    parser_scraper.add_argument('--rescrape-end', type=int,
+        help="Send existing cases to scraper queue for rescraping, ending this many days ago")
+    parser_scraper.add_argument('--service', action='store_true',
+        help="Run the scraper as a service, scraping cases whenever there are messages in the scraper queue")
     parser_scraper.set_defaults(func=run_scraper)
 
     parser_parser = subparsers.add_parser('parser', help=\
@@ -290,6 +319,8 @@ if __name__ == '__main__':
     parser_parser.add_argument('--threads', type=int, default=1,
         help="Number of threads for parsing unparsed cases (default: 1)")
     parser_parser.add_argument('--case', '-c', help="Parse a specific case number")
+    parser_parser.add_argument('--verbose', '-v', action='store_true',
+        help="Print debug information")
     parser_parser.set_defaults(func=run_parser)
 
     if os.getenv('DEV_MODE'):
@@ -305,10 +336,15 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    if args.verbose or os.getenv('VERBOSE'):
+        logger.setLevel(logging.DEBUG)
+
     config.initialize_from_environment(args.environment, args.profile)
-    if args.environment == 'development':
+    if args.environment[:3] == 'dev':
+        args.environment = 'development'
         args.environment_short = 'dev'
-    elif args.environment == 'production':
+    elif args.environment[:4] == 'prod':
+        args.environment = 'production'
         args.environment_short = 'prod'
 
     if hasattr(args, 'func'):

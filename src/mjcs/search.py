@@ -3,6 +3,9 @@ from .models import SearchItemResult, SearchItemStatus, BaseSearchItem
 from datetime import *
 import zlib
 import math
+import logging
+
+logger = logging.getLogger(__name__)
 
 def clear_queue(db):
     db.execute(
@@ -90,7 +93,7 @@ class SearchItem(BaseSearchItem):
         # For timeouts, split the date range in half and add both to queue
         if self.end_date:
             range1, range2 = split_date_range(self.start_date, self.end_date)
-            print("Appending %s from %s to %s" % (self.search_string, range1[0], range1[1]))
+            logger.debug("Appending %s from %s to %s" % (self.search_string, range1[0], range1[1]))
             db.merge(SearchItem(
                 search_string = self.search_string,
                 start_date = range1[0],
@@ -99,7 +102,7 @@ class SearchItem(BaseSearchItem):
                 site = self.site,
                 status = SearchItemStatus.new
             ))
-            print("Appending %s from %s to %s" % (self.search_string, range2[0], range2[1]))
+            logger.debug("Appending %s from %s to %s" % (self.search_string, range2[0], range2[1]))
             db.merge(SearchItem(
                 search_string = self.search_string,
                 start_date = range2[0],

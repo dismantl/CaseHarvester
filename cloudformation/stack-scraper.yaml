@@ -31,6 +31,37 @@ Parameters:
     Default: us-east-1
 
 Resources:
+  ScraperQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      VisibilityTimeout: 300
+      QueueName: !Sub mjcs_scraper_queue_${EnvironmentType}
+
+  ScraperFailedQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      VisibilityTimeout: 300
+      QueueName: !Sub mjcs_scraper_failed_queue_${EnvironmentType}
+
+  ScraperTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub mjcs_ecs_scraper_task_role_${EnvironmentType}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
   ScraperService:
     Type: AWS::ECS::Service
     Properties:
@@ -47,17 +78,22 @@ Resources:
           Subnets:
             - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
             - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
-      TaskDefinition: !Ref ScraperTask
+      TaskDefinition: !Ref ScraperServiceTask
   
-  ScraperTask:
+  ScraperServiceTask:
     Type: AWS::ECS::TaskDefinition
     Properties:
       ContainerDefinitions:
         - Name: !Sub mjcs_scraper_container_${EnvironmentType}
-          Command: [ "python", "-u", "scraper_service.py" ]
+          Command:
+            - python
+            - -u
+            - case_harvester.py
+            - --environment
+            - !Sub ${EnvironmentType}
+            - scraper
+            - --service
           Environment:
-            - Name: DOCKER_TASK
-              Value: true
             - Name: MJCS_DATABASE_URL
               Value: !Sub
                 - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
@@ -82,8 +118,8 @@ Resources:
             Options:
               awslogs-create-group: true
               awslogs-region: !Ref AWSRegion
-              awslogs-group: !Sub caseharvester-scraper-${EnvironmentType}
-              awslogs-stream-prefix: caseharvester-scraper-logs
+              awslogs-group: !Sub caseharvester-scraper-service-${EnvironmentType}
+              awslogs-stream-prefix: caseharvester-scraper-service-logs
       RequiresCompatibilities:
         - FARGATE
       Cpu: 1024
@@ -93,65 +129,213 @@ Resources:
       NetworkMode: awsvpc
       TaskRoleArn: !GetAtt ScraperTaskRole.Arn
 
-  ScraperTaskRole:
-    Type: AWS::IAM::Role
+  DailyScraperTask:
+    Type: AWS::ECS::TaskDefinition
     Properties:
-      RoleName: !Sub mjcs_ecs_scraper_task_role_${EnvironmentType}
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - ecs-tasks.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
-        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      ContainerDefinitions:
+        - Name: !Sub mjcs_scraper_container_${EnvironmentType}
+          Command:
+            - python
+            - -u
+            - case_harvester.py
+            - --environment
+            - !Sub ${EnvironmentType}
+            - scraper
+            - --rescrape-start
+            - "0"
+            - --rescrape-end
+            - "30"
+          Environment:
+            - Name: MJCS_DATABASE_URL
+              Value: !Sub
+                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
+                - db_user: !Ref DatabaseUsername
+                  db_pw: !Ref DatabasePassword
+                  db_addr:
+                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+                  db_name: !Ref DatabaseName
+            - Name: SCRAPER_QUEUE_NAME
+              Value: !GetAtt ScraperQueue.QueueName
+            - Name: SCRAPER_FAILED_QUEUE_NAME
+              Value: !GetAtt ScraperFailedQueue.QueueName
+            - Name: CASE_DETAILS_BUCKET
+              Value:
+                Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
+          Image: !Sub
+            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
+            - repo_name:
+                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-region: !Ref AWSRegion
+              awslogs-group: !Sub caseharvester-scraper-daily-${EnvironmentType}
+              awslogs-stream-prefix: caseharvester-scraper-daily-logs
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 1024
+      Memory: 2048
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+      NetworkMode: awsvpc
+      TaskRoleArn: !GetAtt ScraperTaskRole.Arn
 
-  ScraperLambda:
-    Type: AWS::Serverless::Function
+  WeeklyScraperTask:
+    Type: AWS::ECS::TaskDefinition
     Properties:
-      Handler: scraper_lambda.lambda_handler
-      Runtime: python3.6
-      Policies:
-        - AmazonSQSFullAccess
-        - VPCAccessPolicy: {}
-      CodeUri: ../pkg/scraper
-      MemorySize: 320
-      Timeout: 900
-      ReservedConcurrentExecutions: 10
-      Environment:
-        Variables:
-          MJCS_DATABASE_URL: !Sub
-            - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
-            - db_user: !Ref DatabaseUsername
-              db_pw: !Ref DatabasePassword
-              db_addr:
-                Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
-              db_name: !Ref DatabaseName
-          SCRAPER_QUEUE_NAME: !GetAtt ScraperQueue.QueueName
-      VpcConfig:
-        SecurityGroupIds:
-          - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
-        SubnetIds:
-          - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
-          - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+      ContainerDefinitions:
+        - Name: !Sub mjcs_scraper_container_${EnvironmentType}
+          Command:
+            - python
+            - -u
+            - case_harvester.py
+            - --environment
+            - !Sub ${EnvironmentType}
+            - scraper
+            - --rescrape-start
+            - "31"
+            - --rescrape-end
+            - "182"
+          Environment:
+            - Name: MJCS_DATABASE_URL
+              Value: !Sub
+                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
+                - db_user: !Ref DatabaseUsername
+                  db_pw: !Ref DatabasePassword
+                  db_addr:
+                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+                  db_name: !Ref DatabaseName
+            - Name: SCRAPER_QUEUE_NAME
+              Value: !GetAtt ScraperQueue.QueueName
+            - Name: SCRAPER_FAILED_QUEUE_NAME
+              Value: !GetAtt ScraperFailedQueue.QueueName
+            - Name: CASE_DETAILS_BUCKET
+              Value:
+                Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
+          Image: !Sub
+            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
+            - repo_name:
+                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-region: !Ref AWSRegion
+              awslogs-group: !Sub caseharvester-scraper-weekly-${EnvironmentType}
+              awslogs-stream-prefix: caseharvester-scraper-weekly-logs
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 1024
+      Memory: 2048
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+      NetworkMode: awsvpc
+      TaskRoleArn: !GetAtt ScraperTaskRole.Arn
+  
+  MonthlyScraperTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: !Sub mjcs_scraper_container_${EnvironmentType}
+          Command:
+            - python
+            - -u
+            - case_harvester.py
+            - --environment
+            - !Sub ${EnvironmentType}
+            - scraper
+            - --rescrape-start
+            - "183"
+            - --rescrape-end
+            - "720"
+          Environment:
+            - Name: MJCS_DATABASE_URL
+              Value: !Sub
+                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
+                - db_user: !Ref DatabaseUsername
+                  db_pw: !Ref DatabasePassword
+                  db_addr:
+                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+                  db_name: !Ref DatabaseName
+            - Name: SCRAPER_QUEUE_NAME
+              Value: !GetAtt ScraperQueue.QueueName
+            - Name: SCRAPER_FAILED_QUEUE_NAME
+              Value: !GetAtt ScraperFailedQueue.QueueName
+            - Name: CASE_DETAILS_BUCKET
+              Value:
+                Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
+          Image: !Sub
+            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
+            - repo_name:
+                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-region: !Ref AWSRegion
+              awslogs-group: !Sub caseharvester-scraper-monthly-${EnvironmentType}
+              awslogs-stream-prefix: caseharvester-scraper-monthly-logs
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 1024
+      Memory: 2048
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+      NetworkMode: awsvpc
+      TaskRoleArn: !GetAtt ScraperTaskRole.Arn
 
-  ScraperFailedQueue:
-    Type: AWS::SQS::Queue
+  QuarterlyScraperTask:
+    Type: AWS::ECS::TaskDefinition
     Properties:
-      MessageRetentionPeriod: 1209600
-      VisibilityTimeout: 300
-      QueueName: !Sub mjcs_scraper_failed_queue_${EnvironmentType}
-
-  ScraperQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      MessageRetentionPeriod: 1209600
-      VisibilityTimeout: 300
-      QueueName: !Sub mjcs_scraper_queue_${EnvironmentType}
+      ContainerDefinitions:
+        - Name: !Sub mjcs_scraper_container_${EnvironmentType}
+          Command:
+            - python
+            - -u
+            - case_harvester.py
+            - --environment
+            - !Sub ${EnvironmentType}
+            - scraper
+            - --rescrape-start
+            - "721"
+            - --rescrape-end
+            - "2191"
+          Environment:
+            - Name: MJCS_DATABASE_URL
+              Value: !Sub
+                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
+                - db_user: !Ref DatabaseUsername
+                  db_pw: !Ref DatabasePassword
+                  db_addr:
+                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+                  db_name: !Ref DatabaseName
+            - Name: SCRAPER_QUEUE_NAME
+              Value: !GetAtt ScraperQueue.QueueName
+            - Name: SCRAPER_FAILED_QUEUE_NAME
+              Value: !GetAtt ScraperFailedQueue.QueueName
+            - Name: CASE_DETAILS_BUCKET
+              Value:
+                Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
+          Image: !Sub
+            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
+            - repo_name:
+                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-region: !Ref AWSRegion
+              awslogs-group: !Sub caseharvester-scraper-quarterly-${EnvironmentType}
+              awslogs-stream-prefix: caseharvester-scraper-quarterly-logs
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 1024
+      Memory: 4096
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+      NetworkMode: awsvpc
+      TaskRoleArn: !GetAtt ScraperTaskRole.Arn
 
   DailyScraperRule:
     Type: AWS::Events::Rule
@@ -160,9 +344,23 @@ Resources:
       Description: Every day, re-scrape last 30 days cases
       ScheduleExpression: cron(0 22 * * ? *)  # 6pm ET
       Targets:
-        - Id: scraper_lambda_target
-          Arn: !GetAtt ScraperLambda.Arn
-          Input: '{ "command": "rescrape", "options": { "days_ago_start": 0, "days_ago_end": 30 } }'
+        - Id: scraper_ecs_task_target
+          Arn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
+          RoleArn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+          EcsParameters:
+            LaunchType: FARGATE
+            TaskDefinitionArn: !Ref DailyScraperTask
+            TaskCount: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: DISABLED
+                SecurityGroups:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+                Subnets:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
   
   WeeklyScraperRule:
     Type: AWS::Events::Rule
@@ -171,10 +369,24 @@ Resources:
       Description: Every week, re-scrape last 6 months cases
       ScheduleExpression: cron(0 8 ? * SUN *)  # Sunday 4am ET
       Targets:
-        - Id: scraper_lambda_target
-          Arn: !GetAtt ScraperLambda.Arn
-          Input: '{ "command": "rescrape", "options": { "days_ago_start": 31, "days_ago_end": 182 } }'
-  
+        - Id: scraper_ecs_task_target
+          Arn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
+          RoleArn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+          EcsParameters:
+            LaunchType: FARGATE
+            TaskDefinitionArn: !Ref WeeklyScraperTask
+            TaskCount: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: DISABLED
+                SecurityGroups:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+                Subnets:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+
   MonthlyScraperRule:
     Type: AWS::Events::Rule
     Properties:
@@ -182,9 +394,23 @@ Resources:
       Description: Every month, re-scrape last 2 years cases
       ScheduleExpression: cron(0 8 1 * ? *)  # 1st of month 4am ET
       Targets:
-        - Id: scraper_lambda_target
-          Arn: !GetAtt ScraperLambda.Arn
-          Input: '{ "command": "rescrape", "options": { "days_ago_start": 183, "days_ago_end": 720 } }'
+        - Id: scraper_ecs_task_target
+          Arn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
+          RoleArn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+          EcsParameters:
+            LaunchType: FARGATE
+            TaskDefinitionArn: !Ref MonthlyScraperTask
+            TaskCount: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: DISABLED
+                SecurityGroups:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+                Subnets:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
 
   QuarterlyScraperRule:
     Type: AWS::Events::Rule
@@ -193,41 +419,23 @@ Resources:
       Description: Every 3 months, re-scrape last 6 years cases
       ScheduleExpression: cron(0 8 1 */3 ? *)  # 1st of every 3rd month 4am ET
       Targets:
-        - Id: scraper_lambda_target
-          Arn: !GetAtt ScraperLambda.Arn
-          Input: '{ "command": "rescrape", "options": { "days_ago_start": 721, "days_ago_end": 2191 } }'
-
-  DailyRulePermissions:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !GetAtt ScraperLambda.Arn
-      Action: lambda:InvokeFunction
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt DailyScraperRule.Arn
-  
-  WeeklyRulePermissions:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !GetAtt ScraperLambda.Arn
-      Action: lambda:InvokeFunction
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt WeeklyScraperRule.Arn
-  
-  MonthlyRulePermissions:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !GetAtt ScraperLambda.Arn
-      Action: lambda:InvokeFunction
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt MonthlyScraperRule.Arn
-  
-  QuarterlyRulePermissions:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !GetAtt ScraperLambda.Arn
-      Action: lambda:InvokeFunction
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt QuarterlyScraperRule.Arn
+        - Id: scraper_ecs_task_target
+          Arn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
+          RoleArn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+          EcsParameters:
+            LaunchType: FARGATE
+            TaskDefinitionArn: !Ref QuarterlyScraperTask
+            TaskCount: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: DISABLED
+                SecurityGroups:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+                Subnets:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
 
 Outputs:
   ScraperFailedQueueName:

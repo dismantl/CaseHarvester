@@ -2,10 +2,10 @@ CODE_SRC=src
 PACKAGE_DIR=pkg
 LIB_DIR=lib
 DOCS_DIR=docs
-SPIDER_DEPS=$(addprefix $(CODE_SRC)/,spider/scheduled_spider.py \
+SPIDER_DEPS=$(addprefix $(CODE_SRC)/,case_harvester.py \
 	$(addprefix mjcs/,__init__.py spider.py config.py util.py run.py search.py \
 		session.py models/*.py))
-SCRAPER_DEPS=$(addprefix $(CODE_SRC)/,scraper/scraper_lambda.py scraper/scraper_service.py \
+SCRAPER_DEPS=$(addprefix $(CODE_SRC)/,case_harvester.py \
 	$(addprefix mjcs/,__init__.py scraper.py config.py util.py session.py models/*.py))
 PARSER_DEPS=$(addprefix $(CODE_SRC)/,parser/parser_lambda.py \
 	$(addprefix mjcs/,__init__.py config.py util.py parser/*.py models/*.py))
@@ -16,8 +16,8 @@ DB_NAME=mjcs
 AWS_PROFILE=default
 DOCKER_REPO_NAME=caseharvester
 
-.PHONY: package $(addprefix package_,scraper parser) deploy \
-	deploy_production $(addprefix deploy_,static docker-repo spider scraper parser) \
+.PHONY: package package_parser deploy deploy_production \
+	$(addprefix deploy_,static docker-repo spider scraper parser) \
 	$(addsuffix _production,$(addprefix deploy_,static docker-repo spider scraper parser)) \
 	test clean clean_all list_exports init init_production parser_notification \
 	parser_notification_production docker_image docker_image_production sync sync_prod docs
@@ -107,11 +107,6 @@ docker push $(REPO_URL)
 endef
 
 
-.package-scraper: $(SCRAPER_DEPS) $(CODE_SRC)/scraper/requirements.txt
-	$(call package_f,scraper)
-	cp -r $(LIB_DIR)/psycopg2 $(PACKAGE_DIR)/scraper/
-	touch $@
-
 .package-parser: $(PARSER_DEPS) $(CODE_SRC)/parser/requirements.txt
 	$(call package_f,parser)
 	cp -r $(LIB_DIR)/psycopg2 $(PACKAGE_DIR)/parser/
@@ -157,11 +152,11 @@ endef
 	$(call deploy_stack_f,spider,prod)
 	touch $@
 
-.deploy-scraper-dev: .deploy-static-dev .push-docker-image-dev .package-scraper cloudformation/stack-scraper.yaml $(SECRETS_FILE)
+.deploy-scraper-dev: .deploy-static-dev cloudformation/stack-scraper.yaml $(SECRETS_FILE)
 	$(call deploy_stack_f,scraper,dev)
 	touch $@
 
-.deploy-scraper-prod: .deploy-static-prod .push-docker-image-prod .package-scraper cloudformation/stack-scraper.yaml $(SECRETS_FILE)
+.deploy-scraper-prod: .deploy-static-prod cloudformation/stack-scraper.yaml $(SECRETS_FILE)
 	$(call deploy_stack_f,scraper,prod)
 	touch $@
 
@@ -195,11 +190,9 @@ docker_image:
 docker_image_production:
 	$(call push_docker_image_f,prod)
 
-package_scraper: .package-scraper
-
 package_parser: .package-parser
 
-package: package_scraper package_parser
+package: package_parser
 
 deploy_static: .deploy-static-dev
 

@@ -4,7 +4,6 @@ from ..models import (CC, CCDistrictCaseNumber, CCPlaintiff, CCDefendant,
                      CCJudgmentAgainst, CCJudgmentInFavor, CCSupportOrder,
                      CCDocument)
 from .base import CaseDetailsParser, consumer, ParserError
-from datetime import *
 import re
 
 class CCParser(CaseDetailsParser):
@@ -22,9 +21,7 @@ class CCParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        a = datetime.now()
         self.delete_previous(db, CC)
-        print("Took %s seconds to delete previous CC" % (datetime.now() - a).total_seconds())
 
         section_header = self.second_level_header(soup,'Case Information')
         t1 = self.table_next_first_column_prompt(section_header,'Court System:')

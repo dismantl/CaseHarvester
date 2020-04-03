@@ -5,6 +5,9 @@ from sqlalchemy import and_
 import json
 import time
 import concurrent.futures
+import logging
+
+logger = logging.getLogger(__name__)
 
 # TODO move these to config
 CONCURRENCY_AVAILABLE = 87
@@ -60,7 +63,7 @@ def invoke_parser_lambda(detail_loc=None):
         case_count = 1
         for batch_filter in cases_batch_filter(db, filter):
             for case_number,case_type in db.query(Case.case_number,Case.detail_loc).filter(batch_filter):
-                print('Invoking Parser lambda for case %s (%s of %s)' % (case_number,case_count,num_cases))
+                logger.debug('Invoking Parser lambda for case %s (%s of %s)' % (case_number,case_count,num_cases))
                 case_count += 1
                 config.parser_trigger.publish(
                     Message='{"case_number":"%s","detail_loc":"%s"}' % (case_number,case_type)
@@ -83,20 +86,19 @@ class Parser:
             filter = and_(Case.last_parse == None, Case.last_scrape != None,
                 Case.parse_exempt != True, Case.detail_loc.in_([c for c,p in parsers]))
         with db_session() as db:
-            print('Getting count of unparsed cases...',end='',flush=True)
+            logger.info('Getting count of unparsed cases...')
             counter = {
                 'total': db.query(Case.case_number).filter(filter).count(),
                 'count': 0
             }
-            print('Done.')
-            print('Generating batch queries...',end='',flush=True)
+            logger.info('Generating batch queries...')
             batch_filters = cases_batch_filter(db, filter)
-            print('Done.')
+            logger.info('Done.')
         for batch_filter in batch_filters:
             with db_session() as db:
-                print('Fetching batch of cases from database...',end='',flush=True)
+                logger.debug('Fetching batch of cases from database...',end='',flush=True)
                 case_numbers = [c for c, in db.query(Case.case_number).filter(batch_filter)]
-                print('Done.')
+                logger.debug('Done.')
             process_cases(parse_case, case_numbers, None, self.on_error, self.threads, counter)
 
     def parse_failed_queue(self, detail_loc=None):
@@ -108,7 +110,7 @@ class Parser:
         while True:
             queue_items = fetch_from_queue(config.parser_failed_queue)
             if not queue_items:
-                print("No items found in queue")
+                logger.info("No items found in queue")
                 break
             counter['total'] += len(queue_items)
 
@@ -161,6 +163,6 @@ class Parser:
 
             process_cases(parse_case, cases, queue_on_success, queue_on_error, self.threads, counter)
 
-        print("Total number of parsed cases: %d" % counter['count'])
+        logger.info("Total number of parsed cases: %d" % counter['count'])
         if counter['count'] == 0:
             raise NoItemsInQueue
