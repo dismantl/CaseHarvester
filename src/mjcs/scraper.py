@@ -251,7 +251,6 @@ class Scraper:
         session_pool = Queue(self.threads)
         for _ in range(self.threads):
             session = Session()
-            session.renew() # Renew session immediately bc it was causing errors in Lambda
             session_pool.put_nowait(session)
         counter = {
             'total': 0,

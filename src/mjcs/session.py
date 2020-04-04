@@ -1,5 +1,6 @@
 from .config import config
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -13,17 +14,26 @@ class Session:
         return self.session.post(timeout = config.QUERY_TIMEOUT, *args, **kwargs)
 
     def renew(self):
-        response = self.post(
-            'http://casesearch.courts.state.md.us/casesearch/processDisclaimer.jis',
-            data = {
-                'disclaimer':'Y',
-                'action':'Continue'
-            }
-        )
-        if response.status_code != 200:
-            raise Exception(
-                "Failed to authenticate with MJCS: code = %d, body = %s" % (response.status_code, response.text)
-            )
+        import requests
+        for _ in range(0,5):
+            try:
+                response = self.post(
+                    'http://casesearch.courts.state.md.us/casesearch/processDisclaimer.jis',
+                    data = {
+                        'disclaimer':'Y',
+                        'action':'Continue'
+                    }
+                )
+            except requests.exceptions.ConnectionError:
+                time.sleep(1)
+                continue
+
+            if response.status_code != 200:
+                logger.error("Failed to authenticate with MJCS: code = %d, body = %s" % (response.status_code, response.text))
+            else:
+                return
+
+        raise Exception('Failed to authenticate with MJCS 5 times')            
 
 class AsyncSession:
     def __init__(self):
@@ -48,9 +58,12 @@ class AsyncSession:
                     }
                 )
             except asks.errors.BadHttpResponse:
+                time.sleep(1)
                 continue
+            
             if response.status_code != 200:
                 logger.error("Failed to authenticate with MJCS: code = %d, body = %s" % (response.status_code, response.text))
             else:
                 return
+        
         raise Exception('Failed to authenticate with MJCS 5 times')
