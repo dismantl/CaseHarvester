@@ -114,8 +114,6 @@ class Spider:
             'filingDate':item.start_date.strftime("%-m/%-d/%Y") if not item.end_date else None
         }
         with db_session() as db:
-            item = db.merge(item)
-            # run = db.merge(run)
             try:
                 response_html = await self.__query_mjcs(
                     db,
