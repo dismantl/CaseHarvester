@@ -8,6 +8,10 @@ class Session:
     def __init__(self):
         import requests
         self.session = requests.Session()
+
+        if config.USER_AGENT:
+            self.session.headers.update({'user-agent': config.USER_AGENT})
+
         self.renew()
 
     def post(self, *args, **kwargs):
@@ -39,6 +43,11 @@ class AsyncSession:
     def __init__(self):
         import asks
         self.session = asks.Session(connections=1, persist_cookies=True)
+
+        if config.USER_AGENT:
+            self.session.headers.update({'user-agent': config.USER_AGENT})
+        
+        self.renew()
 
     def post(self, *args, **kwargs):
         return self.session.post(timeout = config.QUERY_TIMEOUT, *args, **kwargs)

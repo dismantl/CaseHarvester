@@ -63,6 +63,8 @@ class Config:
         self.PARSER_FAILED_QUEUE_NAME = os.getenv('PARSER_FAILED_QUEUE_NAME')
         self.PARSER_TRIGGER_ARN = os.getenv('PARSER_TRIGGER_ARN')
 
+        self.USER_AGENT = os.getenv('USER_AGENT')
+
         if self.__getattribute__('MJCS_DATABASE_URL'):
             self.db_engine = create_engine(self.MJCS_DATABASE_URL)
 
