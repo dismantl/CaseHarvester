@@ -118,14 +118,24 @@ def run_spider(args):
     elif args.failed:
         spider.retry_failed()
     elif args.start_date:
-        spider.search(args.start_date, args.end_date, args.court, args.site)
+        spider.search(
+            start_date=args.start_date,
+            end_date=args.end_date,
+            court=args.court,
+            site=args.site
+        )
     elif args.end_days_ago:
         today = datetime.now().date()
         end_date = today - timedelta(days=args.start_days_ago)
         start_date = today - timedelta(days=args.end_days_ago)
         logger.info(f'Spidering for cases filed between {start_date} and {end_date}')
         spider.ignore_errors = True
-        spider.search(start_date=start_date, end_date=end_date)
+        spider.search(
+            start_date=start_date,
+            end_date=end_date,
+            court=args.court,
+            site=args.site
+        )
     else:
         raise Exception("Must specify search criteria, --resume, or --start-days-ago/--end-days-ago")
 
