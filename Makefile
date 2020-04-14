@@ -3,8 +3,7 @@ PACKAGE_DIR=pkg
 LIB_DIR=lib
 DOCS_DIR=docs
 SPIDER_DEPS=$(addprefix $(CODE_SRC)/,case_harvester.py \
-	$(addprefix mjcs/,__init__.py spider.py config.py util.py run.py search.py \
-		session.py models/*.py))
+	$(addprefix mjcs/,__init__.py spider.py config.py util.py session.py models/*.py))
 SCRAPER_DEPS=$(addprefix $(CODE_SRC)/,case_harvester.py \
 	$(addprefix mjcs/,__init__.py scraper.py config.py util.py session.py models/*.py))
 PARSER_DEPS=$(addprefix $(CODE_SRC)/,parser/parser_lambda.py \

@@ -7,7 +7,7 @@ from mjcs.spider import Spider
 from mjcs.scraper import Scraper
 from mjcs.parser import Parser, invoke_parser_lambda
 import boto3
-from datetime import *
+from datetime import datetime, timedelta
 import sys
 import os
 import json
@@ -84,6 +84,10 @@ def write_env_file(env_long, env_short, exports, db_name, username, password):
         f.write('%s=%s\n' % ('MJCS_DATABASE_URL',db_url))
         f.write('%s=%s\n' % ('CASE_DETAILS_BUCKET',
             get_export_val(exports,env_short,'CaseDetailsBucketName')))
+        f.write('%s=%s\n' % ('SPIDER_DYNAMODB_TABLE_NAME',
+            get_export_val(exports,env_short,'SpiderDynamoDBTableName')))
+        f.write('%s=%s\n' % ('SPIDER_RUNS_BUCKET_NAME',
+            get_export_val(exports,env_short,'SpiderRunsBucketName')))
         f.write('%s=%s\n' % ('SCRAPER_QUEUE_NAME',
             get_export_val(exports,env_short,'ScraperQueueName')))
         f.write('%s=%s\n' % ('SCRAPER_FAILED_QUEUE_NAME',
@@ -105,39 +109,36 @@ def valid_date(s):
     except ValueError:
         raise argparse.ArgumentTypeError("Not a valid date: %s" % s)
 
-def run_spider(args):
-    spider = Spider(
-        concurrency = args.concurrency,
-        overwrite = args.overwrite,
-        force_scrape = args.force_scrape,
-        ignore_errors = args.ignore_errors
-    )
+def valid_datetime(s):
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Not a valid ISO-formatted timestamp: {s}")
 
-    if args.resume:
-        spider.resume()
-    elif args.failed:
-        spider.retry_failed()
-    elif args.start_date:
-        spider.search(
-            start_date=args.start_date,
-            end_date=args.end_date,
-            court=args.court,
-            site=args.site
-        )
+def run_spider(args):
+    if args.start_date:
+        start_date = args.start_date,
+        end_date = args.end_date,
     elif args.end_days_ago:
         today = datetime.now().date()
-        end_date = today - timedelta(days=args.start_days_ago)
-        start_date = today - timedelta(days=args.end_days_ago)
-        logger.info(f'Spidering for cases filed between {start_date} and {end_date}')
-        spider.ignore_errors = True
-        spider.search(
-            start_date=start_date,
-            end_date=end_date,
+        end_date = datetime.combine(today - timedelta(days=args.start_days_ago), datetime.min.time())
+        start_date = datetime.combine(today - timedelta(days=args.end_days_ago), datetime.min.time())
+    else:
+        raise Exception("Must specify search criteria")
+    
+    spider = Spider(
+            concurrency = args.concurrency,
+            query_start_date=start_date,
+            query_end_date=end_date,
             court=args.court,
             site=args.site
         )
+    if args.timestamp:
+        spider.resume(args.timestamp)
+    elif args.resume:
+        spider.resume()
     else:
-        raise Exception("Must specify search criteria, --resume, or --start-days-ago/--end-days-ago")
+        spider.start()
 
 def scraper_prompt(exception, case_number):
     print(exception)
@@ -272,19 +273,13 @@ if __name__ == '__main__':
     parser_spider.add_argument('--end-days-ago', type=int,
         help="Spider for cases ending this many days ago")
     parser_spider.add_argument('--resume','-r', action='store_true',
-        help="Use existing queue items in database")
+        help="Resume most recent spider run with the search conditions provided on the command line")
+    parser_spider.add_argument('--timestamp', '-t', type=valid_datetime,
+        help="Resume spider run at the given timestamp with the search conditions provided on the command line")
     parser_spider.add_argument('--court', #choices=['BALTIMORE CITY'],
         help="What court to search, e.g. BALTIMORE CITY")
     parser_spider.add_argument('--site', choices=['CRIMINAL', 'CIVIL', 'TRAFFIC', 'CP'],
         help="What venues to search, criminal/civil/traffic/civil citation")
-    parser_spider.add_argument('--overwrite','-o', action='store_true',
-        help="Overwrite existing cases in database")
-    parser_spider.add_argument('--force-scrape', action='store_true',
-        help="Force scraping of case details for all found cases")
-    parser_spider.add_argument('--failed', action='store_true',
-        help="Retry failed search items in queue")
-    parser_spider.add_argument('--ignore-errors', action='store_true',
-        help="Ignore spidering errors")
     parser_spider.add_argument('--verbose', '-v', action='store_true',
         help="Print debug information")
     parser_spider.set_defaults(func=run_spider)

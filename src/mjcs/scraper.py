@@ -1,7 +1,7 @@
 from .config import config
 from .session import Session
 from .util import (db_session, fetch_from_queue, NoItemsInQueue, cases_batch,
-                   cases_batch_filter, process_cases, get_detail_loc)
+                   cases_batch_filter, process_cases, get_detail_loc, chunks)
 from .models import ScrapeVersion, Scrape, Case
 from sqlalchemy import and_
 from hashlib import sha256
@@ -372,10 +372,6 @@ class Scraper:
                 filter(Case.filing_date < date_end).\
                 all()
         logger.info(f'Found {len(cases)} cases in time range')
-
-        def chunks(l, n):
-            for i in range(0, len(l), n):
-                yield l[i:i + n]
 
         # add cases to scraper queue
         count = 0

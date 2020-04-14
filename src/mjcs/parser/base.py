@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup, SoupStrainer
 from ..util import db_session
 from ..models import Case
 import re
-from datetime import *
+from datetime import datetime
 import inspect
 import sys
 

@@ -19,18 +19,3 @@ class Case(TableBase):
     last_parse = Column(DateTime, nullable=True, index=True)
     scrape_exempt = Column(Boolean, default=False, index=True)
     parse_exempt = Column(Boolean, default=False, index=True)
-
-    def dict(self):
-        return {
-            'case_number': self.case_number,
-            'court': self.court,
-            'query_court': self.query_court,
-            'case_type': self.case_type,
-            'filing_date': self.filing_date,
-            'filing_date_original': self.filing_date_original,
-            'status': self.status,
-            'caption': self.caption,
-            'loc': self.loc,
-            'detail_loc': self.detail_loc,
-            'url': self.url
-        }

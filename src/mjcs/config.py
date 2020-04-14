@@ -50,6 +50,7 @@ class Config:
 
         self.SPIDER_DEFAULT_CONCURRENCY = int(os.getenv('SPIDER_DEFAULT_CONCURRENCY',10))
         self.SPIDER_DAYS_PER_QUERY = int(os.getenv('SPIDER_DAYS_PER_QUERY',16))
+        self.SPIDER_UPDATE_FREQUENCY = int(os.getenv('SPIDER_UPDATE_FREQUENCY',900)) # seconds
 
         self.SCRAPER_DEFAULT_CONCURRENCY = int(os.getenv('SCRAPER_DEFAULT_CONCURRENCY',10)) # must be multiple of 2
         self.SCRAPER_LAMBDA_EXPIRY_MIN = int(os.getenv('SCRAPER_LAMBDA_EXPIRY_MIN',5))
@@ -58,6 +59,8 @@ class Config:
         self.MJCS_DATABASE_URL = os.getenv('MJCS_DATABASE_URL')
         self.CASE_DETAILS_BUCKET = os.getenv('CASE_DETAILS_BUCKET')
 
+        self.SPIDER_DYNAMODB_TABLE_NAME = os.getenv('SPIDER_DYNAMODB_TABLE_NAME')
+        self.SPIDER_RUNS_BUCKET_NAME = os.getenv('SPIDER_RUNS_BUCKET_NAME')
         self.SCRAPER_QUEUE_NAME = os.getenv('SCRAPER_QUEUE_NAME')
         self.SCRAPER_FAILED_QUEUE_NAME = os.getenv('SCRAPER_FAILED_QUEUE_NAME')
         self.PARSER_FAILED_QUEUE_NAME = os.getenv('PARSER_FAILED_QUEUE_NAME')
@@ -73,6 +76,7 @@ class Config:
 
         # Generic boto3 resources/clients
         self.sqs = self.boto3_session.resource('sqs')
+        self.dynamodb = self.boto3_session.resource('dynamodb')
         self.s3 = self.boto3_session.resource('s3')
         self.sns = self.boto3_session.resource('sns')
         self.lambda_ = self.boto3_session.client('lambda')
@@ -80,6 +84,10 @@ class Config:
         # Specific AWS objects
         if self.__getattribute__('CASE_DETAILS_BUCKET'):
             self.case_details_bucket = self.s3.Bucket(self.CASE_DETAILS_BUCKET)
+        if self.__getattribute__('SPIDER_DYNAMODB_TABLE_NAME'):
+            self.spider_table = self.dynamodb.Table(self.SPIDER_DYNAMODB_TABLE_NAME)
+        if self.__getattribute__('SPIDER_RUNS_BUCKET_NAME'):
+            self.spider_runs_bucket = self.s3.Bucket(self.SPIDER_RUNS_BUCKET_NAME)
         if self.__getattribute__('SCRAPER_QUEUE_NAME'):
             self.scraper_queue = self.sqs.get_queue_by_name(QueueName=self.SCRAPER_QUEUE_NAME)
         if self.__getattribute__('SCRAPER_FAILED_QUEUE_NAME'):

@@ -1,6 +1,7 @@
 from .config import config
 import logging
 import time
+import h11
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +47,6 @@ class AsyncSession:
 
         if config.USER_AGENT:
             self.session.headers.update({'user-agent': config.USER_AGENT})
-        
-        self.renew()
 
     def post(self, *args, **kwargs):
         return self.session.post(timeout = config.QUERY_TIMEOUT, *args, **kwargs)
@@ -66,7 +65,7 @@ class AsyncSession:
                         'action':'Continue'
                     }
                 )
-            except asks.errors.BadHttpResponse:
+            except (asks.errors.BadHttpResponse, h11._util.RemoteProtocolError):
                 time.sleep(1)
                 continue
             

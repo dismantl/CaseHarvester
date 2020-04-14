@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr, declarative_base
 import re
-from datetime import *
+from datetime import datetime
 
 TableBase = declarative_base()
 

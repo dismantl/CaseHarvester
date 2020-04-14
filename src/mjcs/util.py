@@ -1,6 +1,10 @@
 import concurrent.futures
 import sqlalchemy
 import logging
+import math
+import json
+from decimal import Decimal
+from datetime import timedelta, datetime
 from sqlalchemy import and_, func, select
 from sqlalchemy.sql import select
 from sqlalchemy.orm import sessionmaker
@@ -12,6 +16,11 @@ logger = logging.getLogger(__name__)
 
 class NoItemsInQueue(Exception):
     pass
+
+class JSONDatetimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
 
 # Concurrently fetch up to nitems (or 100) messages from queue, 10 per thread
 def fetch_from_queue(queue, nitems=100):
@@ -251,3 +260,40 @@ def has_scrape(case_number):
         return False
     else:
         return True
+
+def split_date_range(start_date, end_date):
+    assert(end_date)
+    assert(end_date > start_date)
+    days_diff = (end_date - start_date).days
+    if days_diff == 1:
+        range1 = [start_date, None]
+        range2 = [end_date, None]
+    elif days_diff == 2:
+        range1 = [start_date, start_date + timedelta(1)]
+        range2 = [end_date, None]
+    else:
+        range1 = [start_date, start_date + timedelta(int(days_diff / 2))]
+        range2 = [start_date + timedelta(math.ceil((days_diff + 1) / 2)), end_date]
+    return range1, range2
+
+def chunks(l, n):
+    for i in range(0, len(l), n):
+        yield l[i:i + n]
+
+def float_to_decimal(obj):
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    elif isinstance(obj, list):
+        return [ float_to_decimal(x) for x in obj ]
+    elif isinstance(obj, dict):
+        return { k: float_to_decimal(v) for k, v in obj.items() }
+    return obj
+
+def decimal_to_float(obj):
+    if isinstance(obj, Decimal):
+        return float(obj)
+    elif isinstance(obj, list):
+        return [ decimal_to_float(x) for x in obj ]
+    elif isinstance(obj, dict):
+        return { k: decimal_to_float(v) for k, v in obj.items() }
+    return obj

@@ -34,6 +34,29 @@ Parameters:
     Default: us-east-1
 
 Resources:
+  SpiderTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub caseharvester-spider-${EnvironmentType}
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+  
+  SpiderRunsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: Private
+      BucketName: !Sub mjcs-spider-runs-${EnvironmentType}
+      
   SpiderTaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -49,6 +72,8 @@ Resources:
               - sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
 
   DailySpiderTask:
     Type: AWS::ECS::TaskDefinition
@@ -78,6 +103,10 @@ Resources:
             - Name: SCRAPER_QUEUE_NAME
               Value:
                 Fn::ImportValue: !Sub ${ScraperStackName}-ScraperQueueName
+            - Name: SPIDER_DYNAMODB_TABLE_NAME
+              Value: !Ref SpiderTable
+            - Name: SPIDER_RUNS_BUCKET_NAME
+              Value: !Ref SpiderRunsBucket
           Image: !Sub
             - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
             - repo_name:
@@ -126,6 +155,10 @@ Resources:
             - Name: SCRAPER_QUEUE_NAME
               Value:
                 Fn::ImportValue: !Sub ${ScraperStackName}-ScraperQueueName
+            - Name: SPIDER_DYNAMODB_TABLE_NAME
+              Value: !Ref SpiderTable
+            - Name: SPIDER_RUNS_BUCKET_NAME
+              Value: !Ref SpiderRunsBucket
           Image: !Sub
             - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
             - repo_name:
@@ -174,6 +207,10 @@ Resources:
             - Name: SCRAPER_QUEUE_NAME
               Value:
                 Fn::ImportValue: !Sub ${ScraperStackName}-ScraperQueueName
+            - Name: SPIDER_DYNAMODB_TABLE_NAME
+              Value: !Ref SpiderTable
+            - Name: SPIDER_RUNS_BUCKET_NAME
+              Value: !Ref SpiderRunsBucket
           Image: !Sub
             - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
             - repo_name:
@@ -268,3 +305,15 @@ Resources:
                 Subnets:
                   - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
                   - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+
+Outputs:
+  SpiderDynamoDBTableName:
+    Description: Spider DynamoDB Table name
+    Value: !Ref SpiderTable
+    Export:
+      Name: !Sub ${AWS::StackName}-SpiderDynamoDBTableName
+  SpiderRunsBucketName:
+    Description: Name of S3 bucket used to store spider run state
+    Value: !Ref SpiderRunsBucket
+    Export:
+      Name: !Sub ${AWS::StackName}-SpiderRunsBucketName
