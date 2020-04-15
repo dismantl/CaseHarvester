@@ -14,7 +14,6 @@ import xml.etree.ElementTree as ET
 import h11
 import json
 import os
-import sys
 import logging
 from functools import reduce
 from botocore.exceptions import ClientError
@@ -71,7 +70,6 @@ class Spider:
             'run_seconds': 0.0,
             'total_cases_added': 0,
             'total_cases_processed': 0,
-            'average_query_seconds': 0.0,
             'total_requests': 0
         }
         self.slices = []
@@ -97,7 +95,7 @@ class Spider:
         spider.results = state_dict['results']
         spider.status = state_dict['status']
         spider.timestamp = datetime.fromisoformat(state_dict['timestamp']) if state_dict['timestamp'] else None
-        spider.slices = [ SearchNode.load(spider, spider, slice) for slice in state_dict['slices'] ]
+        spider.slices = [ SearchNode.load(None, spider, slice) for slice in state_dict['slices'] ]
         return spider
 
     # searching for underscore character leads to timeout for some reason
@@ -139,37 +137,6 @@ class Spider:
             if self.site:
                 self._id += '/' + self.site
         return self._id
-    
-    @property
-    def total_cases_added(self):
-        total = 0
-        for slice in self.slices:
-            total += slice.total_cases_added
-        return total
-    
-    @property
-    def total_cases_processed(self):
-        total = 0
-        for slice in self.slices:
-            total += slice.total_cases_processed
-        return total
-    
-    @property
-    def average_query_seconds(self):
-        totals = []
-        for slice in self.slices:
-            if slice.average_query_seconds > 0:
-                totals.append(slice.average_query_seconds)
-        if totals:
-            return reduce(lambda x, y: x + y, totals) / len(totals)
-        return -1
-    
-    @property
-    def total_requests(self):
-        total = 0
-        for slice in self.slices:
-            total += slice.total_requests
-        return total
     
     def start(self):
         if self.status == SpiderStatus.COMPLETE:
@@ -253,7 +220,7 @@ class Spider:
                     range_start_date=start,
                     range_end_date=end,
                     search_string=None,
-                    parent=self,
+                    parent=None,
                     spider=self,
                 )
             )
@@ -264,12 +231,13 @@ class Spider:
                 range_start_date=slice['range_start_date'],
                 range_end_date=slice['range_end_date'],
                 search_string=slice['search_string'],
-                parent=self,
+                parent=None,
                 spider=self
             ) for slice in slices 
         ]
         
     def __save_run(self):
+        logger.debug('Saving run.')
         self.results['run_seconds'] = delta_seconds(self.timestamp)
         self.__calculate_results()
         run = {
@@ -284,13 +252,14 @@ class Spider:
             logger.debug('State too large for DynamoDB, saving in S3')
             # Upload state to S3
             key = f'{self.id}/{self.timestamp.isoformat()}'
-            config.spider_runs_bucket.put_object(
+            run_obj = config.spider_runs_bucket.put_object(
                 Body = json.dumps(self.__dict__, cls=JSONDatetimeEncoder).encode('utf-8'),
                 Key = key,
                 Metadata = {
                     'run_timestamp': self.timestamp.isoformat()
                 }
             )
+            logger.debug(f'Size of saved state object: {run_obj.content_length}')
             run['state'] = f's3://{config.SPIDER_RUNS_BUCKET_NAME}/{key}'
             config.spider_table.put_item(Item=float_to_decimal(run))
 
@@ -319,10 +288,11 @@ class Spider:
         return state_dict
 
     def __calculate_results(self):
-        self.results['total_cases_added'] = self.total_cases_added
-        self.results['total_cases_processed'] = self.total_cases_processed
-        self.results['average_query_seconds'] = self.average_query_seconds
-        self.results['total_requests'] = self.total_requests
+        self.results['total_cases_added'] = self.results['total_cases_processed'] = self.results['total_requests'] = 0
+        for slice in self.slices:
+            self.results['total_cases_added'] += slice.results['total_cases_added']
+            self.results['total_cases_processed'] += slice.results['total_cases_processed']
+            self.results['total_requests'] += slice.results['total_requests']
     
     def __log_results(self):
         logger.info(f'SPIDER RESULTS FOR RUN {self.timestamp.isoformat()}')
@@ -332,7 +302,6 @@ class Spider:
         logger.info('Total requests sent: %d' % self.results['total_requests'])
         logger.info('Total new cases added: %d' % self.results['total_cases_added'])
         logger.info('Total cases processed: %d' % self.results['total_cases_processed'])
-        logger.info('Average query time: %f seconds' % self.results['average_query_seconds'])
         if self.status == SpiderStatus.COMPLETE:
             logger.info('Spider run state: COMPLETE')
         elif self.status == SpiderStatus.FAILED:
@@ -357,10 +326,9 @@ class SearchNode:
             'cases_returned': 0,
             'distinct_cases': 0,
             'cases_added': 0,
+            'requests': 0,
             'total_cases_added': 0,
             'total_cases_processed': 0,
-            'average_query_seconds': 0.0,
-            'requests': 0,
             'total_requests': 0
         }
         self.children = []
@@ -384,7 +352,6 @@ class SearchNode:
 
     @property
     def __dict__(self):
-        self.__calculate_results()
         return {
             '_type': type(self).__name__,
             'range_start_date': self.range_start_date.strftime('%m/%d/%Y'),
@@ -395,40 +362,6 @@ class SearchNode:
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
             'children': [ child.__dict__ for child in self.children ]
         }
-
-    @property
-    def total_cases_added(self):
-        total = self.results['cases_added']
-        for node in self.children:
-            total += node.total_cases_added
-        return total
-    
-    @property
-    def total_cases_processed(self):
-        total = self.results['distinct_cases']
-        for node in self.children:
-            total += node.total_cases_processed
-        return total
-    
-    @property
-    def average_query_seconds(self):
-        if self.status == NodeStatus.COMPLETE:
-            totals = [self.results['query_seconds']]
-        else:
-            totals = []
-        for node in self.children:
-            if node.average_query_seconds > 0:
-                totals.append(node.average_query_seconds)
-        if totals:
-            return reduce(lambda x, y: x + y, totals) / len(totals)
-        return 0
-    
-    @property
-    def total_requests(self):
-        total = self.results['requests']
-        for node in self.children:
-            total += node.total_requests
-        return total
     
     async def start(self, session_pool, nursery):
         if self.status == NodeStatus.FAILED:
@@ -439,7 +372,7 @@ class SearchNode:
             return
         elif self.status == NodeStatus.NEW:
             # logger.debug(f'Node start search: {self.range_start_date.date().isoformat()}/{self.range_end_date.date().isoformat()}')
-            if self.search_string:
+            if self.parent:
                 await self.__search(session_pool)
             else:  # Root node
                 for char in self.spider.search_chars.replace(' ',''): # don't start queries with a space
@@ -462,7 +395,7 @@ class SearchNode:
         for node in self.children:
             nursery.start_soon(node.start, session_pool, nursery)
         self.status = NodeStatus.COMPLETE
-        self.__calculate_results()
+        self.__propagate_results()
         # logger.debug(f'Node completed: {self.range_start_date.date().isoformat()}/{self.range_end_date.date().isoformat()}')
     
     def __spawn_children(self):
@@ -488,15 +421,6 @@ class SearchNode:
                     spider=self.spider
                 )
             )
-        
-    async def __handle_no_results(self, status, session=None, session_pool=None):
-        self.results['cases_returned'] = 0
-        self.results['distinct_cases'] = 0
-        self.results['cases_added'] = 0
-        self.results['query_seconds'] = delta_seconds(self.timestamp)
-        self.status = status
-        if session and session_pool:
-            await session_pool.put(session)
 
     async def __search(self, session_pool):
         session = await session_pool.get()
@@ -513,58 +437,60 @@ class SearchNode:
         }
 
         try:
-            response_html = await self.__query_mjcs(
-                session,
-                url = 'http://casesearch.courts.state.md.us/casesearch/inquirySearch.jis',
-                method = 'POST',
-                post_params = query_params,
-                xml = False
-            )
-        except FailedSearchTimeout:
-            self.__split()
-            await self.__handle_no_results(NodeStatus.TIME_RANGE_SPLIT, session, session_pool)
-            return
-        except CompletedSearchNoResults:
-            await self.__handle_no_results(NodeStatus.COMPLETE, session, session_pool)
-            return
-        except FailedSearch:
-            await self.__handle_no_results(NodeStatus.FAILED, session, session_pool)
-            return
-
-        # Parse HTML
-        html = BeautifulSoup(response_html.text,'html.parser')
-        rows = []
-        results_table = html.find('table',class_='results',id='row')
-        if not results_table:  # Sanity check
-            logger.error('Error finding results table in returned HTML')
-            await self.__handle_no_results(NodeStatus.FAILED, session, session_pool)
-            return
-        
-        for row in results_table.tbody.find_all('tr'):
-            rows.append(row)
-        
-        # Paginate through results if needed
-        while html.find('span',class_='pagelinks').find('a',string='Next'):
             try:
                 response_html = await self.__query_mjcs(
                     session,
-                    url = 'http://casesearch.courts.state.md.us' + html.find('span',class_='pagelinks').find('a',string='Next')['href'],
-                    method = 'GET'
+                    url = 'http://casesearch.courts.state.md.us/casesearch/inquirySearch.jis',
+                    method = 'POST',
+                    post_params = query_params,
+                    xml = False
                 )
+            except FailedSearchTimeout:
+                self.__split()
+                self.status = NodeStatus.TIME_RANGE_SPLIT
+                raise
+            except CompletedSearchNoResults:
+                self.status = NodeStatus.COMPLETE
+                raise
             except FailedSearch:
-                await self.__handle_no_results(NodeStatus.FAILED, session, session_pool)
-                return
-            html = BeautifulSoup(response_html.text,'html.parser')
-            try:
-                for row in html.find('table',class_='results',id='row').tbody.find_all('tr'):
-                    rows.append(row)
-            except:
-                await self.__handle_no_results(NodeStatus.FAILED)
-                return
+                self.status = NodeStatus.FAILED
+                raise
 
-        query_seconds = delta_seconds(self.timestamp)
+            # Parse HTML
+            html = BeautifulSoup(response_html.text,'html.parser')
+            results_table = html.find('table',class_='results',id='row')
+            if not results_table:  # Sanity check
+                logger.error('Error finding results table in returned HTML')
+                self.status = NodeStatus.FAILED
+                raise FailedSearchUnknownError
+            rows = list(results_table.tbody.find_all('tr'))
+            
+            # Paginate through results if needed
+            while html.find('span',class_='pagelinks').find('a',string='Next'):
+                try:
+                    response_html = await self.__query_mjcs(
+                        session,
+                        url = 'http://casesearch.courts.state.md.us' + html.find('span',class_='pagelinks').find('a',string='Next')['href'],
+                        method = 'GET'
+                    )
+                except FailedSearch:
+                    self.status = NodeStatus.FAILED
+                    raise
+                html = BeautifulSoup(response_html.text,'html.parser')
+                try:
+                    for row in html.find('table',class_='results',id='row').tbody.find_all('tr'):
+                        rows.append(row)
+                except:
+                    self.status = NodeStatus.FAILED
+                    raise FailedSearchUnknownError
+        except (FailedSearch, CompletedSearchNoResults):
+            await session_pool.put(session)
+            return
+        finally:
+            self.results['query_seconds'] = delta_seconds(self.timestamp)
+
         await session_pool.put(session)
-        logger.debug("Search string %s returned %d items, took %d seconds" % (self.search_string, len(rows), query_seconds))
+        logger.debug("Search string %s returned %d items, took %d seconds" % (self.search_string, len(rows), self.results['query_seconds']))
 
         # Process results
         processed_cases = {}
@@ -573,7 +499,7 @@ class SearchNode:
             try:
                 case_number = elements[0].a.string
             except:
-                await self.__handle_no_results(NodeStatus.FAILED)
+                self.status = NodeStatus.FAILED
                 return
             if not processed_cases.get(case_number): # case numbers can appear multiple times in results
                 case_url = elements[0].a['href']
@@ -601,7 +527,7 @@ class SearchNode:
                     url = case_url
                 )
                 processed_cases[case_number] = case
-            
+        
         new_cases = []
         with db_session() as db:
             # See which cases need to be added to DB
@@ -629,12 +555,9 @@ class SearchNode:
             
         if len(new_cases) > 0:
             logger.info(f"{self.search_string}/{self.range_start_date.date().isoformat()}/{self.range_end_date.date().isoformat()} added {len(new_cases)} new cases")
-        else:
-            logger.debug("Processed %d cases out of %d returned, %d were added" % (len(processed_cases), len(rows), len(new_cases)))
         self.results['cases_returned'] = len(rows)
         self.results['distinct_cases'] = len(processed_cases)
         self.results['cases_added'] = len(new_cases)
-        self.results['query_seconds'] = query_seconds
         self.status = NodeStatus.IN_PROGRESS
 
         if 'The result set exceeds the limit of 500 records' in response_html.text or len(rows) == 500:
@@ -701,8 +624,8 @@ class SearchNode:
             }
         ])
     
-    def __calculate_results(self):
-        self.results['total_cases_added'] = self.total_cases_added
-        self.results['total_cases_processed'] = self.total_cases_processed
-        self.results['average_query_seconds'] = self.average_query_seconds
-        self.results['total_requests'] = self.total_requests
+    def __propagate_results(self):
+        if self.parent:
+            self.parent.results['total_cases_added'] += self.results['cases_added']
+            self.parent.results['total_cases_processed'] += self.results['distinct_cases']
+            self.parent.results['total_requests'] += self.results['requests']
