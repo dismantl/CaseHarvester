@@ -1,5 +1,5 @@
 from .config import config
-from .util import db_session, split_date_range, chunks, float_to_decimal, decimal_to_float, JSONDatetimeEncoder
+from .util import db_session, split_date_range, chunks, JSONDatetimeEncoder
 from .models import Case
 from .session import AsyncSession
 import trio
@@ -240,28 +240,22 @@ class Spider:
         logger.debug('Saving run.')
         self.results['run_seconds'] = delta_seconds(self.timestamp)
         self.__calculate_results()
-        run = {
+
+        # Upload state to S3
+        key = f'{self.id}/{self.timestamp.isoformat()}'
+        run_obj = config.spider_runs_bucket.put_object(
+            Body = json.dumps(self.__dict__, cls=JSONDatetimeEncoder).encode('utf-8'),
+            Key = key,
+            Metadata = {
+                'run_timestamp': self.timestamp.isoformat()
+            }
+        )
+        logger.debug(f'Size of saved state object: {run_obj.content_length}')
+        config.spider_table.put_item(Item={
             'id': self.id,
             'timestamp': self.timestamp.isoformat(),
-            'state': self.__dict__
-        }
-
-        try:
-            config.spider_table.put_item(Item=float_to_decimal(run))
-        except ClientError:
-            logger.debug('State too large for DynamoDB, saving in S3')
-            # Upload state to S3
-            key = f'{self.id}/{self.timestamp.isoformat()}'
-            run_obj = config.spider_runs_bucket.put_object(
-                Body = json.dumps(self.__dict__, cls=JSONDatetimeEncoder).encode('utf-8'),
-                Key = key,
-                Metadata = {
-                    'run_timestamp': self.timestamp.isoformat()
-                }
-            )
-            logger.debug(f'Size of saved state object: {run_obj.content_length}')
-            run['state'] = f's3://{config.SPIDER_RUNS_BUCKET_NAME}/{key}'
-            config.spider_table.put_item(Item=float_to_decimal(run))
+            'state': f's3://{config.SPIDER_RUNS_BUCKET_NAME}/{key}'
+        })
 
     def __load_run(self, run_datetime=None):
         if run_datetime:
@@ -269,22 +263,19 @@ class Spider:
                 'id': self.id,
                 'timestamp': run_datetime.isoformat()
             })
-            run = decimal_to_float(item['Item'])
+            run = item['Item']
         else:
             item = config.spider_table.query(
                 KeyConditionExpression=Key('id').eq(self.id),
                 ScanIndexForward=False,
                 Limit=1
             )
-            run = decimal_to_float(item['Items'][0])
+            run = item['Items'][0]
 
-        if isinstance(run['state'], str) and run['state'][:5] == 's3://':
-            logger.info('Loading state from {}'.format(run['state']))
-            key = '{}/{}'.format(self.id, run['timestamp'])
-            s3_obj = config.spider_runs_bucket.Object(key).get()
-            state_dict = json.load(s3_obj['Body'])
-        else:
-            state_dict = run['state']
+        logger.info('Loading state from {}'.format(run['state']))
+        key = '{}/{}'.format(self.id, run['timestamp'])
+        s3_obj = config.spider_runs_bucket.Object(key).get()
+        state_dict = json.load(s3_obj['Body'])
         return state_dict
 
     def __calculate_results(self):
