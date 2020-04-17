@@ -554,12 +554,11 @@ class SearchNode:
                     self.error = err_msg
                     raise FailedSearchUnknownError(err_msg)
         except (FailedSearch, CompletedSearchNoResults):
-            await session_pool.put(session)
             return
         finally:
+            await session_pool.put(session)
             self.results['query_seconds'] = delta_seconds(self.timestamp)
 
-        await session_pool.put(session)
         logger.debug("Search string %s returned %d items, took %d seconds" % (self.search_string, len(rows), self.results['query_seconds']))
 
         # Process results
