@@ -1,5 +1,5 @@
 from .config import config
-from .util import db_session, split_date_range, chunks, JSONDatetimeEncoder
+from .util import db_session, split_date_range, chunks, JSONDatetimeEncoder, float_to_decimal, decimal_to_float
 from .models import Case
 from .session import AsyncSession
 import trio
@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 from bs4 import BeautifulSoup, SoupStrainer
 from datetime import datetime, timedelta
 from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 import re
 import string
 import xml.etree.ElementTree as ET
@@ -16,7 +17,7 @@ import json
 import os
 import logging
 from functools import reduce
-from botocore.exceptions import ClientError
+from enum import Enum
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +39,14 @@ class FailedSearchUnknownError(FailedSearch):
 class CompletedSearchNoResults(Exception):
     pass
 
-class SpiderStatus:
+class SpiderStatus(Enum):
     NEW = 1
     IN_PROGRESS = 2
     COMPLETE = 3
     CANCELED = 4
     FAILED = 5
 
-class NodeStatus:
+class NodeStatus(Enum):
     NEW = 1
     IN_PROGRESS = 2
     COMPLETE = 3
@@ -57,7 +58,7 @@ class Spider:
     '''Main spider class'''
 
     def __init__(self, query_start_date, query_end_date, court=None, site=None, concurrency=None):
-        # Spider paraemeters
+        # Spider parameters
         self.query_start_date = query_start_date
         self.query_end_date = query_end_date
         self.court = court
@@ -93,7 +94,7 @@ class Spider:
             concurrency=int(state_dict['concurrency']),
         )
         spider.results = state_dict['results']
-        spider.status = state_dict['status']
+        spider.status = SpiderStatus[state_dict['status']]
         spider.timestamp = datetime.fromisoformat(state_dict['timestamp']) if state_dict['timestamp'] else None
         spider.slices = [ SearchNode.load(None, spider, slice) for slice in state_dict['slices'] ]
         return spider
@@ -109,7 +110,7 @@ class Spider:
     def __dict__(self):
         assert self.query_start_date
         assert self.query_end_date
-        # assert self.timestamp
+        assert self.timestamp
         self.__calculate_results()
         return {
             'id': self.id,  # Hash/partition key
@@ -120,18 +121,18 @@ class Spider:
             'court': self.court,
             'site': self.site,
             'concurrency': self.concurrency,
-            'slices': [ slice.__dict__ for slice in self.slices ],
+            'slices': [ slice.export() for slice in self.slices ],
             'results': self.results,
-            'status': self.status,
+            'status': self.status.name,
         }
 
     @property
     def id(self):
         ''' ID is deterministic based on concatenation of search parameters '''
         if not hasattr(self,'_id'):
-            self._id = f'spider/{self.query_start_date.strftime("%m-%d-%Y")}'
+            self._id = self.query_start_date.strftime("%Y-%m-%d")
             if self.query_end_date:
-                self._id += '/' + self.query_end_date.strftime("%m-%d-%Y")
+                self._id += '/' + self.query_end_date.strftime("%Y-%m-%d")
             if self.court:
                 self._id += '/' + self.court
             if self.site:
@@ -144,33 +145,18 @@ class Spider:
             return
         elif self.status == SpiderStatus.NEW:
             self.__generate_slices()
-            logger.info(f"Starting spider run: {self.query_start_date.date().isoformat()}/{self.query_end_date.date().isoformat()}/{self.court}/{self.site}")
+            logger.info(f"Starting spider run: {self.id}")
             self.status = SpiderStatus.IN_PROGRESS
         elif self.status == SpiderStatus.IN_PROGRESS or self.status == SpiderStatus.CANCELED or self.status == SpiderStatus.FAILED:
-            logger.info(f"Resuming previous spider run: {self.timestamp.isoformat()}/{self.query_start_date.date().isoformat()}/{self.query_end_date.date().isoformat()}/{self.court}/{self.site}")
+            logger.info(f"Resuming previous spider run: {self.timestamp.isoformat()}/{self.id}")
             self.status == SpiderStatus.IN_PROGRESS
 
         self.timestamp = datetime.now()
         logger.info(f"Run timestamp: {self.timestamp.isoformat()}")
-        trio.run(self.__start, restrict_keyboard_interrupt_to_checkpoints=True)
-    
-    def resume(self, run_datetime=None):
-        ''' Resumes most recent (or specified) spider run '''
-        state_dict = self.__load_run(run_datetime)
-        loaded_spider = self.load(state_dict)
-        self.results = loaded_spider.results
-        self.status = loaded_spider.status        
-        self.timestamp = loaded_spider.timestamp
-        self.slices = loaded_spider.slices
-        self.start()
-    
-    async def __start(self):
         try:
-            # Block until all search nodes are complete or exception occurs
-            async with trio.open_nursery() as nursery:
-                for node in self.slices:
-                    nursery.start_soon(node.start, self.session_pool, nursery)
-                nursery.start_soon(self.__state_manager, nursery)
+            for node in self.slices:
+                if node.status != NodeStatus.COMPLETE:
+                    node.start(self.session_pool)
         except KeyboardInterrupt:
             print("\nCaught KeyboardInterrupt: saving spider run...")
             self.status = SpiderStatus.CANCELED
@@ -184,19 +170,15 @@ class Spider:
             self.__log_results()
         logger.info("Spider run complete")
 
-    async def __state_manager(self, nursery):
-        logger.debug('State manager initiating')
-        last_update = datetime.now()
-        while True:
-            await trio.sleep(5)
-            now = datetime.now()
-            if len(nursery.child_tasks) == 1:
-                logger.debug('State manager terminating')
-                return
-            if (now - last_update).total_seconds() > config.SPIDER_UPDATE_FREQUENCY:
-                last_update = now
-                logger.debug('Updating state')
-                self.__save_run()
+    def resume(self, run_datetime=None):
+        ''' Resumes most recent (or specified) spider run '''
+        state_dict = self.__load_run(run_datetime)
+        loaded_spider = self.load(state_dict)
+        self.results = loaded_spider.results
+        self.status = loaded_spider.status        
+        self.timestamp = loaded_spider.timestamp
+        self.slices = loaded_spider.slices
+        self.start()
 
     def __generate_slices(self):
         ''' Split up the query time range into smaller chunks to improve likelihood of getting (0 < n_results < 500) returned '''
@@ -239,23 +221,13 @@ class Spider:
     def __save_run(self):
         logger.debug('Saving run.')
         self.results['run_seconds'] = delta_seconds(self.timestamp)
+        # Save any in-progress slices to S3
+        for slice in self.slices:
+            if slice.status == NodeStatus.IN_PROGRESS:
+                logger.debug(f'Saving slice {slice.id}')
+                slice.save()
         self.__calculate_results()
-
-        # Upload state to S3
-        key = f'{self.id}/{self.timestamp.isoformat()}'
-        run_obj = config.spider_runs_bucket.put_object(
-            Body = json.dumps(self.__dict__, cls=JSONDatetimeEncoder).encode('utf-8'),
-            Key = key,
-            Metadata = {
-                'run_timestamp': self.timestamp.isoformat()
-            }
-        )
-        logger.debug(f'Size of saved state object: {run_obj.content_length}')
-        config.spider_table.put_item(Item={
-            'id': self.id,
-            'timestamp': self.timestamp.isoformat(),
-            'state': f's3://{config.SPIDER_RUNS_BUCKET_NAME}/{key}'
-        })
+        config.spider_table.put_item(Item=float_to_decimal(self.__dict__))
 
     def __load_run(self, run_datetime=None):
         if run_datetime:
@@ -263,20 +235,14 @@ class Spider:
                 'id': self.id,
                 'timestamp': run_datetime.isoformat()
             })
-            run = item['Item']
+            return decimal_to_float(item['Item'])
         else:
             item = config.spider_table.query(
                 KeyConditionExpression=Key('id').eq(self.id),
                 ScanIndexForward=False,
                 Limit=1
             )
-            run = item['Items'][0]
-
-        logger.info('Loading state from {}'.format(run['state']))
-        key = '{}/{}'.format(self.id, run['timestamp'])
-        s3_obj = config.spider_runs_bucket.Object(key).get()
-        state_dict = json.load(s3_obj['Body'])
-        return state_dict
+            return decimal_to_float(item['Items'][0])
 
     def __calculate_results(self):
         self.results['total_cases_added'] = self.results['total_cases_processed'] = self.results['total_requests'] = 0
@@ -287,28 +253,26 @@ class Spider:
     
     def __log_results(self):
         logger.info(f'SPIDER RESULTS FOR RUN {self.timestamp.isoformat()}')
-        logger.info(f'Search criteria: {self.query_start_date.isoformat()} - {self.query_end_date.isoformat()} / Court: {self.court} / Site: {self.site}')
-        logger.info('Run finished at ' + (self.timestamp + timedelta(seconds=float(self.results['run_seconds']))).isoformat())
-        logger.info('Run duration: %f seconds' % self.results['run_seconds'])
-        logger.info('Total requests sent: %d' % self.results['total_requests'])
-        logger.info('Total new cases added: %d' % self.results['total_cases_added'])
-        logger.info('Total cases processed: %d' % self.results['total_cases_processed'])
-        if self.status == SpiderStatus.COMPLETE:
-            logger.info('Spider run state: COMPLETE')
-        elif self.status == SpiderStatus.FAILED:
-            logger.info('Spider run state: FAILED')
-        elif self.status == SpiderStatus.CANCELED:
-            logger.info('Spider run state: CANCELED')
-        else:
-            logger.info(f'Spider run state: {self.status}')
+        logger.info(f'Search criteria: {self.query_start_date.strftime("%m/%d/%Y")} - {self.query_end_date.strftime("%m/%d/%Y")} / Court: {self.court} / Site: {self.site}')
+        logger.info(f'Run finished at {(self.timestamp + timedelta(seconds=self.results["run_seconds"])).isoformat()}')
+        logger.info(f'Run duration: {self.results["run_seconds"]} seconds')
+        logger.info(f'Total requests sent: {self.results["total_requests"]}')
+        logger.info(f'Total new cases added: {self.results["total_cases_added"]}')
+        logger.info(f'Total cases processed: {self.results["total_cases_processed"]}')
+        logger.info(f'Spider run state: {self.status.name}')
+        logger.info(f'Number of slices complete: {sum(x.status == NodeStatus.COMPLETE for x in self.slices)}/{len(self.slices)}')
 
 
 class SearchNode:
     def __init__(self, range_start_date, range_end_date, search_string=None, parent=None, spider=None):
+        # Slice search parameters
         self.range_start_date = range_start_date
         self.range_end_date = range_end_date
         self.search_string = search_string
+
+        # Stateful attributes
         self.status = NodeStatus.NEW
+        self.error = None
         self.parent = parent
         self.spider = spider
         self.timestamp = None
@@ -328,67 +292,177 @@ class SearchNode:
     def load(cls, parent, spider, state_dict):
         if state_dict['_type'] != cls.__name__:
             raise Exception('Invalid SearchNode state')
+        # Only fetch full state from S3 for in-progress root nodes
+        if not parent and NodeStatus[state_dict['status']] == NodeStatus.IN_PROGRESS:
+            assert not parent
+            logger.info(f'Loading state from {state_dict["s3"]}')
+            s3_obj = config.spider_runs_bucket.Object(state_dict["s3"]).get()
+            state_dict = json.load(s3_obj['Body'])
         node = cls(
             range_start_date=datetime.strptime(state_dict['range_start_date'], '%m/%d/%Y'),
             range_end_date=datetime.strptime(state_dict['range_end_date'], '%m/%d/%Y'),
-            search_string=state_dict['search_string'],
+            search_string=state_dict.get('search_string'),
             parent=parent,
             spider=spider
         )
-        node.status = state_dict['status']
+        node.status = NodeStatus[state_dict['status']]
+        node.error = state_dict['error']
         node.results = state_dict['results']
         node.timestamp = datetime.fromisoformat(state_dict['timestamp']) if state_dict['timestamp'] else None
-        node.children = [ SearchNode.load(node, spider, child) for child in state_dict['children'] ]
+        # Only load children for non-root nodes or in-progress root nodes
+        if parent or node.status == NodeStatus.IN_PROGRESS:
+            node.children = [ SearchNode.load(node, spider, child) for child in state_dict['children'] ]
         return node
 
     @property
     def __dict__(self):
         return {
+            'id': self.id,
             '_type': type(self).__name__,
             'range_start_date': self.range_start_date.strftime('%m/%d/%Y'),
             'range_end_date': self.range_end_date.strftime('%m/%d/%Y'),
             'search_string': self.search_string,
-            'status': self.status,
+            'status': self.status.name,
+            'error': self.error,
             'results': self.results,
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
             'children': [ child.__dict__ for child in self.children ]
         }
+
+    @property
+    def id(self):
+        ''' ID is deterministic based on concatenation of search parameters '''
+        if not hasattr(self,'_id'):
+            self._id = f'{self.range_start_date.strftime("%Y-%m-%d")}/{self.range_end_date.strftime("%Y-%m-%d")}'
+            if self.spider.court:
+                self._id += '/' + self.spider.court
+            if self.spider.site:
+                self._id += '/' + self.spider.site
+            if self.search_string:
+                self._id = f'{self.search_string}/{self._id}'
+        return self._id
     
-    async def start(self, session_pool, nursery):
-        if self.status == NodeStatus.FAILED:
-            logger.debug(f'Node failed: {self.range_start_date.date().isoformat()}/{self.range_end_date.date().isoformat()}')
+    @property
+    def s3_key(self):
+        if self.timestamp:
+            return f'{self.id}/{self.timestamp.isoformat()}'
+        return 's3://'
+
+    def is_root(self):
+        return not self.parent and not self.search_string
+
+    def start(self, session_pool):
+        assert self.is_root()
+        trio.run(self.__start_root, session_pool, restrict_keyboard_interrupt_to_checkpoints=True)
+
+    def export(self):
+        assert self.is_root()
+        return {
+            'id': self.id,
+            '_type': type(self).__name__,
+            'range_start_date': self.range_start_date.strftime('%m/%d/%Y'),
+            'range_end_date': self.range_end_date.strftime('%m/%d/%Y'),
+            'status': self.status.name,
+            'results': self.results,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+            's3': self.s3_key
+        }
+    
+    def save(self):
+        assert self.is_root()
+        s3_obj = config.spider_runs_bucket.put_object(
+            Body = json.dumps(self.__dict__, cls=JSONDatetimeEncoder).encode('utf-8'),
+            Key = self.s3_key,
+            Metadata = {
+                'run_timestamp': self.spider.timestamp.isoformat()
+            }
+        )
+        logger.debug(f'Size of saved state: {s3_obj.content_length}')
+
+    async def __start_root(self, session_pool):
+        assert self.is_root()
+        if self.status == NodeStatus.COMPLETE:
+            logger.debug(f'Root node complete: {self.id}')
+            return
+        elif self.status == NodeStatus.FAILED:
+            logger.debug(f'Root node failed: {self.id}')
             return
         elif self.status == NodeStatus.TIME_RANGE_SPLIT:
-            logger.debug(f'Node time range split: {self.range_start_date.date().isoformat()}/{self.range_end_date.date().isoformat()}')
+            logger.debug(f'Root node time range split: {self.id}')
             return
         elif self.status == NodeStatus.NEW:
-            # logger.debug(f'Node start search: {self.range_start_date.date().isoformat()}/{self.range_end_date.date().isoformat()}')
-            if self.parent:
-                await self.__search(session_pool)
-            else:  # Root node
-                for char in self.spider.search_chars.replace(' ',''): # don't start queries with a space
-                    self.children.append(
-                        SearchNode(
-                            range_start_date=self.range_start_date,
-                            range_end_date=self.range_end_date,
-                            search_string=char,
-                            parent=self,
-                            spider=self.spider
-                        )
+            logger.debug(f'Root node start search: {self.id}')
+            self.timestamp = datetime.now()
+            for char in self.spider.search_chars.replace(' ',''): # don't start queries with a space
+                self.children.append(
+                    SearchNode(
+                        range_start_date=self.range_start_date,
+                        range_end_date=self.range_end_date,
+                        search_string=char,
+                        parent=self,
+                        spider=self.spider
                     )
+                )
             self.status = NodeStatus.IN_PROGRESS
         elif self.status == NodeStatus.IN_PROGRESS:
-            logger.debug(f'Node resume search: {self.range_start_date.date().isoformat()}/{self.range_end_date.date().isoformat()}')
+            logger.debug(f'Root node resume search: {self.timestamp.isoformat()}/{self.id}')
+            if not self.children:
+                self.__spawn_children()
+
+        # Start children and state manager
+        try:
+            async with trio.open_nursery() as nursery:
+                for node in self.children:
+                    nursery.start_soon(node.__start_child, session_pool, nursery)
+                nursery.start_soon(self.__state_manager, nursery)
+            self.status = NodeStatus.COMPLETE
+        except:
+            raise
+        finally:    
+            self.save()
+            self.__log_results()
+            
+        logger.debug(f'Root node completed: {self.id}')
+
+    async def __start_child(self, session_pool, nursery):
+        if self.status == NodeStatus.COMPLETE:
+            logger.debug(f'Node complete: {self.id}')
+            return
+        elif self.status == NodeStatus.FAILED:
+            logger.debug(f'Node failed: {self.id}')
+            return
+        elif self.status == NodeStatus.TIME_RANGE_SPLIT:
+            logger.debug(f'Node time range split: {self.id}')
+            return
+        elif self.status == NodeStatus.NEW:
+            await self.__search(session_pool)
+            self.status = NodeStatus.IN_PROGRESS
+        elif self.status == NodeStatus.IN_PROGRESS:
+            logger.debug(f'Node resume search: {self.timestamp.isoformat()}/{self.id}')
             if self.results['cases_returned'] == 500 and not self.children:
                 self.__spawn_children()
 
         # Start children
         for node in self.children:
-            nursery.start_soon(node.start, session_pool, nursery)
+            nursery.start_soon(node.__start_child, session_pool, nursery)
         self.status = NodeStatus.COMPLETE
         self.__propagate_results()
-        # logger.debug(f'Node completed: {self.range_start_date.date().isoformat()}/{self.range_end_date.date().isoformat()}')
-    
+
+    async def __state_manager(self, nursery):
+        ''' Periodically save state '''
+        logger.debug('State manager initiating')
+        last_update = datetime.now()
+        while True:
+            await trio.sleep(5)
+            now = datetime.now()
+            if len(nursery.child_tasks) == 1:
+                logger.debug('State manager terminating')
+                return
+            if (now - last_update).total_seconds() > config.SPIDER_UPDATE_FREQUENCY:
+                last_update = now
+                logger.debug('Updating state')
+                self.save()
+
     def __spawn_children(self):
         if self.children:
             return
@@ -443,17 +517,19 @@ class SearchNode:
             except CompletedSearchNoResults:
                 self.status = NodeStatus.COMPLETE
                 raise
-            except FailedSearch:
+            except FailedSearch as e:
                 self.status = NodeStatus.FAILED
+                self.error = f'{str(type(e).__name__)}: {str(e)}'
                 raise
 
             # Parse HTML
             html = BeautifulSoup(response_html.text,'html.parser')
             results_table = html.find('table',class_='results',id='row')
             if not results_table:  # Sanity check
-                logger.error('Error finding results table in returned HTML')
+                err_msg = 'Error finding results table in returned HTML'
+                self.error = err_msg
                 self.status = NodeStatus.FAILED
-                raise FailedSearchUnknownError
+                raise FailedSearchUnknownError(err_msg)
             rows = list(results_table.tbody.find_all('tr'))
             
             # Paginate through results if needed
@@ -464,16 +540,19 @@ class SearchNode:
                         url = 'http://casesearch.courts.state.md.us' + html.find('span',class_='pagelinks').find('a',string='Next')['href'],
                         method = 'GET'
                     )
-                except FailedSearch:
+                except FailedSearch as e:
                     self.status = NodeStatus.FAILED
+                    self.error = f'{str(type(e).__name__)}: {str(e)}'
                     raise
                 html = BeautifulSoup(response_html.text,'html.parser')
                 try:
                     for row in html.find('table',class_='results',id='row').tbody.find_all('tr'):
                         rows.append(row)
                 except:
+                    err_msg = 'Error parsing results table'
                     self.status = NodeStatus.FAILED
-                    raise FailedSearchUnknownError
+                    self.error = err_msg
+                    raise FailedSearchUnknownError(err_msg)
         except (FailedSearch, CompletedSearchNoResults):
             await session_pool.put(session)
             return
@@ -490,6 +569,7 @@ class SearchNode:
             try:
                 case_number = elements[0].a.string
             except:
+                self.error = 'Error parsing result rows'
                 self.status = NodeStatus.FAILED
                 return
             if not processed_cases.get(case_number): # case numbers can appear multiple times in results
@@ -545,7 +625,7 @@ class SearchNode:
                 config.scraper_queue.send_messages(Entries=chunk)
             
         if len(new_cases) > 0:
-            logger.info(f"{self.search_string}/{self.range_start_date.date().isoformat()}/{self.range_end_date.date().isoformat()} added {len(new_cases)} new cases")
+            logger.info(f"{self.id} added {len(new_cases)} new cases")
         self.results['cases_returned'] = len(rows)
         self.results['distinct_cases'] = len(processed_cases)
         self.results['cases_added'] = len(new_cases)
@@ -574,33 +654,32 @@ class SearchNode:
                 if retry:
                     retry = False
                     continue
-                logger.warning(f"{str(e)}: {self.search_string}/{self.range_start_date.date().isoformat()}/{self.range_end_date.date().isoformat()}")
-                raise FailedSearchUnknownError
+                logger.warning(f"{str(e)}: {self.id}")
+                raise FailedSearchUnknownError(str(e))
 
             if response.history and response.history[0].status_code == 302:
                 logger.debug("Received 302 redirect, renewing session...")
                 await session.renew()
                 continue  # try again
             elif response.status_code == 500:
-                logger.debug(f"Received 500 error: {self.search_string}/{self.range_start_date.date().isoformat()}/{self.range_end_date.date().isoformat()}")
-                raise FailedSearch500Error
+                logger.debug(f"Received 500 error: {self.id}")
+                raise FailedSearch500Error(response.text)
             elif response.status_code != 200:
-                logger.warning("Unknown error. response code: %s, response body: %s" % (response.status_code, response.text))
-                raise FailedSearchUnknownError
-            else:
-                if 'text/html' in response.headers['Content-Type'] \
-                        and re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text):
-                    logger.debug("No cases for search string %s starting on %s" % (self.search_string,self.range_start_date.strftime("%-m/%-d/%Y")))
-                    raise CompletedSearchNoResults
-                elif 'text/html' in response.headers['Content-Type'] \
-                        and re.search(r'<span class="error">\s*<br>Sorry, but your query has timed out after 2 minute',response.text):
-                    logger.warning(f"MJCS Query Timeout: {self.search_string}/{self.range_start_date.date().isoformat()}/{self.range_end_date.date().isoformat()}")
-                    raise FailedSearchTimeout
+                logger.warning(f"Unknown error. response code: {response.status_code}, response body: {response.text}")
+                raise FailedSearchUnknownError(f'Response status code {response.status_code}, body {response.text}')
+            elif 'text/html' in response.headers['Content-Type'] \
+                    and re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text):
+                # logger.debug("No cases for search string %s starting on %s" % (self.search_string,self.range_start_date.strftime("%-m/%-d/%Y")))
+                raise CompletedSearchNoResults
+            elif 'text/html' in response.headers['Content-Type'] \
+                    and re.search(r'<span class="error">\s*<br>Sorry, but your query has timed out after 2 minute',response.text):
+                logger.warning(f"MJCS Query Timeout: {self.id}")
+                raise FailedSearchTimeout
 
             return response
 
     def __split(self):
-        logger.debug(f'Splitting date range {self.search_string}/{self.range_start_date.date().isoformat()}/{self.range_end_date.date().isoformat()}')
+        logger.debug(f'Splitting date range {self.id}')
         range1, range2 = split_date_range(self.range_start_date, self.range_end_date)
         self.spider.__append_slices([
             {
@@ -620,3 +699,13 @@ class SearchNode:
             self.parent.results['total_cases_added'] += self.results['cases_added']
             self.parent.results['total_cases_processed'] += self.results['distinct_cases']
             self.parent.results['total_requests'] += self.results['requests']
+    
+    def __log_results(self):
+        logger.info(f'ROOT SEARCH NODE RESULTS')
+        logger.info(f'Search criteria: {self.range_start_date.strftime("%m/%d/%Y")} - {self.range_end_date.strftime("%m/%d/%Y")} / Court: {self.spider.court} / Site: {self.spider.site}')
+        logger.info(f'Node started at {self.timestamp}')
+        logger.info(f'Node finished at {datetime.now().isoformat()}')
+        logger.info(f'Total requests sent: {self.results["total_requests"]}')
+        logger.info(f'Total new cases added: {self.results["total_cases_added"]}')
+        logger.info(f'Total cases processed: {self.results["total_cases_processed"]}')
+        logger.info(f'Node state: {self.status.name}')
