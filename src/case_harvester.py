@@ -140,68 +140,16 @@ def run_spider(args):
     else:
         spider.start()
 
-def scraper_prompt(exception, case_number):
-    print(exception)
-    while True:
-        print('Continue scraping?')
-        print('\t\t(y)es    - ignore error and continue scraping (default)')
-        print('\t\t(n)o     - stop scraping and raise exception')
-        print('\t\t(d)elete - ignore error and delete item from queue')
-        print('\t\t(m)ark   - mark case as unscrapable and continue')
-        print('\t\t(e)xempt - save scrape but exempt from parsing')
-        print('\t\t(s)ave   - save scrape and continue')
-        answer = input('Answer: (Y/n/d/m/e/s) ')
-        if answer == 'y' or answer == 'Y' or not answer:
-            return 'continue'
-        elif answer == 'n':
-            raise exception
-        elif answer == 'd':
-            return 'delete'
-        elif answer == 'm':
-            with db_session() as db:
-                db.execute(
-                    Case.__table__.update()\
-                        .where(Case.case_number == case_number)\
-                        .values(scrape_exempt = True)
-                )
-            return 'delete'
-        elif answer == 'e':
-            with db_session() as db:
-                db.execute(
-                    Case.__table__.update()\
-                        .where(Case.case_number == case_number)\
-                        .values(parse_exempt = True)
-                )
-            return 'store'
-        elif answer == 's':
-            return 'store'
-        else:
-            print('Invalid answer')
-
 def run_scraper(args):
-    on_error = None
-    if args.ignore_errors:
-        on_error = lambda e,c: 'delete'
-    elif args.prompt_on_error:
-        on_error = scraper_prompt
-
-    scraper = Scraper(on_error, args.threads)
-
-    if args.missing:
-        scraper.scrape_missing_cases()
-    elif args.queue:
-        scraper.scrape_from_scraper_queue()
-    elif args.failed_queue:
-        scraper.scrape_from_failed_queue()
-    elif args.case:
+    scraper = Scraper(args.concurrency)
+    if args.case:
         scraper.scrape_specific_case(args.case)
     elif args.rescrape_end:
         scraper.rescrape(days_ago_start=args.rescrape_start, days_ago_end=args.rescrape_end)
     elif args.service:
-        scraper.on_error = lambda e,c: 'delete'  # ignore errors when we run as service
         scraper.start_service()
     else:
-        raise Exception("Must specify --missing, --queue, --failed-queue, or --rescrape-start/--rescrape-end.")
+        raise Exception("Must specify --service or --rescrape-start/--rescrape-end.")
 
 def parser_prompt(exception, case_number):
     if type(exception) == NotImplementedError:
@@ -286,18 +234,7 @@ if __name__ == '__main__':
 
     parser_scraper = subparsers.add_parser('scraper',
         help="Scrape case details from the Maryland Judiciary Case Search database")
-    parser_scraper.add_argument('--ignore-errors', action='store_true',
-        help="Ignore scraping errors")
-    parser_scraper.add_argument('--prompt-on-error', action='store_true',
-        help="Prompt for actions when an error occurs")
-    parser_scraper.add_argument('--missing', action='store_true', help=\
-        "Scrape any cases that are in the database but don't have any case details in S3")
-    parser_scraper.add_argument('--queue', action='store_true', help=\
-        "Scrape cases in the scraper queue")
-    parser_scraper.add_argument('--failed-queue', action='store_true', help=\
-        "Scrape cases in the queue of failed cases")
-    parser_scraper.add_argument('--threads', type=int, default=10,
-        help="Number of threads for scraping cases (default: 10)")
+    parser_scraper.add_argument('--concurrency', type=int, default=10)
     parser_scraper.add_argument('--case', '-c', help="Scrape specific case number")
     parser_scraper.add_argument('--verbose', '-v', action='store_true',
         help="Print debug information")
