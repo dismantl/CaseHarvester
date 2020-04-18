@@ -138,23 +138,14 @@ class Scraper:
                         body = json.loads(item.body)
                         case_number = body['case_number']
                         detail_loc = body['detail_loc']
-                        def queue_callback():
-                            item.delete()
-                        nursery.start_soon(self.__scraper_worker, case_number, detail_loc, queue_callback)
+                        nursery.start_soon(self.__scrape_case, case_number, detail_loc)
+                        item.delete()
                 else:
                     logger.debug('No items in scraper queue, waiting...')
                     await trio.sleep(60 * 10)  # 10 mins
             else:
                 logger.debug('Queue full, waiting...')
                 await trio.sleep(5)
-
-    async def __scraper_worker(self, case_number, detail_loc, callback):
-        try:
-            await self.__scrape_case(case_number, detail_loc)
-        except:
-            raise
-        finally:
-            callback()
 
     async def __scrape_case(self, case_number, detail_loc):
         session = await self.session_pool.get()
