@@ -117,8 +117,8 @@ def valid_datetime(s):
 
 def run_spider(args):
     if args.start_date:
-        start_date = args.start_date,
-        end_date = args.end_date,
+        start_date = args.start_date
+        end_date = args.end_date
     elif args.end_days_ago:
         today = datetime.now().date()
         end_date = datetime.combine(today - timedelta(days=args.start_days_ago), datetime.min.time())
