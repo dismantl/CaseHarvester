@@ -1,19 +1,15 @@
 from .config import config
-from .session import AsyncSession
-from .util import (db_session, fetch_from_queue, NoItemsInQueue, cases_batch,
-                   cases_batch_filter, process_cases, get_detail_loc, chunks)
+from .session import AsyncSessionPool
+from .util import db_session, get_detail_loc, chunks
 from .models import ScrapeVersion, Scrape, Case
-from sqlalchemy import and_
 from hashlib import sha256
 import logging
-import requests
 import boto3
+import botocore
 import re
 import json
-import os
 import trio
 import asks
-import h11
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -66,10 +62,7 @@ class Scraper:
 
         # Set up concurrency
         self.concurrency = concurrency or config.SCRAPER_DEFAULT_CONCURRENCY
-        asks.init('trio')
-        self.session_pool = trio.Queue(self.concurrency)
-        for _ in range(self.concurrency):
-            self.session_pool.put_nowait(AsyncSession())
+        self.session_pool = AsyncSessionPool(self.concurrency)
 
     def start_service(self):
         trio.run(self.__start_service, restrict_keyboard_interrupt_to_checkpoints=True)
@@ -142,98 +135,62 @@ class Scraper:
                         item.delete()
                 else:
                     logger.debug('No items in scraper queue, waiting...')
-                    await trio.sleep(60 * 10)  # 10 mins
+                    await trio.sleep(config.SCRAPER_WAIT_INTERVAL)
             else:
                 logger.debug('Queue full, waiting...')
                 await trio.sleep(5)
 
     async def __scrape_case(self, case_number, detail_loc):
         session = await self.session_pool.get()
-        
-        retry = True
+        logger.debug(f"Requesting case details for {case_number}")
+        begin = datetime.now()
+        response = await session.request(
+            'POST',
+            'http://casesearch.courts.state.md.us/casesearch/inquiryByCaseNum.jis',
+            data = {
+                'caseId': case_number
+            }
+        )
+        end = datetime.now()
+        duration = (begin - end).total_seconds()
+        self.session_pool.put_nowait(session)
+            
         try:
-            while True:
-                try:
-                    logger.debug(f"Requesting case details for {case_number}")
-                    begin = datetime.now()
-                    response = await session.post(
-                        'http://casesearch.courts.state.md.us/casesearch/inquiryByCaseNum.jis',
-                        data = {
-                            'caseId': case_number
-                        },
-                        allow_redirects = False
-                    )
-                    end = datetime.now()
-                    duration = (begin - end).total_seconds()
-                except (asks.errors.BadHttpResponse, h11.RemoteProtocolError, 
-                        trio.BrokenStreamError, OSError, asks.errors.RequestTimeout) as e:
-                    await trio.sleep(0.1) # courtesy
-                    if retry:
-                        retry = False
-                        continue
-                    logger.warning(f"Scrape error {str(type(e).__name__)}: {str(e)}")
-                    # raise FailedScrape
-                    raise
-                
-                try:
-                    self.__handle_scrape_response(case_number, detail_loc, response, duration)
-                except ExpiredSession:
-                    logger.debug("Renewing session")
-                    await session.renew()
-                    continue
-                except FailedScrapeTimeout:
-                    await trio.sleep(0.1) # courtesy
-                    if retry:
-                        retry = False
-                        continue
-                    logger.warning(f"Scrape timeout for {case_number}")
-                    raise
-                except FailedScrape as e:
-                    await trio.sleep(1) #anti hammer
-                    logger.warning(f"Scrape error {str(type(e).__name__)}: {str(e)}")
-                    raise
-                self.cases_scraped += 1
-                break
-        except FailedScrape:
+            self.__check_scrape_response(case_number, response)
+            self.cases_scraped += 1
+        except FailedScrape as e:
+            logger.warning(f'Scrape error {type(e).__name__}: {e}')
+            await trio.sleep(1) #anti hammer
             config.scraper_failed_queue.send_message(
                 MessageBody = json.dumps({
                     'case_number': case_number,
                     'detail_loc': detail_loc
                 })
             )
-        finally:
-            await self.session_pool.put(session)
+        else:
+            await self.__store_case_details(case_number, detail_loc, response.text, duration)
 
-    def __handle_scrape_response(self, case_number, detail_loc, response, scrape_duration):
-        if response.status_code != 200:
-            if response.status_code == 500:
-                raise FailedScrape500
-            elif response.history and response.history[0].status_code == 302:
-                raise ExpiredSession
-            else:
-                raise FailedScrapeUnknownError
+    def __check_scrape_response(self, case_number, response):
+        if response.status_code == 500:
+            raise FailedScrape500
+        elif response.status_code != 200:
+            raise FailedScrapeUnknownError
         elif re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text):
             raise FailedScrapeNotFound
         elif 'Sorry, but your query has timed out after 2 minute' in response.text:
             raise FailedScrapeTimeout
-        else:
-            # Some sanity checks
-            if "Acceptance of the following agreement is" in response.text:
-                raise ExpiredSession
-            elif len(response.text) < 1000:
-                raise FailedScrapeTooShort
-            elif "An unexpected error occurred" in response.text:
-                raise FailedScrapeUnexpectedError
-            elif "Note: Initial Sort is by Last Name." in response.text:
-                raise FailedScrapeSearchResults
-            else:
-                # case numbers will often be displayed with dashes and/or spaces between parts of it
-                if not re.search(r'[\- ]*'.join(case_number),response.text) \
-                        and not re.search(r'[\- ]*'.join(case_number.lower()),response.text):
-                    raise FailedScrapeNoCaseNumber
-            self.__store_case_details(case_number, detail_loc, response.text, scrape_duration)
+        elif len(response.text) < 1000:
+            raise FailedScrapeTooShort
+        elif "An unexpected error occurred" in response.text:
+            raise FailedScrapeUnexpectedError
+        elif "Note: Initial Sort is by Last Name." in response.text:
+            raise FailedScrapeSearchResults
+        # case numbers will often be displayed with dashes and/or spaces between parts of it
+        elif not re.search(r'[\- ]*'.join(case_number),response.text) \
+                and not re.search(r'[\- ]*'.join(case_number.lower()),response.text):
+            raise FailedScrapeNoCaseNumber
 
-    def __store_case_details(self, case_number, detail_loc, html, scrape_duration=None):
+    async def __store_case_details(self, case_number, detail_loc, html, scrape_duration=None):
         add = False
         try:
             previous_fetch = config.case_details_bucket.Object(case_number).get()
@@ -255,16 +212,23 @@ class Scraper:
                     'detail_loc': detail_loc
                 }
             )
+            try:
+                version_id = obj.version_id
+            except botocore.exceptions.ClientError:
+                # Sometimes the version_id property isn't available from S3 when we first try to access it, so wait and try again
+                await trio.sleep(60)
+                version_id = obj.version_id
+            
             with db_session() as db:
                 scrape_version = ScrapeVersion(
-                    s3_version_id = obj.version_id,
+                    s3_version_id = version_id,
                     case_number = case_number,
                     length = len(html),
                     sha256 = sha256(html.encode('utf-8')).hexdigest()
                 )
                 scrape = Scrape(
                     case_number = case_number,
-                    s3_version_id = obj.version_id,
+                    s3_version_id = version_id,
                     timestamp = timestamp,
                     duration = scrape_duration
                 )

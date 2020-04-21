@@ -43,17 +43,14 @@ class Config:
                 raise Exception('Invalid environment %s' % environment)
 
         self.CASE_BATCH_SIZE = int(os.getenv('CASE_BATCH_SIZE',1000))
-
-        self.QUERY_TIMEOUTS_LIMIT = int(os.getenv('QUERY_TIMEOUTS_LIMIT',5))
-        self.QUERY_ERROR_LIMIT = int(os.getenv('QUERY_ERROR_LIMIT',5)) # TODO split into scraper and spider
-        self.QUERY_TIMEOUT = int(os.getenv('QUERY_TIMEOUT',135)) # seconds # TODO split into scraper and spider
+        self.QUERY_TIMEOUT = int(os.getenv('QUERY_TIMEOUT',135)) # seconds
 
         self.SPIDER_DEFAULT_CONCURRENCY = int(os.getenv('SPIDER_DEFAULT_CONCURRENCY',10))
         self.SPIDER_DAYS_PER_QUERY = int(os.getenv('SPIDER_DAYS_PER_QUERY',16))
         self.SPIDER_UPDATE_FREQUENCY = int(os.getenv('SPIDER_UPDATE_FREQUENCY',900)) # seconds
 
         self.SCRAPER_DEFAULT_CONCURRENCY = int(os.getenv('SCRAPER_DEFAULT_CONCURRENCY',10)) # must be multiple of 2
-        self.SCRAPER_LAMBDA_EXPIRY_MIN = int(os.getenv('SCRAPER_LAMBDA_EXPIRY_MIN',5))
+        self.SCRAPER_WAIT_INTERVAL = int(os.getenv('SCRAPER_WAIT_INTERVAL',600)) # 10 mins
         self.QUEUE_WAIT = int(os.getenv('QUEUE_WAIT',5)) # seconds
 
         self.MJCS_DATABASE_URL = os.getenv('MJCS_DATABASE_URL')
