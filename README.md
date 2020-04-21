@@ -13,7 +13,7 @@ The spider component is responsible for discovering case numbers. It does this b
 
 ![Spider diagram](./img/spider.svg)
 
-The Spider is launched using Elastic Container Service (ECS) Fargate tasks run at regularly scheduled intervals. These tasks run Case Harvester from a Docker image pulled from an Elastic Container Registry (ECR). Periodically the spider will save its state using a combination of DynamoDB and S3, which allows resuming failed or canceled spider runs.
+The Spider is launched using Elastic Container Service (ECS) Fargate tasks run at [regularly scheduled intervals](#schedule). These tasks run Case Harvester from a Docker image pulled from an Elastic Container Registry (ECR). Periodically the spider will save its state using a combination of DynamoDB and S3, which allows resuming failed or canceled spider runs.
 
 ### Scraper
 The scraper component downloads and stores the case details for every case number discovered by the spider. The full HTML for each case ([example](http://casesearch.courts.state.md.us/casesearch/inquiryDetail.jis?caseId=116090001&loc=69&detailLoc=DSK8)) is added to an S3 bucket. Version information is kept for each case, including a timestamp of when each version was downloaded, so changes to a case can be recorded and referenced.
