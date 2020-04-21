@@ -1,77 +1,77 @@
 from .config import config
 import logging
-import time
 import h11
+import trio
+import asks
+import os
 
 logger = logging.getLogger(__name__)
 
-class Session:
-    def __init__(self):
-        import requests
-        self.session = requests.Session()
+class AsyncSessionPool:
+    def __init__(self, concurrency):
+        
+        assert isinstance(concurrency, int) and concurrency > 0
+        self.concurrency = concurrency
+        asks.init('trio')
+        self.send_channel, self.receive_channel = trio.open_memory_channel(max_buffer_size=self.concurrency)
+        for _ in range(self.concurrency):
+            self.send_channel.send_nowait(AsyncSession())
+    
+    async def get(self):
+        return await self.receive_channel.receive()
+    
+    async def put(self, session):
+        await self.send_channel.send(session)
 
-        if config.USER_AGENT:
-            self.session.headers.update({'user-agent': config.USER_AGENT})
+    def put_nowait(self, session):
+        self.send_channel.send_nowait(session)
 
-        self.renew()
-
-    def post(self, *args, **kwargs):
-        return self.session.post(timeout = config.QUERY_TIMEOUT, *args, **kwargs)
-
-    def renew(self):
-        import requests
-        for _ in range(0,5):
-            try:
-                response = self.post(
-                    'http://casesearch.courts.state.md.us/casesearch/processDisclaimer.jis',
-                    data = {
-                        'disclaimer':'Y',
-                        'action':'Continue'
-                    }
-                )
-            except requests.exceptions.ConnectionError:
-                time.sleep(1)
-                continue
-
-            if response.status_code != 200:
-                logger.error("Failed to authenticate with MJCS: code = %d, body = %s" % (response.status_code, response.text))
-            else:
-                return
-
-        raise Exception('Failed to authenticate with MJCS 5 times')            
 
 class AsyncSession:
     def __init__(self):
-        import asks
         self.session = asks.Session(connections=1, persist_cookies=True)
-
         if config.USER_AGENT:
             self.session.headers.update({'user-agent': config.USER_AGENT})
 
-    def post(self, *args, **kwargs):
-        return self.session.post(timeout = config.QUERY_TIMEOUT, *args, **kwargs)
-
-    def request(self, *args, **kwargs):
-        return self.session.request(timeout = config.QUERY_TIMEOUT, *args, **kwargs)
+    async def request(self, *args, **kwargs):
+        try:
+            response = await self.session.request(
+                *args, 
+                **kwargs,
+                timeout=config.QUERY_TIMEOUT,
+                retries=1
+            )
+        except (asks.errors.BadHttpResponse, h11.RemoteProtocolError, 
+                    OSError, asks.errors.RequestTimeout) as e:
+            await trio.sleep(1)
+            logger.warning(f'{type(e).__name__}: {e}')
+            # Replace current asks session object
+            self.session = asks.Session(connections=1, persist_cookies=True)
+            # Try once more
+            response = await self.session.request(
+                *args,
+                **kwargs,
+                timeout=config.QUERY_TIMEOUT,
+                retries=1
+            )
+        if (response.history and response.history[0].status_code == 302) \
+                or "Acceptance of the following agreement is" in response.text:
+            logger.debug("Renewing session...")
+            await self.renew()
+            return await self.request(*args, **kwargs)
+        return response
 
     async def renew(self):
-        import asks
-        for _ in range(0,5):
-            try:
-                response = await self.post(
-                    'http://casesearch.courts.state.md.us/casesearch/processDisclaimer.jis',
-                    data = {
-                        'disclaimer':'Y',
-                        'action':'Continue'
-                    }
-                )
-            except (asks.errors.BadHttpResponse, h11._util.RemoteProtocolError):
-                time.sleep(1)
-                continue
-            
-            if response.status_code != 200:
-                logger.error("Failed to authenticate with MJCS: code = %d, body = %s" % (response.status_code, response.text))
-            else:
-                return
-        
-        raise Exception('Failed to authenticate with MJCS 5 times')
+        response = await self.request(
+            'POST',
+            'http://casesearch.courts.state.md.us/casesearch/processDisclaimer.jis',
+            data = {
+                'disclaimer':'Y',
+                'action':'Continue'
+            }
+        )
+        if response.status_code != 200:
+            err = f"Failed to authenticate with MJCS: code = {response.status_code}, body = {response.text}"
+            logger.error(err)
+            raise Exception(err)
+        return response

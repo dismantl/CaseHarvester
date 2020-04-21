@@ -1,22 +1,16 @@
 from .config import config
 from .util import db_session, split_date_range, chunks, JSONDatetimeEncoder, float_to_decimal, decimal_to_float
 from .models import Case
-from .session import AsyncSession
+from .session import AsyncSessionPool
 import trio
 import asks
-from sqlalchemy.dialects.postgresql import insert
-from bs4 import BeautifulSoup, SoupStrainer
+from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from boto3.dynamodb.conditions import Key
-from botocore.exceptions import ClientError
 import re
 import string
-import xml.etree.ElementTree as ET
-import h11
 import json
-import os
 import logging
-from functools import reduce
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -74,13 +68,11 @@ class Spider:
             'total_requests': 0
         }
         self.slices = []
+        self.slice_idx = -1
 
         # Set up concurrency
         self.concurrency = concurrency or config.SPIDER_DEFAULT_CONCURRENCY
-        asks.init('trio')
-        self.session_pool = trio.Queue(self.concurrency)
-        for _ in range(self.concurrency):
-            self.session_pool.put_nowait(AsyncSession())
+        self.session_pool = AsyncSessionPool(self.concurrency)
 
     @classmethod
     def load(cls, state_dict):
@@ -140,6 +132,19 @@ class Spider:
         return self._id
     
     def start(self):
+        trio.run(self.__start, restrict_keyboard_interrupt_to_checkpoints=True)
+
+    def resume(self, run_datetime=None):
+        ''' Resumes most recent (or specified) spider run '''
+        state_dict = self.__load_run(run_datetime)
+        loaded_spider = self.load(state_dict)
+        self.results = loaded_spider.results
+        self.status = loaded_spider.status
+        self.timestamp = loaded_spider.timestamp
+        self.slices = loaded_spider.slices
+        self.start()
+
+    async def __start(self):
         if self.status == SpiderStatus.COMPLETE:
             logger.warning('Spider is in complete state, cannot start.')
             return
@@ -154,9 +159,16 @@ class Spider:
         self.timestamp = datetime.now()
         logger.info(f"Run timestamp: {self.timestamp.isoformat()}")
         try:
-            for node in self.slices:
-                if node.status != NodeStatus.COMPLETE:
-                    node.start(self.session_pool)
+            async with trio.open_nursery() as spider_nursery:
+                async def start_slice():
+                    for node in self.slices[(self.slice_idx + 1):]:
+                        if node.status == NodeStatus.NEW or node.status == NodeStatus.IN_PROGRESS or node.status == NodeStatus.FAILED:
+                            self.slice_idx = self.slices.index(node)
+                            logger.info(f'Starting slice {self.slice_idx + 1} of {len(self.slices)}')
+                            spider_nursery.start_soon(node.start, self.session_pool, start_slice)
+                            return
+                for _ in range(self.concurrency):
+                    await start_slice()
         except KeyboardInterrupt:
             print("\nCaught KeyboardInterrupt: saving spider run...")
             self.status = SpiderStatus.CANCELED
@@ -169,16 +181,6 @@ class Spider:
             self.__save_run()
             self.__log_results()
         logger.info("Spider run complete")
-
-    def resume(self, run_datetime=None):
-        ''' Resumes most recent (or specified) spider run '''
-        state_dict = self.__load_run(run_datetime)
-        loaded_spider = self.load(state_dict)
-        self.results = loaded_spider.results
-        self.status = loaded_spider.status        
-        self.timestamp = loaded_spider.timestamp
-        self.slices = loaded_spider.slices
-        self.start()
 
     def __generate_slices(self):
         ''' Split up the query time range into smaller chunks to improve likelihood of getting (0 < n_results < 500) returned '''
@@ -206,6 +208,7 @@ class Spider:
                     spider=self,
                 )
             )
+        logger.info(f'Generated {len(self.slices)} slices')
 
     def __append_slices(self, slices):
         self.slices += [
@@ -351,10 +354,6 @@ class SearchNode:
     def is_root(self):
         return not self.parent and not self.search_string
 
-    def start(self, session_pool):
-        assert self.is_root()
-        trio.run(self.__start_root, session_pool, restrict_keyboard_interrupt_to_checkpoints=True)
-
     def export(self):
         assert self.is_root()
         return {
@@ -363,6 +362,7 @@ class SearchNode:
             'range_start_date': self.range_start_date.strftime('%m/%d/%Y'),
             'range_end_date': self.range_end_date.strftime('%m/%d/%Y'),
             'status': self.status.name,
+            'error': self.error,
             'results': self.results,
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
             's3': self.s3_key
@@ -379,7 +379,7 @@ class SearchNode:
         )
         logger.debug(f'Size of saved state: {s3_obj.content_length}')
 
-    async def __start_root(self, session_pool):
+    async def start(self, session_pool, callback):
         assert self.is_root()
         if self.status == NodeStatus.COMPLETE:
             logger.debug(f'Root node complete: {self.id}')
@@ -423,6 +423,7 @@ class SearchNode:
             self.__log_results()
             
         logger.debug(f'Root node completed: {self.id}')
+        await callback()
 
     async def __start_child(self, session_pool, nursery):
         if self.status == NodeStatus.COMPLETE:
@@ -488,10 +489,6 @@ class SearchNode:
             )
 
     async def __search(self, session_pool):
-        session = await session_pool.get()
-
-        self.timestamp = datetime.now()
-        logger.debug("Searching for %s on start date %s" % (self.search_string, self.range_start_date.strftime("%-m/%-d/%Y")))
         query_params = {
             'lastName':self.search_string,
             'countyName':self.spider.court,
@@ -501,65 +498,16 @@ class SearchNode:
             'filingEnd':self.range_end_date.strftime("%-m/%-d/%Y")
         }
 
-        try:
-            try:
-                response_html = await self.__query_mjcs(
-                    session,
-                    url = 'http://casesearch.courts.state.md.us/casesearch/inquirySearch.jis',
-                    method = 'POST',
-                    post_params = query_params,
-                    xml = False
-                )
-            except FailedSearchTimeout:
-                self.__split()
-                self.status = NodeStatus.TIME_RANGE_SPLIT
-                raise
-            except CompletedSearchNoResults:
-                self.status = NodeStatus.COMPLETE
-                raise
-            except FailedSearch as e:
-                self.status = NodeStatus.FAILED
-                self.error = f'{str(type(e).__name__)}: {str(e)}'
-                raise
-
-            # Parse HTML
-            html = BeautifulSoup(response_html.text,'html.parser')
-            results_table = html.find('table',class_='results',id='row')
-            if not results_table:  # Sanity check
-                err_msg = 'Error finding results table in returned HTML'
-                self.error = err_msg
-                self.status = NodeStatus.FAILED
-                raise FailedSearchUnknownError(err_msg)
-            rows = list(results_table.tbody.find_all('tr'))
-            
-            # Paginate through results if needed
-            while html.find('span',class_='pagelinks').find('a',string='Next'):
-                try:
-                    response_html = await self.__query_mjcs(
-                        session,
-                        url = 'http://casesearch.courts.state.md.us' + html.find('span',class_='pagelinks').find('a',string='Next')['href'],
-                        method = 'GET'
-                    )
-                except FailedSearch as e:
-                    self.status = NodeStatus.FAILED
-                    self.error = f'{str(type(e).__name__)}: {str(e)}'
-                    raise
-                html = BeautifulSoup(response_html.text,'html.parser')
-                try:
-                    for row in html.find('table',class_='results',id='row').tbody.find_all('tr'):
-                        rows.append(row)
-                except:
-                    err_msg = 'Error parsing results table'
-                    self.status = NodeStatus.FAILED
-                    self.error = err_msg
-                    raise FailedSearchUnknownError(err_msg)
-        except (FailedSearch, CompletedSearchNoResults):
+        session = await session_pool.get()
+        logger.debug(f"Searching for {self.id}")
+        self.timestamp = datetime.now()
+        rows = await self.__get_results(session, query_params)
+        self.results['query_seconds'] = delta_seconds(self.timestamp)
+        session_pool.put_nowait(session)
+        if not rows:
             return
-        finally:
-            await session_pool.put(session)
-            self.results['query_seconds'] = delta_seconds(self.timestamp)
 
-        logger.debug("Search string %s returned %d items, took %d seconds" % (self.search_string, len(rows), self.results['query_seconds']))
+        logger.debug(f"Search string {self.search_string} returned {len(rows)} items, took {self.results['query_seconds']} seconds")
 
         # Process results
         processed_cases = {}
@@ -624,58 +572,100 @@ class SearchNode:
                 config.scraper_queue.send_messages(Entries=chunk)
             
         if len(new_cases) > 0:
-            logger.info(f"{self.id} added {len(new_cases)} new cases")
+            logger.debug(f"{self.id} added {len(new_cases)} new cases")
         self.results['cases_returned'] = len(rows)
         self.results['distinct_cases'] = len(processed_cases)
         self.results['cases_added'] = len(new_cases)
         self.status = NodeStatus.IN_PROGRESS
 
-        if 'The result set exceeds the limit of 500 records' in response_html.text or len(rows) == 500:
+        if len(rows) == 500:
             # Procreate!
             self.__spawn_children()
+
+    async def __get_results(self, session, query_params):
+        try:
+            response_html = await self.__query_mjcs(
+                session,
+                url = 'http://casesearch.courts.state.md.us/casesearch/inquirySearch.jis',
+                method = 'POST',
+                post_params = query_params,
+                xml = False
+            )
+        except FailedSearchTimeout:
+            self.__split()
+            self.status = NodeStatus.TIME_RANGE_SPLIT
+            return
+        except CompletedSearchNoResults:
+            self.status = NodeStatus.COMPLETE
+            return
+        except FailedSearch as e:
+            self.status = NodeStatus.FAILED
+            self.error = f'{type(e).__name__}: {e}'
+            return
+
+        # Parse HTML
+        html = BeautifulSoup(response_html.text,'html.parser')
+        results_table = html.find('table',class_='results',id='row')
+        if not results_table:  # Sanity check
+            err_msg = 'Error finding results table in returned HTML'
+            self.error = err_msg
+            self.status = NodeStatus.FAILED
+            return
+        rows = list(results_table.tbody.find_all('tr'))
+        
+        # Paginate through results if needed
+        while html.find('span',class_='pagelinks').find('a',string='Next'):
+            try:
+                response_html = await self.__query_mjcs(
+                    session,
+                    url = 'http://casesearch.courts.state.md.us' + html.find('span',class_='pagelinks').find('a',string='Next')['href'],
+                    method = 'GET'
+                )
+            except FailedSearch as e:
+                self.status = NodeStatus.FAILED
+                self.error = f'{type(e).__name__}: {e}'
+                return
+            html = BeautifulSoup(response_html.text,'html.parser')
+            try:
+                for row in html.find('table',class_='results',id='row').tbody.find_all('tr'):
+                    rows.append(row)
+            except:
+                err_msg = 'Error parsing results table'
+                self.status = NodeStatus.FAILED
+                self.error = err_msg
+                return
+        return rows
 
     async def __query_mjcs(self, session, url, method='POST', post_params={}, xml=False):
         if xml:
             post_params['d-16544-e'] = 3
-        retry = True
-        while True:
-            try:
-                self.results['requests'] += 1
-                response = await session.request(
-                    method,
-                    url,
-                    data = post_params,
-                    max_redirects = 1
-                )
-            except asks.errors.RequestTimeout:
-                raise FailedSearchTimeout
-            except (asks.errors.BadHttpResponse, h11.RemoteProtocolError, trio.BrokenStreamError, OSError) as e:
-                if retry:
-                    retry = False
-                    continue
-                logger.warning(f"{str(e)}: {self.id}")
-                raise FailedSearchUnknownError(str(e))
+        try:
+            self.results['requests'] += 1
+            response = await session.request(
+                method=method,
+                url=url,
+                data=post_params,
+                max_redirects=1
+            )
+        except asks.errors.RequestTimeout:
+            raise FailedSearchTimeout
 
-            if response.history and response.history[0].status_code == 302:
-                logger.debug("Received 302 redirect, renewing session...")
-                await session.renew()
-                continue  # try again
-            elif response.status_code == 500:
-                logger.debug(f"Received 500 error: {self.id}")
-                raise FailedSearch500Error(response.text)
-            elif response.status_code != 200:
-                logger.warning(f"Unknown error. response code: {response.status_code}, response body: {response.text}")
-                raise FailedSearchUnknownError(f'Response status code {response.status_code}, body {response.text}')
-            elif 'text/html' in response.headers['Content-Type'] \
-                    and re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text):
-                # logger.debug("No cases for search string %s starting on %s" % (self.search_string,self.range_start_date.strftime("%-m/%-d/%Y")))
-                raise CompletedSearchNoResults
-            elif 'text/html' in response.headers['Content-Type'] \
-                    and re.search(r'<span class="error">\s*<br>Sorry, but your query has timed out after 2 minute',response.text):
-                logger.warning(f"MJCS Query Timeout: {self.id}")
-                raise FailedSearchTimeout
+        if response.status_code == 500:
+            logger.debug(f"Received 500 error: {self.id}")
+            raise FailedSearch500Error(response.text)
+        elif response.status_code != 200:
+            logger.warning(f"Unknown error. response code: {response.status_code}, response body: {response.text}")
+            raise FailedSearchUnknownError(f'Response status code {response.status_code}, body {response.text}')
+        elif 'text/html' in response.headers['Content-Type'] \
+                and re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text):
+            # logger.debug("No cases for search string %s starting on %s" % (self.search_string,self.range_start_date.strftime("%-m/%-d/%Y")))
+            raise CompletedSearchNoResults
+        elif 'text/html' in response.headers['Content-Type'] \
+                and re.search(r'<span class="error">\s*<br>Sorry, but your query has timed out after 2 minute',response.text):
+            logger.warning(f"MJCS Query Timeout: {self.id}")
+            raise FailedSearchTimeout
 
-            return response
+        return response  
 
     def __split(self):
         logger.debug(f'Splitting date range {self.id}')
@@ -694,10 +684,17 @@ class SearchNode:
         ])
     
     def __propagate_results(self):
-        if self.parent:
-            self.parent.results['total_cases_added'] += self.results['cases_added']
-            self.parent.results['total_cases_processed'] += self.results['distinct_cases']
-            self.parent.results['total_requests'] += self.results['requests']
+        self.results['total_cases_added'] = self.results['cases_added']
+        self.results['total_cases_processed'] = self.results['distinct_cases']
+        self.results['total_requests'] = self.results['requests']
+
+        # Propagate up the tree
+        node = self
+        while node.parent:
+            node.parent.results['total_cases_added'] += self.results['cases_added']
+            node.parent.results['total_cases_processed'] += self.results['distinct_cases']
+            node.parent.results['total_requests'] += self.results['requests']
+            node = node.parent
     
     def __log_results(self):
         logger.info(f'ROOT SEARCH NODE RESULTS')
