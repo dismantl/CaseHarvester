@@ -30,6 +30,9 @@ class FailedSearch500Error(FailedSearch):
 class FailedSearchUnknownError(FailedSearch):
     pass
 
+class FailedSearchUnavailable(FailedSearch):
+    pass
+
 class CompletedSearchNoResults(Exception):
     pass
 
@@ -160,7 +163,7 @@ class Spider:
         logger.info(f"Run timestamp: {self.timestamp.isoformat()}")
         try:
             async with trio.open_nursery() as spider_nursery:
-                async def start_slice():
+                def start_slice():
                     for node in self.slices[(self.slice_idx + 1):]:
                         if node.status == NodeStatus.NEW or node.status == NodeStatus.IN_PROGRESS or node.status == NodeStatus.FAILED:
                             self.slice_idx = self.slices.index(node)
@@ -168,7 +171,8 @@ class Spider:
                             spider_nursery.start_soon(node.start, self.session_pool, start_slice)
                             return
                 for _ in range(self.concurrency):
-                    await start_slice()
+                    start_slice()
+                spider_nursery.start_soon(self.__state_manager, spider_nursery)
         except KeyboardInterrupt:
             print("\nCaught KeyboardInterrupt: saving spider run...")
             self.status = SpiderStatus.CANCELED
@@ -178,7 +182,7 @@ class Spider:
         else:
             self.status = SpiderStatus.COMPLETE
         finally:
-            self.__save_run()
+            self.__save_run(save_children=True)
             self.__log_results()
         logger.info("Spider run complete")
 
@@ -221,14 +225,30 @@ class Spider:
             ) for slice in slices 
         ]
         
-    def __save_run(self):
+    async def __state_manager(self, nursery):
+        ''' Periodically save state '''
+        logger.debug('Spider state manager initiating')
+        last_update = datetime.now()
+        while True:
+            await trio.sleep(5)
+            now = datetime.now()
+            if len(nursery.child_tasks) == 1:
+                logger.debug('Spider state manager terminating')
+                return
+            if (now - last_update).total_seconds() > config.SPIDER_UPDATE_FREQUENCY:
+                last_update = now
+                logger.debug('Updating spider state')
+                self.__save_run(save_children=False)
+
+    def __save_run(self, save_children=False):
         logger.debug('Saving run.')
         self.results['run_seconds'] = delta_seconds(self.timestamp)
-        # Save any in-progress slices to S3
-        for slice in self.slices:
-            if slice.status == NodeStatus.IN_PROGRESS:
-                logger.debug(f'Saving slice {slice.id}')
-                slice.save()
+        if save_children:
+            # Save any in-progress slices to S3
+            for slice in self.slices:
+                if slice.status == NodeStatus.IN_PROGRESS:
+                    logger.debug(f'Saving slice {slice.id}')
+                    slice.save()
         self.__calculate_results()
         config.spider_table.put_item(Item=float_to_decimal(self.__dict__))
 
@@ -423,7 +443,7 @@ class SearchNode:
             self.__log_results()
             
         logger.debug(f'Root node completed: {self.id}')
-        await callback()
+        callback()
 
     async def __start_child(self, session_pool, nursery):
         if self.status == NodeStatus.COMPLETE:
@@ -451,17 +471,17 @@ class SearchNode:
 
     async def __state_manager(self, nursery):
         ''' Periodically save state '''
-        logger.debug('State manager initiating')
+        logger.debug('Root node state manager initiating')
         last_update = datetime.now()
         while True:
             await trio.sleep(5)
             now = datetime.now()
             if len(nursery.child_tasks) == 1:
-                logger.debug('State manager terminating')
+                logger.debug('Root node state manager terminating')
                 return
             if (now - last_update).total_seconds() > config.SPIDER_UPDATE_FREQUENCY:
                 last_update = now
-                logger.debug('Updating state')
+                logger.debug('Updating root node state')
                 self.save()
 
     def __spawn_children(self):
