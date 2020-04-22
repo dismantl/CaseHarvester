@@ -54,7 +54,8 @@ class AsyncSession:
                 timeout=config.QUERY_TIMEOUT,
                 retries=1
             )
-        if (response.history and response.history[0].status_code == 302) \
+        if (response.history and response.history[0].status_code == 302 \
+                    and response.history[0].headers['location'] == 'http://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp') \
                 or "Acceptance of the following agreement is" in response.text:
             logger.debug("Renewing session...")
             await self.renew()

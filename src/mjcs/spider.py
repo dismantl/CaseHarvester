@@ -684,6 +684,9 @@ class SearchNode:
                 and re.search(r'<span class="error">\s*<br>Sorry, but your query has timed out after 2 minute',response.text):
             logger.warning(f"MJCS Query Timeout: {self.id}")
             raise FailedSearchTimeout
+        elif 'text/html' in response.headers['Content-Type'] and 'Case Search is temporarily unavailable' in response.text:
+            logger.warning(f"MJCS Unavailable error: {self.id}")
+            raise FailedSearchUnavailable
 
         return response  
 
