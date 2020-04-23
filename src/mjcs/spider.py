@@ -214,7 +214,7 @@ class Spider:
             )
         logger.info(f'Generated {len(self.slices)} slices')
 
-    def __append_slices(self, slices):
+    def append_slices(self, slices):
         self.slices += [
             SearchNode(
                 range_start_date=slice['range_start_date'],
@@ -693,7 +693,7 @@ class SearchNode:
     def __split(self):
         logger.debug(f'Splitting date range {self.id}')
         range1, range2 = split_date_range(self.range_start_date, self.range_end_date)
-        self.spider.__append_slices([
+        self.spider.append_slices([
             {
                 'search_string': self.search_string,
                 'range_start_date': range1[0],
