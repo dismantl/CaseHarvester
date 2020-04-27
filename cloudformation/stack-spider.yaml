@@ -249,12 +249,12 @@ Resources:
             TaskCount: 1
             NetworkConfiguration:
               AwsVpcConfiguration:
-                AssignPublicIp: DISABLED
+                AssignPublicIp: ENABLED
                 SecurityGroups:
                   - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
                 Subnets:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
   
   WeeklySpiderRule:
     Type: AWS::Events::Rule
@@ -274,12 +274,12 @@ Resources:
             TaskCount: 1
             NetworkConfiguration:
               AwsVpcConfiguration:
-                AssignPublicIp: DISABLED
+                AssignPublicIp: ENABLED
                 SecurityGroups:
                   - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
                 Subnets:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
 
   MonthlySpiderRule:
     Type: AWS::Events::Rule
@@ -299,12 +299,12 @@ Resources:
             TaskCount: 1
             NetworkConfiguration:
               AwsVpcConfiguration:
-                AssignPublicIp: DISABLED
+                AssignPublicIp: ENABLED
                 SecurityGroups:
                   - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
                 Subnets:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
 
 Outputs:
   SpiderDynamoDBTableName:

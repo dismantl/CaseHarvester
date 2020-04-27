@@ -39,7 +39,6 @@ Resources:
       CodeUri: ../pkg/parser
       MemorySize: 128
       Timeout: 300
-      # ReservedConcurrentExecutions: 10
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt ParserFailedQueue.Arn
@@ -63,13 +62,10 @@ Resources:
             Topic: !Ref ParserTrigger
       VpcConfig:
         SecurityGroupIds:
-          -
-            Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+          - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
         SubnetIds:
-          -
-            Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
-          -
-            Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+          - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+          - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
 
   ParserTrigger:
     Type: AWS::SNS::Topic
@@ -84,7 +80,6 @@ Resources:
       Principal: s3.amazonaws.com
       SourceArn:
         Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketArn
-      # SourceAccount: !Ref AWS::AccountId
 
   ParserFailedQueue:
     Type: AWS::SQS::Queue

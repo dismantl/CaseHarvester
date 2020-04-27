@@ -72,12 +72,12 @@ Resources:
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: DISABLED
+          AssignPublicIp: ENABLED
           SecurityGroups:
             - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
           Subnets:
-            - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
-            - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+            - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+            - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
       TaskDefinition: !Ref ScraperServiceTask
   
   ScraperServiceTask:
@@ -355,12 +355,12 @@ Resources:
             TaskCount: 1
             NetworkConfiguration:
               AwsVpcConfiguration:
-                AssignPublicIp: DISABLED
+                AssignPublicIp: ENABLED
                 SecurityGroups:
                   - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
                 Subnets:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
   
   WeeklyScraperRule:
     Type: AWS::Events::Rule
@@ -380,12 +380,12 @@ Resources:
             TaskCount: 1
             NetworkConfiguration:
               AwsVpcConfiguration:
-                AssignPublicIp: DISABLED
+                AssignPublicIp: ENABLED
                 SecurityGroups:
                   - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
                 Subnets:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
 
   MonthlyScraperRule:
     Type: AWS::Events::Rule
@@ -405,12 +405,12 @@ Resources:
             TaskCount: 1
             NetworkConfiguration:
               AwsVpcConfiguration:
-                AssignPublicIp: DISABLED
+                AssignPublicIp: ENABLED
                 SecurityGroups:
                   - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
                 Subnets:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
 
   QuarterlyScraperRule:
     Type: AWS::Events::Rule
@@ -430,12 +430,12 @@ Resources:
             TaskCount: 1
             NetworkConfiguration:
               AwsVpcConfiguration:
-                AssignPublicIp: DISABLED
+                AssignPublicIp: ENABLED
                 SecurityGroups:
                   - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
                 Subnets:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet1Id
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPrivateSubnet2Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
 
 Outputs:
   ScraperFailedQueueName:

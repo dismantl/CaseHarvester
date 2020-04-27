@@ -143,11 +143,11 @@ endef
 	$(call push_docker_image_f,prod)
 	touch $@
 
-.deploy-spider-dev: .deploy-static-dev cloudformation/stack-spider.yaml $(SECRETS_FILE)
+.deploy-spider-dev: .deploy-static-dev .deploy-scraper-dev cloudformation/stack-spider.yaml $(SECRETS_FILE)
 	$(call deploy_stack_f,spider,dev)
 	touch $@
 
-.deploy-spider-prod: .deploy-static-prod cloudformation/stack-spider.yaml $(SECRETS_FILE)
+.deploy-spider-prod: .deploy-static-prod .deploy-scraper-prod cloudformation/stack-spider.yaml $(SECRETS_FILE)
 	$(call deploy_stack_f,spider,prod)
 	touch $@
 
