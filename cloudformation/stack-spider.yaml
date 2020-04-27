@@ -36,6 +36,7 @@ Parameters:
 Resources:
   SpiderTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
     Properties:
       TableName: !Sub caseharvester-spider-${EnvironmentType}
       AttributeDefinitions:

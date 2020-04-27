@@ -127,9 +127,10 @@ Resources:
     Type: AWS::RDS::DBInstance
     DeletionPolicy: Retain
     Properties:
-      AllocatedStorage: 20 # GB
-      BackupRetentionPeriod: 7 # days
-      DBInstanceClass: db.t2.micro
+      MaxAllocatedStorage: 100 # GB
+      AllocatedStorage: 73 # GB
+      BackupRetentionPeriod: 14 # days
+      DBInstanceClass: db.t2.small
       DBInstanceIdentifier: !FindInMap [Environment, DBInstanceIdentifier, !Ref EnvironmentType]
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       Engine: postgres
