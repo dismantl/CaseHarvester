@@ -133,7 +133,8 @@ Resources:
       DBInstanceIdentifier: !FindInMap [Environment, DBInstanceIdentifier, !Ref EnvironmentType]
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       Engine: postgres
-      EngineVersion: 9.6.6
+      EngineVersion: 11.5
+      AllowMajorVersionUpgrade: True
       MasterUsername: !Ref DatabaseMasterUsername
       MasterUserPassword: !Ref DatabaseMasterPassword
       Port: 5432 # default
