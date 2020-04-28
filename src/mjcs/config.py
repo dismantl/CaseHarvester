@@ -52,16 +52,19 @@ class Config:
         self.SCRAPER_DEFAULT_CONCURRENCY = int(os.getenv('SCRAPER_DEFAULT_CONCURRENCY',10)) # must be multiple of 2
         self.SCRAPER_WAIT_INTERVAL = int(os.getenv('SCRAPER_WAIT_INTERVAL',600)) # 10 mins
         self.QUEUE_WAIT = int(os.getenv('QUEUE_WAIT',5)) # seconds
-
+        
         self.MJCS_DATABASE_URL = os.getenv('MJCS_DATABASE_URL')
         self.CASE_DETAILS_BUCKET = os.getenv('CASE_DETAILS_BUCKET')
-
         self.SPIDER_DYNAMODB_TABLE_NAME = os.getenv('SPIDER_DYNAMODB_TABLE_NAME')
         self.SPIDER_RUNS_BUCKET_NAME = os.getenv('SPIDER_RUNS_BUCKET_NAME')
+        self.SPIDER_TASK_DEFINITION_ARN = os.getenv('SPIDER_TASK_DEFINITION_ARN')
         self.SCRAPER_QUEUE_NAME = os.getenv('SCRAPER_QUEUE_NAME')
         self.SCRAPER_FAILED_QUEUE_NAME = os.getenv('SCRAPER_FAILED_QUEUE_NAME')
         self.PARSER_FAILED_QUEUE_NAME = os.getenv('PARSER_FAILED_QUEUE_NAME')
         self.PARSER_TRIGGER_ARN = os.getenv('PARSER_TRIGGER_ARN')
+        self.VPC_SUBNET_1_ID = os.getenv('VPC_SUBNET_1_ID')
+        self.VPC_SUBNET_2_ID = os.getenv('VPC_SUBNET_2_ID')
+        self.ECS_CLUSTER_ARN = os.getenv('ECS_CLUSTER_ARN')
 
         self.USER_AGENT = os.getenv('USER_AGENT')
 

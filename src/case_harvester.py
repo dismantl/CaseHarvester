@@ -78,8 +78,8 @@ def write_env_file(env_long, env_short, exports, db_name, username, password):
     env_dir = os.path.join(os.path.dirname(__file__), '..', 'env')
     env_file_path = os.path.join(env_dir, env_long + '.env')
     db_hostname = get_export_val(exports, env_short, 'DatabaseHostname')
-    db_url = 'postgresql://%s:%s@%s/%s' % (username,password,db_hostname,db_name)
-    print("Writing env file",env_file_path)
+    db_url = f'postgresql://{username}:{password}@{db_hostname}/{db_name}'
+    print("Writing env file", env_file_path)
     with open(env_file_path, 'w') as f:
         f.write('%s=%s\n' % ('MJCS_DATABASE_URL',db_url))
         f.write('%s=%s\n' % ('CASE_DETAILS_BUCKET',
@@ -88,6 +88,8 @@ def write_env_file(env_long, env_short, exports, db_name, username, password):
             get_export_val(exports,env_short,'SpiderDynamoDBTableName')))
         f.write('%s=%s\n' % ('SPIDER_RUNS_BUCKET_NAME',
             get_export_val(exports,env_short,'SpiderRunsBucketName')))
+        f.write('%s=%s\n' % ('SPIDER_TASK_DEFINITION_ARN',
+            get_export_val(exports,env_short,'SpiderTaskDefinitionArn')))
         f.write('%s=%s\n' % ('SCRAPER_QUEUE_NAME',
             get_export_val(exports,env_short,'ScraperQueueName')))
         f.write('%s=%s\n' % ('SCRAPER_FAILED_QUEUE_NAME',
@@ -96,6 +98,12 @@ def write_env_file(env_long, env_short, exports, db_name, username, password):
             get_export_val(exports,env_short,'ParserFailedQueueName')))
         f.write('%s=%s\n' % ('PARSER_TRIGGER_ARN',
             get_export_val(exports,env_short,'ParserTriggerArn')))
+        f.write('%s=%s\n' % ('VPC_SUBNET_1_ID',
+            get_export_val(exports,env_short,'VPCPublicSubnet1Id')))
+        f.write('%s=%s\n' % ('VPC_SUBNET_2_ID',
+            get_export_val(exports,env_short,'VPCPublicSubnet2Id')))
+        f.write('%s=%s\n' % ('ECS_CLUSTER_ARN',
+            get_export_val(exports,env_short,'ECSClusterArn')))
     # re-load config
     config.initialize_from_environment(env_long)
 
@@ -115,6 +123,53 @@ def valid_datetime(s):
     except ValueError:
         raise argparse.ArgumentTypeError(f"Not a valid ISO-formatted timestamp: {s}")
 
+def launch_fargate(args, start_date, end_date):
+    command = [
+        'python',
+        '-u',
+        'case_harvester.py',
+        '--environment',
+        args.environment,
+        'spider',
+        '--start-date',
+        start_date.strftime('%m/%d/%Y'),
+        '--end-date',
+        end_date.strftime('%m/%d/%Y'),
+    ]
+    if args.court:
+        command += ['--court', args.court]
+    if args.site:
+        command += ['--site', args.site]
+    if args.verbose:
+        command.append('-v')
+    if args.timestamp:
+        command += ['--timestamp', args.timestamp.isoformat()]
+    elif args.resume:
+        command.append('-r')
+    
+    client = boto3.client('ecs')
+    response = client.run_task(
+        cluster=config.ECS_CLUSTER_ARN,
+        taskDefinition=config.SPIDER_TASK_DEFINITION_ARN,
+        count=1,
+        launchType='FARGATE',
+        networkConfiguration={
+            'awsvpcConfiguration': {
+                'subnets': [ config.VPC_SUBNET_1_ID, config.VPC_SUBNET_2_ID ],
+                'assignPublicIp': 'ENABLED'
+            }
+        },
+        overrides={
+            'containerOverrides': [
+                {
+                    'name': 'spider',
+                    'command': command
+                }
+            ]
+        }
+    )
+    print(f"Fargate task launched, returned status: {response['tasks'][0]['lastStatus']}")
+
 def run_spider(args):
     if args.start_date:
         start_date = args.start_date
@@ -126,6 +181,9 @@ def run_spider(args):
     else:
         raise Exception("Must specify search criteria")
     
+    if args.fargate:
+        return launch_fargate(args, start_date, end_date)
+
     spider = Spider(
             concurrency = args.concurrency,
             query_start_date=start_date,
@@ -230,6 +288,8 @@ if __name__ == '__main__':
         help="What venues to search, criminal/civil/traffic/civil citation")
     parser_spider.add_argument('--verbose', '-v', action='store_true',
         help="Print debug information")
+    parser_spider.add_argument('--fargate', '-f', action='store_true',
+        help="Launch spider as ECS Fargate task using provided command line arguments")
     parser_spider.set_defaults(func=run_spider)
 
     parser_scraper = subparsers.add_parser('scraper',
@@ -278,7 +338,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    if args.verbose or os.getenv('VERBOSE'):
+    if (hasattr(args, 'verbose') and args.verbose) or os.getenv('VERBOSE'):
         logger.setLevel(logging.DEBUG)
 
     config.initialize_from_environment(args.environment, args.profile)

@@ -76,11 +76,60 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
 
+  ManualSpiderTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: spider
+          Command:
+            - python
+            - -u
+            - case_harvester.py
+            - --environment
+            - !Sub ${EnvironmentType}
+            - spider
+            - --help
+          Environment:
+            - Name: MJCS_DATABASE_URL
+              Value: !Sub
+                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
+                - db_user: !Ref DatabaseUsername
+                  db_pw: !Ref DatabasePassword
+                  db_addr:
+                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+                  db_name: !Ref DatabaseName
+            - Name: SCRAPER_QUEUE_NAME
+              Value:
+                Fn::ImportValue: !Sub ${ScraperStackName}-ScraperQueueName
+            - Name: SPIDER_DYNAMODB_TABLE_NAME
+              Value: !Ref SpiderTable
+            - Name: SPIDER_RUNS_BUCKET_NAME
+              Value: !Ref SpiderRunsBucket
+          Image: !Sub
+            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
+            - repo_name:
+                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-region: !Ref AWSRegion
+              awslogs-group: !Sub caseharvester-spider-manual-${EnvironmentType}
+              awslogs-stream-prefix: caseharvester-spider-manual-logs
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 1024
+      Memory: 4096
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+      NetworkMode: awsvpc
+      TaskRoleArn: !GetAtt SpiderTaskRole.Arn
+
   DailySpiderTask:
     Type: AWS::ECS::TaskDefinition
     Properties:
       ContainerDefinitions:
-        - Name: !Sub mjcs_spider_container_${EnvironmentType}
+        - Name: spider
           Command:
             - python
             - -u
@@ -132,7 +181,7 @@ Resources:
     Type: AWS::ECS::TaskDefinition
     Properties:
       ContainerDefinitions:
-        - Name: !Sub mjcs_spider_container_${EnvironmentType}
+        - Name: spider
           Command:
             - python
             - -u
@@ -184,7 +233,7 @@ Resources:
     Type: AWS::ECS::TaskDefinition
     Properties:
       ContainerDefinitions:
-        - Name: !Sub mjcs_spider_container_${EnvironmentType}
+        - Name: spider
           Command:
             - python
             - -u
@@ -318,3 +367,8 @@ Outputs:
     Value: !Ref SpiderRunsBucket
     Export:
       Name: !Sub ${AWS::StackName}-SpiderRunsBucketName
+  SpiderTaskDefinitionArn:
+    Description: Full ARN of task definition for manual spider runs
+    Value: !Ref ManualSpiderTask
+    Export:
+      Name: !Sub ${AWS::StackName}-SpiderTaskDefinitionArn
