@@ -34,12 +34,21 @@ Parameters:
 
 Mappings:
   Environment:
-    DBInstanceIdentifier:
-      prod: mjcs
-      dev: dev-mjcs
+    RDSDBInstanceClass:
+      prod: db.t2.small
+      dev: db.t2.micro
+    RDSAllocatedStorage:
+      prod: 73 # GB
+      dev: 20
+    RDSMaxAllocatedStorage:
+      prod: 100 # GB
+      dev: 30
+    RDSBackupRetentionPeriod:
+      prod: 14 # days
+      dev: 5
     BucketName:
       prod: mjcs-case-details
-      dev: dev-mjcs-case-details
+      dev: mjcs-case-details-dev    
 
 Resources:
   VPC:
@@ -127,11 +136,11 @@ Resources:
     Type: AWS::RDS::DBInstance
     DeletionPolicy: Retain
     Properties:
-      MaxAllocatedStorage: 100 # GB
-      AllocatedStorage: 73 # GB
-      BackupRetentionPeriod: 14 # days
-      DBInstanceClass: db.t2.small
-      DBInstanceIdentifier: !FindInMap [Environment, DBInstanceIdentifier, !Ref EnvironmentType]
+      MaxAllocatedStorage: !FindInMap [Environment, RDSMaxAllocatedStorage, !Ref EnvironmentType]
+      AllocatedStorage: !FindInMap [Environment, RDSAllocatedStorage, !Ref EnvironmentType]
+      BackupRetentionPeriod: !FindInMap [Environment, RDSBackupRetentionPeriod, !Ref EnvironmentType]
+      DBInstanceClass: !FindInMap [Environment, RDSDBInstanceClass, !Ref EnvironmentType]
+      DBInstanceIdentifier: !Sub mjcs-${EnvironmentType}
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       Engine: postgres
       EngineVersion: 11.5
