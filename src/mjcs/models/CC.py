@@ -8,15 +8,15 @@ class CC(CaseTable, TableBase):
     __tablename__ = 'cc'
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String, index=True)
-    title = Column(String, index=True)
-    case_type = Column(String,nullable=True, index=True)
-    filing_date = Column(Date,nullable=True, index=True)
-    _filing_date_str = Column('filing_date_str',String,nullable=True, index=True)
-    case_status = Column(String,nullable=True, index=True)
-    case_disposition = Column(String,nullable=True, index=True)
-    disposition_date = Column(Date,nullable=True, index=True)
-    _disposition_date_str = Column('disposition_date_str',String,nullable=True, index=True)
+    court_system = Column(String)
+    title = Column(String)
+    case_type = Column(String,nullable=True)
+    filing_date = Column(Date,nullable=True)
+    _filing_date_str = Column('filing_date_str',String,nullable=True)
+    case_status = Column(String,nullable=True)
+    case_disposition = Column(String,nullable=True)
+    disposition_date = Column(Date,nullable=True)
+    _disposition_date_str = Column('disposition_date_str',String,nullable=True)
 
     case = relationship('Case', backref=backref('cc', uselist=False))
 

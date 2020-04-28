@@ -8,13 +8,13 @@ class DSCIVIL(CaseTable, TableBase):
     __tablename__ = 'dscivil'
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String, index=True)
-    claim_type = Column(String,nullable=True, index=True)
-    district_code = Column(Integer,nullable=True, index=True)
-    location_code = Column(Integer,nullable=True, index=True)
-    filing_date = Column(Date,nullable=True, index=True)
-    _filing_date_str = Column('filing_date_str',String,nullable=True, index=True)
-    case_status = Column(String,nullable=True, index=True)
+    court_system = Column(String)
+    claim_type = Column(String,nullable=True)
+    district_code = Column(Integer,nullable=True)
+    location_code = Column(Integer,nullable=True)
+    filing_date = Column(Date,nullable=True)
+    _filing_date_str = Column('filing_date_str',String,nullable=True)
+    case_status = Column(String,nullable=True)
 
     case = relationship('Case', backref=backref('dscivil', uselist=False))
 

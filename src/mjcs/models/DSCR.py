@@ -8,16 +8,16 @@ class DSCR(CaseTable, TableBase):
     __tablename__ = 'dscr'
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String, index=True)
-    tracking_number = Column(String, nullable=True, index=True)
-    case_type = Column(String, nullable=True, index=True)
-    district_code = Column(Integer, nullable=True, index=True)
-    location_code = Column(Integer, nullable=True, index=True)
-    document_type = Column(String, nullable=True, index=True)
-    issued_date = Column(Date, nullable=True, index=True)
-    _issued_date_str = Column('issued_date_str',String, nullable=True, index=True)
-    case_status = Column(String, nullable=True, index=True)
-    case_disposition = Column(String, nullable=True, index=True)
+    court_system = Column(String)
+    tracking_number = Column(String, nullable=True)
+    case_type = Column(String, nullable=True)
+    district_code = Column(Integer, nullable=True)
+    location_code = Column(Integer, nullable=True)
+    document_type = Column(String, nullable=True)
+    issued_date = Column(Date, nullable=True)
+    _issued_date_str = Column('issued_date_str',String, nullable=True)
+    case_status = Column(String, nullable=True)
+    case_disposition = Column(String, nullable=True)
 
     case = relationship('Case', backref=backref('dscr', uselist=False))
 

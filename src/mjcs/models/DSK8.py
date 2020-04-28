@@ -8,17 +8,17 @@ class DSK8(CaseTable, TableBase):
     __tablename__ = 'dsk8'
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String, index=True)
-    case_status = Column(String, index=True)
-    status_date = Column(Date, nullable=True, index=True)
-    _status_date_str = Column('status_date_str',String, index=True)
-    tracking_number = Column(String, nullable=True, index=True)
-    complaint_number = Column(String, nullable=True, index=True)
-    district_case_number = Column(String, nullable=True, index=True) # TODO eventually make a ForeignKey relation
-    filing_date = Column(Date, nullable=True, index=True)
-    _filing_date_str = Column('filing_date_str',String, index=True)
-    incident_date = Column(Date, nullable=True, index=True)
-    _incident_date_str = Column('incident_date_str',String, index=True)
+    court_system = Column(String)
+    case_status = Column(String)
+    status_date = Column(Date, nullable=True)
+    _status_date_str = Column('status_date_str',String)
+    tracking_number = Column(String, nullable=True)
+    complaint_number = Column(String, nullable=True)
+    district_case_number = Column(String, nullable=True) # TODO eventually make a ForeignKey relation
+    filing_date = Column(Date, nullable=True)
+    _filing_date_str = Column('filing_date_str',String)
+    incident_date = Column(Date, nullable=True)
+    _incident_date_str = Column('incident_date_str',String)
 
     case = relationship('Case', backref=backref('dsk8', uselist=False))
 

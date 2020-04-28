@@ -8,14 +8,14 @@ class ODYCRIM(CaseTable, TableBase):
     __tablename__ = 'odycrim'
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String, index=True)
-    location = Column(String, index=True)
-    case_title = Column(String, index=True)
-    case_type = Column(String, nullable=True, index=True)
-    filing_date = Column(Date, nullable=True, index=True)
-    _filing_date_str = Column('filing_date_str',String, nullable=True, index=True)
-    case_status = Column(String, nullable=True, index=True)
-    tracking_numbers = Column(String, nullable=True, index=True)
+    court_system = Column(String)
+    location = Column(String)
+    case_title = Column(String)
+    case_type = Column(String, nullable=True)
+    filing_date = Column(Date, nullable=True)
+    _filing_date_str = Column('filing_date_str',String, nullable=True)
+    case_status = Column(String, nullable=True)
+    tracking_numbers = Column(String, nullable=True)
 
     case = relationship('Case', backref=backref('odycrim', uselist=False))
 
