@@ -197,7 +197,7 @@ deploy_static: .deploy-static-dev
 
 deploy_docker_repo: .deploy-docker-repo-dev
 
-deploy_spider: .deploy-spider-dev .push-docker-image-dev
+deploy_spider: .deploy-spider-dev
 
 deploy_scraper: .deploy-scraper-dev
 
@@ -209,7 +209,7 @@ deploy_static_production: .deploy-static-prod
 
 deploy_docker_repo_production: .deploy-docker-repo-prod
 
-deploy_spider_production: .deploy-spider-prod .push-docker-image-prod
+deploy_spider_production: .deploy-spider-prod
 
 deploy_scraper_production: .deploy-scraper-prod
 

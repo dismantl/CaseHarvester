@@ -71,7 +71,7 @@ class Scraper:
         async def __scrape_specific_case(case_number):
             detail_loc = get_detail_loc(case_number)
             await self.__scrape_case(case_number, detail_loc)
-        trio.run(__scrape_specific_case)
+        trio.run(__scrape_specific_case, case_number)
     
     def rescrape(self, days_ago_end, days_ago_start=0):
         # calculate date range
@@ -195,11 +195,11 @@ class Scraper:
         try:
             previous_fetch = config.case_details_bucket.Object(case_number).get()
         except config.s3.meta.client.exceptions.NoSuchKey:
-            logger.info("Case details for %s not found, adding..." % case_number)
+            logger.info(f"Case details for {case_number} not found, adding...")
             add = True
         else:
             if previous_fetch['Body'].read().decode('utf-8') != html:
-                logger.info("Found new version of case %s, updating..." % case_number)
+                logger.info(f"Found new version of case {case_number}, updating...")
                 add = True
 
         if add:

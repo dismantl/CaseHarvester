@@ -38,7 +38,7 @@ Mappings:
       prod: db.t2.small
       dev: db.t2.micro
     RDSAllocatedStorage:
-      prod: 73 # GB
+      prod: 50 # GB
       dev: 20
     RDSMaxAllocatedStorage:
       prod: 100 # GB

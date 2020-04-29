@@ -60,12 +60,6 @@ Resources:
           Type: SNS
           Properties:
             Topic: !Ref ParserTrigger
-      VpcConfig:
-        SecurityGroupIds:
-          - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
-        SubnetIds:
-          - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
-          - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
 
   ParserTrigger:
     Type: AWS::SNS::Topic

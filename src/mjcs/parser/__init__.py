@@ -35,21 +35,24 @@ def parse_case_from_html(case_number, detail_loc, html):
     for category,parser in parsers:
         if detail_loc == category:
             return parser(case_number, html).parse()
-    raise NotImplementedError('Unsupported case type: %s' % detail_loc)
+    err = f'Unsupported case type {detail_loc} for case number {case_number}'
+    logger.debug(err)
+    raise NotImplementedError(err)
 
-def parse_case(case):
-    case_number = case['case_number'] if type(case) == dict else case
+def parse_case(case, detail_loc=None):
+    case_number = case['case_number'] if isinstance(case, dict) else case
     # check if parse_exempt before scraping
     with db_session() as db:
         if db.query(Case.parse_exempt).filter(Case.case_number == case_number).scalar() == True:
             return
     case_details = config.case_details_bucket.Object(case_number).get()
     case_html = case_details['Body'].read().decode('utf-8')
-    try:
-        detail_loc = case_details['Metadata']['detail_loc']
-    except KeyError:
-        detail_loc = get_detail_loc(case_number)
-    parse_case_from_html(case_number, detail_loc, case_html)
+    if not detail_loc:
+        try:
+            detail_loc = case_details['Metadata']['detail_loc']
+        except KeyError:
+            detail_loc = get_detail_loc(case_number)
+    return parse_case_from_html(case_number, detail_loc, case_html)
 
 def invoke_parser_lambda(detail_loc=None):
     if detail_loc:
@@ -62,11 +65,11 @@ def invoke_parser_lambda(detail_loc=None):
         num_cases = db.query(Case.case_number).filter(filter).count()
         case_count = 1
         for batch_filter in cases_batch_filter(db, filter):
-            for case_number,case_type in db.query(Case.case_number,Case.detail_loc).filter(batch_filter):
-                logger.debug('Invoking Parser lambda for case %s (%s of %s)' % (case_number,case_count,num_cases))
+            for case_number,detail_loc in db.query(Case.case_number,Case.detail_loc).filter(batch_filter):
+                logger.debug(f'Invoking Parser lambda for case {case_number} ({case_count} of {num_cases})')
                 case_count += 1
                 config.parser_trigger.publish(
-                    Message='{"case_number":"%s","detail_loc":"%s"}' % (case_number,case_type)
+                    Message='{"case_number":"%s","detail_loc":"%s"}' % (case_number,detail_loc)
                 )
                 time.sleep( AVERAGE_PARSER_DURATION / ( CONCURRENCY_AVAILABLE * CONCURRENCY_RATIO ) ) # so lambda doesn't get throttled
 
@@ -163,6 +166,6 @@ class Parser:
 
             process_cases(parse_case, cases, queue_on_success, queue_on_error, self.threads, counter)
 
-        logger.info("Total number of parsed cases: %d" % counter['count'])
+        logger.info(f"Total number of parsed cases: {counter['count']}")
         if counter['count'] == 0:
             raise NoItemsInQueue

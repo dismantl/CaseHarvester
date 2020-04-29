@@ -30,6 +30,11 @@ class Config:
             logger.setLevel(logging.INFO)
         if os.getenv('VERBOSE'):
             logger.setLevel(logging.DEBUG)
+
+        if os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
+            logger.debug('Detected Lambda function, initializing environment.')
+        elif environment:
+            logger.debug(f'Initializing config from environment {environment}')
         
         if environment:
             from dotenv import load_dotenv # imported here so we don't have to package dotenv with lambda functions
