@@ -14,7 +14,7 @@ sys.path.insert(0, src_path)
 from mjcs.config import config as my_config
 from mjcs.models.common import TableBase
 from mjcs.models import *
-if os.getenv('PRODUCTION_ENV'):
+if os.getenv('CASEHARVESTER_ENV') == 'production':
     my_config.initialize_from_environment('production')
 else:
     my_config.initialize_from_environment('development')
@@ -82,7 +82,8 @@ if context.is_offline_mode():
 else:
     run_migrations_online()
 
-# Reset user permissions after every database update
-with open(os.path.join(src_path, 'user_setup.sql'), 'r') as setup_file:
+# Run redactions after every database update
+print('Running redactions SQL script')
+with open(os.path.join(src_path, 'redactions.sql'), 'r') as setup_file:
     user_reset_commands = setup_file.read()
 my_config.db_engine.execute(text(user_reset_commands))

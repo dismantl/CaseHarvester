@@ -75,6 +75,7 @@ $(eval environment = $(1))
 $(eval profile = $(or $(2),$(AWS_PROFILE),default))
 DEV_MODE=1 python3 $(CODE_SRC)/case_harvester.py --environment $(environment) \
 	--profile $(profile) db_init --db-name $(DB_NAME) --secrets-file $(SECRETS_FILE)
+CASEHARVESTER_ENV=$(environment) alembic stamp head
 endef
 
 define create_docs_f

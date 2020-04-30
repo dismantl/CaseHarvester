@@ -23,9 +23,9 @@ def get_stack_exports():
 
 def get_export_val(exports, env_short, export_name):
     for export in exports:
-        if '%s-%s' % (env_short,export_name) in export['Name']:
+        if f'{env_short}-{export_name}' in export['Name']:
             return export['Value']
-    raise Exception('Unable to find %s in AWS Cloudformation exports' % export_name)
+    raise Exception(f'Unable to find {export_name} in AWS Cloudformation exports')
 
 def run_db_init(args):
     exports = get_stack_exports()
@@ -35,43 +35,79 @@ def run_db_init(args):
     secrets = json.loads(args.secrets_file.read())
     db_username = secrets[args.environment]['DatabaseUsername']
     db_password = secrets[args.environment]['DatabasePassword']
-    db_master_username = secrets[args.environment]['DatabaseMasterUsername']
-    db_master_password = secrets[args.environment]['DatabaseMasterPassword']
-    db_ro_username = secrets[args.environment]['DatabaseReadOnlyUsername']
-    db_ro_password = secrets[args.environment]['DatabaseReadOnlyPassword']
+    db_url = f'postgresql://{db_username}:{db_password}@{db_hostname}/{args.db_name}'
 
     if args.create_tables_only:
         create_tables()
+        setup_redactions(db_url)
     elif args.write_env_only:
         write_env_file(args.environment, args.environment_short, exports, args.db_name, db_username, db_password)
     else:
-        create_database_and_user(db_hostname, args.db_name,
-            db_master_username, db_master_password, db_username, db_password,
-            db_ro_username, db_ro_password)
+        create_database_and_users(db_hostname, args.db_name, secrets)
         write_env_file(args.environment, args.environment_short, exports, args.db_name, db_username, db_password)
         create_tables()
+        setup_redactions(db_url)
 
-def create_database_and_user(db_hostname, db_name, master_username,
-        master_password, username, password, ro_username, ro_password):
-    postgres_url = 'postgresql://%s:%s@%s/postgres' % \
-        (master_username, master_password, db_hostname)
-    db_url = 'postgresql://%s:%s@%s/%s' % \
-        (username, password, db_hostname, db_name)
-
-    conn = create_engine(postgres_url).connect()
-    conn.execute("commit")
-    print("Creating database",db_name)
-    conn.execute("create database " + db_name)
-    print("Creating user",username)
-    conn.execute(text("create user %s createrole with password :pw" % username), pw=password)
-    conn.execute("grant all privileges on database %s to %s" % (db_name,username))
-    conn.execute("grant rds_superuser to %s" % (username))
+def setup_redactions(db_url):
+    print('Running redactions SQL script')
+    conn = create_engine(db_url).connect()
+    script_path = os.path.join(os.path.dirname(__file__), 'redactions.sql')
+    with open(script_path, 'r') as script:
+        commands = script.read()
+    conn.execute(text(commands))
     conn.close()
 
+def create_database_and_users(db_hostname, db_name, secrets):
+    master_username = secrets[args.environment]['DatabaseMasterUsername']
+    master_password = secrets[args.environment]['DatabaseMasterPassword']
+    username = secrets[args.environment]['DatabaseUsername']
+    password = secrets[args.environment]['DatabasePassword']
+    ro_username = secrets[args.environment]['DatabaseReadOnlyUsername']
+    ro_password = secrets[args.environment]['DatabaseReadOnlyPassword']
+
+    print("Creating database, roles, and users")
+    postgres_url = f'postgresql://{master_username}:{master_password}@{db_hostname}/postgres'
+    conn = create_engine(postgres_url).connect()
+    conn.execute(text("COMMIT"))
+    conn.execute(text(f"CREATE DATABASE {db_name}"))
+    conn.execute(text(f"""
+        -- Create roles
+        CREATE ROLE mjcs_admin NOLOGIN CREATEROLE;
+        GRANT ALL PRIVILEGES ON DATABASE {db_name} TO mjcs_admin;
+        GRANT rds_superuser TO mjcs_admin;
+        CREATE ROLE mjcs_ro NOLOGIN;
+        CREATE ROLE mjcs_ro_redacted NOLOGIN;
+
+        -- Create users
+        CREATE USER {username} LOGIN PASSWORD :pw;
+        GRANT mjcs_admin TO {username};
+        CREATE USER {ro_username} LOGIN PASSWORD :ro_pw;
+        GRANT mjcs_ro_redacted TO {ro_username};
+        COMMIT;
+    """), pw=password, ro_pw=ro_password)
+    conn.close()
+        
+    print('Setting basic permissions')
+    db_url = f'postgresql://{username}:{password}@{db_hostname}/{db_name}'
     conn = create_engine(db_url).connect()
-    with open('user_setup.sql', 'r') as setup_file:
-        commands = setup_file.read()
-    conn.execute(text(commands))
+    conn.execute(text(f"""
+        -- Database level permissions
+        REVOKE ALL ON DATABASE mjcs FROM mjcs_ro, mjcs_ro_redacted;
+        GRANT TEMPORARY, CONNECT ON DATABASE mjcs TO PUBLIC;
+
+        -- Schema level permissions
+        CREATE SCHEMA redacted AUTHORIZATION mjcs_admin;
+        REVOKE ALL ON SCHEMA public, redacted FROM mjcs_ro, mjcs_ro_redacted;
+        GRANT USAGE ON SCHEMA public, redacted TO PUBLIC;
+
+        -- Table level permissions
+        GRANT SELECT ON ALL TABLES IN SCHEMA public, redacted TO mjcs_admin, mjcs_ro;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public
+            GRANT SELECT ON TABLES TO mjcs_admin, mjcs_ro;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA redacted
+            GRANT SELECT ON TABLES TO PUBLIC;
+        COMMIT;
+    """))
     conn.close()
 
 def write_env_file(env_long, env_short, exports, db_name, username, password):
@@ -81,29 +117,18 @@ def write_env_file(env_long, env_short, exports, db_name, username, password):
     db_url = f'postgresql://{username}:{password}@{db_hostname}/{db_name}'
     print("Writing env file", env_file_path)
     with open(env_file_path, 'w') as f:
-        f.write('%s=%s\n' % ('MJCS_DATABASE_URL',db_url))
-        f.write('%s=%s\n' % ('CASE_DETAILS_BUCKET',
-            get_export_val(exports,env_short,'CaseDetailsBucketName')))
-        f.write('%s=%s\n' % ('SPIDER_DYNAMODB_TABLE_NAME',
-            get_export_val(exports,env_short,'SpiderDynamoDBTableName')))
-        f.write('%s=%s\n' % ('SPIDER_RUNS_BUCKET_NAME',
-            get_export_val(exports,env_short,'SpiderRunsBucketName')))
-        f.write('%s=%s\n' % ('SPIDER_TASK_DEFINITION_ARN',
-            get_export_val(exports,env_short,'SpiderTaskDefinitionArn')))
-        f.write('%s=%s\n' % ('SCRAPER_QUEUE_NAME',
-            get_export_val(exports,env_short,'ScraperQueueName')))
-        f.write('%s=%s\n' % ('SCRAPER_FAILED_QUEUE_NAME',
-            get_export_val(exports,env_short,'ScraperFailedQueueName')))
-        f.write('%s=%s\n' % ('PARSER_FAILED_QUEUE_NAME',
-            get_export_val(exports,env_short,'ParserFailedQueueName')))
-        f.write('%s=%s\n' % ('PARSER_TRIGGER_ARN',
-            get_export_val(exports,env_short,'ParserTriggerArn')))
-        f.write('%s=%s\n' % ('VPC_SUBNET_1_ID',
-            get_export_val(exports,env_short,'VPCPublicSubnet1Id')))
-        f.write('%s=%s\n' % ('VPC_SUBNET_2_ID',
-            get_export_val(exports,env_short,'VPCPublicSubnet2Id')))
-        f.write('%s=%s\n' % ('ECS_CLUSTER_ARN',
-            get_export_val(exports,env_short,'ECSClusterArn')))
+        f.write(f'MJCS_DATABASE_URL={db_url}\n')
+        f.write(f"CASE_DETAILS_BUCKET={get_export_val(exports,env_short,'CaseDetailsBucketName')}\n")
+        f.write(f"SPIDER_DYNAMODB_TABLE_NAME={get_export_val(exports,env_short,'SpiderDynamoDBTableName')}\n")
+        f.write(f"SPIDER_RUNS_BUCKET_NAME={get_export_val(exports,env_short,'SpiderRunsBucketName')}\n")
+        f.write(f"SPIDER_TASK_DEFINITION_ARN={get_export_val(exports,env_short,'SpiderTaskDefinitionArn')}\n")
+        f.write(f"SCRAPER_QUEUE_NAME={get_export_val(exports,env_short,'ScraperQueueName')}\n")
+        f.write(f"SCRAPER_FAILED_QUEUE_NAME={get_export_val(exports,env_short,'ScraperFailedQueueName')}\n")
+        f.write(f"PARSER_FAILED_QUEUE_NAME={get_export_val(exports,env_short,'ParserFailedQueueName')}\n")
+        f.write(f"PARSER_TRIGGER_ARN={get_export_val(exports,env_short,'ParserTriggerArn')}\n")
+        f.write(f"VPC_SUBNET_1_ID={get_export_val(exports,env_short,'VPCPublicSubnet1Id')}\n")
+        f.write(f"VPC_SUBNET_2_ID={get_export_val(exports,env_short,'VPCPublicSubnet2Id')}\n")
+        f.write(f"ECS_CLUSTER_ARN={get_export_val(exports,env_short,'ECSClusterArn')}\n")
     # re-load config
     config.initialize_from_environment(env_long)
 
@@ -115,7 +140,7 @@ def valid_date(s):
     try:
         return datetime.strptime(s, "%m/%d/%Y")
     except ValueError:
-        raise argparse.ArgumentTypeError("Not a valid date: %s" % s)
+        raise argparse.ArgumentTypeError(f"Not a valid date: {s}")
 
 def valid_datetime(s):
     try:

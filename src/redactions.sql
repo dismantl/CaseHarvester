@@ -1,30 +1,8 @@
 -- executed as mjcs_user connected to mjcs database
+-- assumes the following role is already created: mjcs_ro_redacted
 
-CREATE SCHEMA IF NOT EXISTS redacted;
+GRANT SELECT ON ALL TABLES IN SCHEMA public, redacted TO mjcs_ro_redacted;
 
--- Create roles and users
-CREATE ROLE mjcs_ro;
-CREATE ROLE mjcs_ro_redacted;
-CREATE USER ojb_public NOCREATEDB LOGIN NOSUPERUSER PASSWORD 'md51b9fcca3574af5a7b282118f020d6682';
-GRANT mjcs_ro_redacted TO ojb_public;
-
--- Database level permissions
-REVOKE ALL ON DATABASE mjcs FROM PUBLIC;
-GRANT TEMPORARY, CONNECT ON DATABASE mjcs TO PUBLIC;
-
--- Schema level permissions
-REVOKE ALL ON SCHEMA public, redacted FROM PUBLIC;
-GRANT USAGE ON SCHEMA public, redacted TO mjcs_ro, mjcs_ro_redacted;
-
--- Table level permissions
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO mjcs_ro, mjcs_ro_redacted;
-GRANT SELECT ON ALL TABLES IN SCHEMA redacted TO mjcs_ro, mjcs_ro_redacted;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    GRANT SELECT ON TABLES TO mjcs_ro;
-ALTER DEFAULT PRIVILEGES IN SCHEMA redacted
-    GRANT SELECT ON TABLES TO mjcs_ro_redacted;
-
--- Redacted views
 REVOKE SELECT ON TABLE public.cc_defendants FROM mjcs_ro_redacted;
 CREATE OR REPLACE VIEW redacted.cc_defendants
  AS
@@ -110,3 +88,5 @@ CREATE OR REPLACE VIEW redacted.odytraf_defendants
     odytraf_defendants.height,
     odytraf_defendants.case_number
    FROM odytraf_defendants;
+
+COMMIT;
