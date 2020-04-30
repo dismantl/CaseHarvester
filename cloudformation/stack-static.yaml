@@ -150,6 +150,8 @@ Resources:
       Port: 5432 # default
       PubliclyAccessible: True
       StorageType: gp2
+      PreferredBackupWindow: 07:00-07:30
+      PreferredMaintenanceWindow: sat:08:00-sat:08:30
       VPCSecurityGroups:
         - !GetAtt VPC.DefaultSecurityGroup
         - !Ref DatabaseSecurityGroup
