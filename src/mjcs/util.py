@@ -3,12 +3,14 @@ import sqlalchemy
 import logging
 import math
 import json
+import getpass
 from decimal import Decimal
 from datetime import timedelta, datetime
 from sqlalchemy import and_, func, select
 from sqlalchemy.sql import select
 from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager
+from passlib.apps import postgres_context
 from .config import config
 from .models import Case, ScrapeVersion, Scrape
 
@@ -297,3 +299,9 @@ def decimal_to_float(obj):
     elif isinstance(obj, dict):
         return { k: decimal_to_float(v) for k, v in obj.items() }
     return obj
+
+def generate_postgres_hashed_pass(username):
+    password = getpass.getpass()
+    hashed_pass = postgres_context.hash(password, user=username)
+    print(f'Postgresql hashed password: {hashed_pass}')
+    return hashed_pass

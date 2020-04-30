@@ -1,12 +1,14 @@
 from __future__ import with_statement
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+from sqlalchemy.sql import text
 from logging.config import fileConfig
 import sys
 import os
 
 # Add our source path to the search paths for modules
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+src_path = os.path.join(os.path.dirname(__file__), '..', 'src')
+sys.path.insert(0, src_path)
 
 # Import our models and database objects
 from mjcs.config import config as my_config
@@ -49,7 +51,6 @@ def run_migrations_offline():
     script output.
 
     """
-    # url = config.get_main_option("sqlalchemy.url")
     url = my_config.MJCS_DATABASE_URL
     context.configure(
         url=url, target_metadata=target_metadata, literal_binds=True)
@@ -65,10 +66,6 @@ def run_migrations_online():
     and associate a connection with the context.
 
     """
-    # connectable = engine_from_config(
-    #     config.get_section(config.config_ini_section),
-    #     prefix='sqlalchemy.',
-    #     poolclass=pool.NullPool)
     connectable = my_config.db_engine
 
     with connectable.connect() as connection:
@@ -84,3 +81,8 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
+
+# Reset user permissions after every database update
+with open(os.path.join(src_path, 'user_setup.sql'), 'r') as setup_file:
+    user_reset_commands = setup_file.read()
+my_config.db_engine.execute(text(user_reset_commands))

@@ -63,15 +63,15 @@ def create_database_and_user(db_hostname, db_name, master_username,
     print("Creating database",db_name)
     conn.execute("create database " + db_name)
     print("Creating user",username)
-    conn.execute(text("create user %s with password :pw" % username), pw=password)
+    conn.execute(text("create user %s createrole with password :pw" % username), pw=password)
     conn.execute("grant all privileges on database %s to %s" % (db_name,username))
     conn.execute("grant rds_superuser to %s" % (username))
-    conn.execute(text("create user %s with password :pw" % ro_username), pw=ro_password)
     conn.close()
 
     conn = create_engine(db_url).connect()
-    conn.execute("alter default privileges in schema public grant select on tables to %s"
-        % ro_username)
+    with open('user_setup.sql', 'r') as setup_file:
+        commands = setup_file.read()
+    conn.execute(text(commands))
     conn.close()
 
 def write_env_file(env_long, env_short, exports, db_name, username, password):
