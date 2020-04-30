@@ -1,9 +1,7 @@
 from mjcs.parser import parse_case
 import json
-import os
 
 def lambda_handler(event, context):
-    os.environ['VERBOSE'] = '1'
     for record in event['Records']:
         if 's3' in record:
             case_number = record['s3']['object']['key']

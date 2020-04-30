@@ -204,7 +204,7 @@ deploy_scraper: .deploy-scraper-dev
 
 deploy_parser: .deploy-parser-dev
 
-deploy: deploy_static deploy_docker_repo deploy_scraper deploy_parser deploy_spider
+deploy: deploy_static deploy_docker_repo deploy_scraper deploy_parser deploy_spider .push-docker-image-dev
 
 deploy_static_production: .deploy-static-prod
 
@@ -217,7 +217,7 @@ deploy_scraper_production: .deploy-scraper-prod
 deploy_parser_production: .deploy-parser-prod
 
 deploy_production: deploy_static_production deploy_docker_repo_production \
-		deploy_scraper_production deploy_parser_production deploy_spider_production
+		deploy_scraper_production deploy_parser_production deploy_spider_production .push-docker-image-prod
 
 init: .init-dev
 
