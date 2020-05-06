@@ -1,5 +1,5 @@
 from .common import TableBase, CaseTable, Trial, Event, date_from_str, Defendant, DefendantAlias, RelatedPerson
-from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger
+from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
@@ -19,6 +19,8 @@ class ODYCRIM(CaseTable, TableBase):
 
     case = relationship('Case', backref=backref('odycrim', uselist=False))
 
+    __table_args__ = (Index('ixh_odycrim_case_number', 'case_number', postgresql_using='hash'),)
+
     @hybrid_property
     def filing_date_str(self):
         return self._filing_date_str
@@ -29,11 +31,12 @@ class ODYCRIM(CaseTable, TableBase):
 
 class ODYCRIMCaseTable(CaseTable):
     @declared_attr
-    def case_number(cls):
-        return Column(String, ForeignKey('odycrim.case_number', ondelete='CASCADE'), index=True)
+    def case_number(self):
+        return Column(String, ForeignKey('odycrim.case_number', ondelete='CASCADE'))
 
 class ODYCRIMReferenceNumber(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_reference_numbers'
+    __table_args__ = (Index('ixh_odycrim_reference_numbers_case_number', 'case_number', postgresql_using='hash'),)
     odycrim = relationship('ODYCRIM', backref='reference_numbers')
 
     id = Column(Integer, primary_key=True)
@@ -42,6 +45,7 @@ class ODYCRIMReferenceNumber(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMDefendant(ODYCRIMCaseTable, Defendant, TableBase):
     __tablename__ = 'odycrim_defendants'
+    __table_args__ = (Index('ixh_odycrim_defendants_case_number', 'case_number', postgresql_using='hash'),)
     odycrim = relationship('ODYCRIM', backref='defendants')
 
     height = Column(String, nullable=True)
@@ -52,6 +56,7 @@ class ODYCRIMDefendant(ODYCRIMCaseTable, Defendant, TableBase):
 
 class ODYCRIMInvolvedParty(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_involved_parties'
+    __table_args__ = (Index('ixh_odycrim_involved_parties_case_number', 'case_number', postgresql_using='hash'),)
     odycrim = relationship('ODYCRIM', backref='involved_parties')
 
     id = Column(Integer, primary_key=True)
@@ -68,6 +73,7 @@ class ODYCRIMInvolvedParty(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMAlias(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_aliases'
+    __table_args__ = (Index('ixh_odycrim_aliases_case_number', 'case_number', postgresql_using='hash'),)
 
     id = Column(Integer, primary_key=True)
     alias = Column(String, nullable=False)
@@ -77,6 +83,7 @@ class ODYCRIMAlias(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMAttorney(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_attorneys'
+    __table_args__ = (Index('ixh_odycrim_attorneys_case_number', 'case_number', postgresql_using='hash'),)
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=True)
@@ -91,6 +98,7 @@ class ODYCRIMAttorney(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMCourtSchedule(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_court_schedule'
+    __table_args__ = (Index('ixh_odycrim_court_schedule_case_number', 'case_number', postgresql_using='hash'),)
     odycrim = relationship('ODYCRIM', backref='court_schedules')
 
     id = Column(Integer, primary_key=True)
@@ -124,6 +132,7 @@ class ODYCRIMCourtSchedule(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMCharge(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_charges'
+    __table_args__ = (Index('ixh_odycrim_charges_case_number', 'case_number', postgresql_using='hash'),)
     odycrim = relationship('ODYCRIM', backref='charges')
 
     id = Column(Integer, primary_key=True)
@@ -206,6 +215,7 @@ class ODYCRIMCharge(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMProbation(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_probation'
+    __table_args__ = (Index('ixh_odycrim_probation_case_number', 'case_number', postgresql_using='hash'),)
     odycrim = relationship('ODYCRIM', backref='probation')
 
     id = Column(Integer, primary_key=True)
@@ -232,6 +242,7 @@ class ODYCRIMProbation(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMRestitution(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_restitutions'
+    __table_args__ = (Index('ixh_odycrim_restitutions_case_number', 'case_number', postgresql_using='hash'),)
     odycrim = relationship('ODYCRIM', backref='restitutions')
 
     id = Column(Integer, primary_key=True)
@@ -249,6 +260,7 @@ class ODYCRIMRestitution(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMWarrant(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_warrants'
+    __table_args__ = (Index('ixh_odycrim_warrants_case_number', 'case_number', postgresql_using='hash'),)
     odycrim = relationship('ODYCRIM', backref='warrants')
 
     id = Column(Integer, primary_key=True)
@@ -277,6 +289,7 @@ class ODYCRIMWarrant(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMBailBond(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_bail_bonds'
+    __table_args__ = (Index('ixh_odycrim_bail_bonds_case_number', 'case_number', postgresql_using='hash'),)
     odycrim = relationship('ODYCRIM', backref='bail_bonds')
 
     id = Column(Integer, primary_key=True)
@@ -296,6 +309,7 @@ class ODYCRIMBailBond(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMBondSetting(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_bond_settings'
+    __table_args__ = (Index('ixh_odycrim_bond_settings_case_number', 'case_number', postgresql_using='hash'),)
     odycrim = relationship('ODYCRIM', backref='bond_settings')
 
     id = Column(Integer, primary_key=True)
@@ -315,6 +329,7 @@ class ODYCRIMBondSetting(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMDocument(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_documents'
+    __table_args__ = (Index('ixh_odycrim_documents_case_number', 'case_number', postgresql_using='hash'),)
     odycrim = relationship('ODYCRIM', backref='documents')
 
     id = Column(Integer, primary_key=True)
@@ -333,6 +348,7 @@ class ODYCRIMDocument(ODYCRIMCaseTable, TableBase):
 
 class ODYCRIMService(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_services'
+    __table_args__ = (Index('ixh_odycrim_services_case_number', 'case_number', postgresql_using='hash'),)
     odycrim = relationship('ODYCRIM', backref='services')
 
     id = Column(Integer, primary_key=True)

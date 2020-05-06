@@ -1,5 +1,5 @@
 from .common import TableBase, CaseTable, date_from_str, RelatedPerson, Event, Trial
-from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger, Text
+from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger, Text, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
@@ -20,6 +20,8 @@ class CC(CaseTable, TableBase):
 
     case = relationship('Case', backref=backref('cc', uselist=False))
 
+    __table_args__ = (Index('ixh_cc_case_number', 'case_number', postgresql_using='hash'),)
+
     @hybrid_property
     def filing_date_str(self):
         return self._filing_date_str
@@ -38,11 +40,12 @@ class CC(CaseTable, TableBase):
 
 class CCCaseTable(CaseTable):
     @declared_attr
-    def case_number(cls):
-        return Column(String, ForeignKey('cc.case_number', ondelete='CASCADE'), index=True)
+    def case_number(self):
+        return Column(String, ForeignKey('cc.case_number', ondelete='CASCADE'))
 
 class CCDistrictCaseNumber(CCCaseTable, TableBase):
     __tablename__ = 'cc_district_case_numbers'
+    __table_args__ = (Index('ixh_cc_district_case_numbers_case_number', 'case_number', postgresql_using='hash'),)
     cc = relationship('CC', backref='district_case_numbers')
 
     id = Column(Integer, primary_key=True)
@@ -56,31 +59,35 @@ class Party:
     business_org_name = Column(String,nullable=True)
 
     @declared_attr
-    def aliases(cls):
+    def aliases(self):
         return relationship('CCPartyAlias')
 
     @declared_attr
-    def addresses(cls):
+    def addresses(self):
         return relationship('CCPartyAddress')
 
     @declared_attr
-    def attorneys(cls):
+    def attorneys(self):
         return relationship('CCAttorney')
 
 class CCPlaintiff(Party, CCCaseTable, TableBase):
     __tablename__ = 'cc_plaintiffs'
+    __table_args__ = (Index('ixh_cc_plaintiffs_case_number', 'case_number', postgresql_using='hash'),)
     cc = relationship('CC', backref='plaintiffs')
 
 class CCDefendant(Party, CCCaseTable, TableBase):
     __tablename__ = 'cc_defendants'
+    __table_args__ = (Index('ixh_cc_defendants_case_number', 'case_number', postgresql_using='hash'),)
     cc = relationship('CC', backref='defendants')
 
 class CCRelatedPerson(Party, CCCaseTable, TableBase):
     __tablename__ = 'cc_related_persons'
+    __table_args__ = (Index('ixh_cc_related_persons_case_number', 'case_number', postgresql_using='hash'),)
     cc = relationship('CC', backref='related_persons')
 
 class CCPartyAlias(CCCaseTable, TableBase):
     __tablename__ = 'cc_party_alias'
+    __table_args__ = (Index('ixh_cc_party_alias_case_number', 'case_number', postgresql_using='hash'),)
 
     id = Column(Integer, primary_key=True)
     plaintiff_id = Column(Integer, ForeignKey('cc_plaintiffs.id'),nullable=True)
@@ -90,6 +97,7 @@ class CCPartyAlias(CCCaseTable, TableBase):
 
 class CCPartyAddress(CCCaseTable, TableBase):
     __tablename__ = 'cc_party_addresses'
+    __table_args__ = (Index('ixh_cc_party_addresses_case_number', 'case_number', postgresql_using='hash'),)
 
     id = Column(Integer, primary_key=True)
     plaintiff_id = Column(Integer, ForeignKey('cc_plaintiffs.id'),nullable=True)
@@ -102,6 +110,7 @@ class CCPartyAddress(CCCaseTable, TableBase):
 
 class CCAttorney(CCCaseTable, TableBase):
     __tablename__ = 'cc_attorneys'
+    __table_args__ = (Index('ixh_cc_attorneys_case_number', 'case_number', postgresql_using='hash'),)
 
     id = Column(Integer, primary_key=True)
     plaintiff_id = Column(Integer, ForeignKey('cc_plaintiffs.id'),nullable=True)
@@ -137,6 +146,7 @@ class CCAttorney(CCCaseTable, TableBase):
 
 class CCCourtSchedule(CCCaseTable, TableBase):
     __tablename__ = 'cc_court_schedule'
+    __table_args__ = (Index('ixh_cc_court_schedule_case_number', 'case_number', postgresql_using='hash'),)
     cc = relationship('CC', backref='court_schedules')
 
     id = Column(Integer, primary_key=True)
@@ -191,6 +201,7 @@ class CCCourtSchedule(CCCaseTable, TableBase):
 
 class CCDocument(CCCaseTable, TableBase):
     __tablename__ = 'cc_documents'
+    __table_args__ = (Index('ixh_cc_documents_case_number', 'case_number', postgresql_using='hash'),)
     cc = relationship('CC', backref='documents')
 
     id = Column(Integer, primary_key=True)
@@ -208,6 +219,7 @@ class CCDocument(CCCaseTable, TableBase):
 
 class CCJudgment(CCCaseTable, TableBase):
     __tablename__ = 'cc_judgments'
+    __table_args__ = (Index('ixh_cc_judgments_case_number', 'case_number', postgresql_using='hash'),)
     cc = relationship('CC', backref='judgments')
 
     id = Column(Integer, primary_key=True)
@@ -240,6 +252,7 @@ class CCJudgment(CCCaseTable, TableBase):
 
 class CCJudgmentModification(CCCaseTable, TableBase):
     __tablename__ = 'cc_judgment_modifications'
+    __table_args__ = (Index('ixh_cc_judgment_modifications_case_number', 'case_number', postgresql_using='hash'),)
 
     id = Column(Integer, primary_key=True)
     judgment_id = Column(Integer, ForeignKey('cc_judgments.id'))
@@ -272,6 +285,7 @@ class CCJudgmentModification(CCCaseTable, TableBase):
 
 class CCJudgmentAgainst(CCCaseTable, TableBase):
     __tablename__ = 'cc_judgments_against'
+    __table_args__ = (Index('ixh_cc_judgments_against_case_number', 'case_number', postgresql_using='hash'),)
 
     id = Column(Integer, primary_key=True)
     judgment_id = Column(Integer, ForeignKey('cc_judgments.id'))
@@ -279,6 +293,7 @@ class CCJudgmentAgainst(CCCaseTable, TableBase):
 
 class CCJudgmentInFavor(CCCaseTable, TableBase):
     __tablename__ = 'cc_judgments_in_favor'
+    __table_args__ = (Index('ixh_cc_judgments_in_favor_case_number', 'case_number', postgresql_using='hash'),)
 
     id = Column(Integer, primary_key=True)
     judgment_id = Column(Integer, ForeignKey('cc_judgments.id'))
@@ -286,6 +301,7 @@ class CCJudgmentInFavor(CCCaseTable, TableBase):
 
 class CCSupportOrder(CCCaseTable, TableBase):
     __tablename__ = 'cc_support_orders'
+    __table_args__ = (Index('ixh_cc_support_orders_case_number', 'case_number', postgresql_using='hash'),)
     cc = relationship('CC', backref='support_orders')
 
     id = Column(Integer, primary_key=True)

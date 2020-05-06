@@ -1,5 +1,5 @@
 from .common import TableBase, CaseTable, date_from_str, RelatedPerson, Event, Trial
-from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger
+from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
@@ -18,6 +18,8 @@ class DSCIVIL(CaseTable, TableBase):
 
     case = relationship('Case', backref=backref('dscivil', uselist=False))
 
+    __table_args__ = (Index('ixh_dscivil_case_number', 'case_number', postgresql_using='hash'),)
+
     @hybrid_property
     def filing_date_str(self):
         return self._filing_date_str
@@ -28,11 +30,12 @@ class DSCIVIL(CaseTable, TableBase):
 
 class DSCIVILCaseTable(CaseTable):
     @declared_attr
-    def case_number(cls):
-        return Column(String, ForeignKey('dscivil.case_number', ondelete='CASCADE'), index=True)
+    def case_number(self):
+        return Column(String, ForeignKey('dscivil.case_number', ondelete='CASCADE'))
 
 class DSCIVILComplaint(DSCIVILCaseTable, TableBase):
     __tablename__ = 'dscivil_complaints'
+    __table_args__ = (Index('ixh_dscivil_complaints_case_number', 'case_number', postgresql_using='hash'),)
     dscivil = relationship('DSCIVIL', backref='complaints')
 
     id = Column(Integer, primary_key=True)
@@ -75,6 +78,7 @@ class DSCIVILComplaint(DSCIVILCaseTable, TableBase):
 
 class DSCIVILHearing(DSCIVILCaseTable, TableBase):
     __tablename__ = 'dscivil_hearings'
+    __table_args__ = (Index('ixh_dscivil_hearings_case_number', 'case_number', postgresql_using='hash'),)
     dscivil_complaint = relationship('DSCIVILComplaint', backref='hearings')
 
     id = Column(Integer, primary_key=True)
@@ -112,6 +116,7 @@ class DSCIVILHearing(DSCIVILCaseTable, TableBase):
 
 class DSCIVILJudgment(DSCIVILCaseTable, TableBase):
     __tablename__ = 'dscivil_judgments'
+    __table_args__ = (Index('ixh_dscivil_judgments_case_number', 'case_number', postgresql_using='hash'),)
     dscivil_complaint = relationship('DSCIVILComplaint', backref='judgments')
 
     id = Column(Integer, primary_key=True)
@@ -187,16 +192,19 @@ class DSCIVILJudgment(DSCIVILCaseTable, TableBase):
 
 class DSCIVILRelatedPerson(DSCIVILCaseTable, RelatedPerson, TableBase):
     __tablename__ = 'dscivil_related_persons'
+    __table_args__ = (Index('ixh_dscivil_related_persons_case_number', 'case_number', postgresql_using='hash'),)
     dscivil_complaint = relationship('DSCIVILComplaint', backref='related_persons')
 
     complaint_id = Column(Integer, ForeignKey('dscivil_complaints.id'))
 
 class DSCIVILEvent(DSCIVILCaseTable, Event, TableBase):
     __tablename__ = 'dscivil_events'
+    __table_args__ = (Index('ixh_dscivil_events_case_number', 'case_number', postgresql_using='hash'),)
     dscivil = relationship('DSCIVIL', backref='events')
 
     complaint_number = Column(Integer,nullable=True)
 
 class DSCIVILTrial(DSCIVILCaseTable, Trial, TableBase):
     __tablename__ = 'dscivil_trials'
+    __table_args__ = (Index('ixh_dscivil_trials_case_number', 'case_number', postgresql_using='hash'),)
     dscivil = relationship('DSCIVIL', backref='trials')

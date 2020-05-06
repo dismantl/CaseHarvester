@@ -18,7 +18,7 @@ def date_from_str(date_str):
 class CaseTable:
     @declared_attr
     def case_number(cls):
-        return Column(String, ForeignKey('cases.case_number', ondelete='CASCADE'), index=True, unique=True)
+        return Column(String, ForeignKey('cases.case_number', ondelete='CASCADE'), unique=True)
 
 class Defendant:
     id = Column(Integer, primary_key=True)

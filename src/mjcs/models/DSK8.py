@@ -1,5 +1,5 @@
 from .common import TableBase, CaseTable, date_from_str, Defendant, DefendantAlias, RelatedPerson, Trial, Event
-from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger
+from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
@@ -21,6 +21,8 @@ class DSK8(CaseTable, TableBase):
     _incident_date_str = Column('incident_date_str',String)
 
     case = relationship('Case', backref=backref('dsk8', uselist=False))
+
+    __table_args__ = (Index('ixh_dsk8_case_number', 'case_number', postgresql_using='hash'),)
 
     @hybrid_property
     def status_date_str(self):
@@ -48,11 +50,12 @@ class DSK8(CaseTable, TableBase):
 
 class DSK8CaseTable(CaseTable):
     @declared_attr
-    def case_number(cls):
-        return Column(String, ForeignKey('dsk8.case_number', ondelete='CASCADE'), index=True)
+    def case_number(self):
+        return Column(String, ForeignKey('dsk8.case_number', ondelete='CASCADE'))
 
 class DSK8Charge(DSK8CaseTable, TableBase):
     __tablename__ = 'dsk8_charges'
+    __table_args__ = (Index('ixh_dsk8_charges_case_number', 'case_number', postgresql_using='hash'),)
     dsk8 = relationship('DSK8', backref='charges')
 
     id = Column(Integer, primary_key=True)
@@ -130,6 +133,7 @@ class DSK8Charge(DSK8CaseTable, TableBase):
 
 class DSK8BailAndBond(DSK8CaseTable, TableBase):
     __tablename__ = 'dsk8_bail_and_bond'
+    __table_args__ = (Index('ixh_dsk8_bail_and_bond_case_number', 'case_number', postgresql_using='hash'),)
     dsk8 = relationship('DSK8', backref='bail_and_bonds')
 
     id = Column(Integer, primary_key=True)
@@ -197,6 +201,7 @@ class DSK8BailAndBond(DSK8CaseTable, TableBase):
 
 class DSK8Bondsman(DSK8CaseTable, TableBase):
     __tablename__ = 'dsk8_bondsman'
+    __table_args__ = (Index('ixh_dsk8_bondsman_case_number', 'case_number', postgresql_using='hash'),)
     bail_and_bond = relationship('DSK8BailAndBond', backref='bondsman')
 
     id = Column(Integer, primary_key=True)
@@ -209,20 +214,25 @@ class DSK8Bondsman(DSK8CaseTable, TableBase):
 
 class DSK8Defendant(DSK8CaseTable, Defendant, TableBase):
     __tablename__ = 'dsk8_defendants'
+    __table_args__ = (Index('ixh_dsk8_defendants_case_number', 'case_number', postgresql_using='hash'),)
     dsk8 = relationship('DSK8', backref='defendants')
 
 class DSK8DefendantAlias(DSK8CaseTable, DefendantAlias, TableBase):
     __tablename__ = 'dsk8_defendant_aliases'
+    __table_args__ = (Index('ixh_dsk8_defendant_aliases_case_number', 'case_number', postgresql_using='hash'),)
     dsk8 = relationship('DSK8', backref='defendant_aliases')
 
 class DSK8RelatedPerson(DSK8CaseTable, RelatedPerson, TableBase):
     __tablename__ = 'dsk8_related_persons'
+    __table_args__ = (Index('ixh_dsk8_related_persons_case_number', 'case_number', postgresql_using='hash'),)
     dsk8 = relationship('DSK8', backref='related_persons')
 
 class DSK8Event(DSK8CaseTable, Event, TableBase):
     __tablename__ = 'dsk8_events'
+    __table_args__ = (Index('ixh_dsk8_events_case_number', 'case_number', postgresql_using='hash'),)
     dsk8 = relationship('DSK8', backref='events')
 
 class DSK8Trial(DSK8CaseTable, Trial, TableBase):
     __tablename__ = 'dsk8_trials'
+    __table_args__ = (Index('ixh_dsk8_trials_case_number', 'case_number', postgresql_using='hash'),)
     dsk8 = relationship('DSK8', backref='trials')

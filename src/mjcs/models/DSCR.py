@@ -1,5 +1,5 @@
 from .common import TableBase, CaseTable, Trial, Event, date_from_str, Defendant, DefendantAlias, RelatedPerson
-from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger
+from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
@@ -21,6 +21,8 @@ class DSCR(CaseTable, TableBase):
 
     case = relationship('Case', backref=backref('dscr', uselist=False))
 
+    __table_args__ = (Index('ixh_dscr_case_number', 'case_number', postgresql_using='hash'),)
+
     @hybrid_property
     def issued_date_str(self):
         return self._issued_date_str
@@ -31,11 +33,12 @@ class DSCR(CaseTable, TableBase):
 
 class DSCRCaseTable(CaseTable):
     @declared_attr
-    def case_number(cls):
-        return Column(String, ForeignKey('dscr.case_number', ondelete='CASCADE'), index=True)
+    def case_number(self):
+        return Column(String, ForeignKey('dscr.case_number', ondelete='CASCADE'))
 
 class DSCRCharge(DSCRCaseTable, TableBase):
     __tablename__ = 'dscr_charges'
+    __table_args__ = (Index('ixh_dscr_charges_case_number', 'case_number', postgresql_using='hash'),)
     dscr = relationship('DSCR', backref='charges')
 
     id = Column(Integer, primary_key=True)
@@ -126,26 +129,32 @@ class DSCRCharge(DSCRCaseTable, TableBase):
 
 class DSCRDefendant(DSCRCaseTable, Defendant, TableBase):
     __tablename__ = 'dscr_defendants'
+    __table_args__ = (Index('ixh_dscr_defendants_case_number', 'case_number', postgresql_using='hash'),)
     dscr = relationship('DSCR', backref='defendants')
 
 class DSCRDefendantAlias(DSCRCaseTable, DefendantAlias, TableBase):
     __tablename__ = 'dscr_defendant_aliases'
+    __table_args__ = (Index('ixh_dscr_defendant_aliases_case_number', 'case_number', postgresql_using='hash'),)
     dscr = relationship('DSCR', backref='defendant_aliases')
 
 class DSCRRelatedPerson(DSCRCaseTable, RelatedPerson, TableBase):
     __tablename__ = 'dscr_related_persons'
+    __table_args__ = (Index('ixh_dscr_related_persons_case_number', 'case_number', postgresql_using='hash'),)
     dscr = relationship('DSCR', backref='related_persons')
 
 class DSCREvent(DSCRCaseTable, Event, TableBase):
     __tablename__ = 'dscr_events'
+    __table_args__ = (Index('ixh_dscr_events_case_number', 'case_number', postgresql_using='hash'),)
     dscr = relationship('DSCR', backref='events')
 
 class DSCRTrial(DSCRCaseTable, Trial, TableBase):
     __tablename__ = 'dscr_trials'
+    __table_args__ = (Index('ixh_dscr_trials_case_number', 'case_number', postgresql_using='hash'),)
     dscr = relationship('DSCR', backref='trials')
 
 class DSCRBailEvent(DSCRCaseTable, TableBase):
     __tablename__ = 'dscr_bail_events'
+    __table_args__ = (Index('ixh_dscr_bail_events_case_number', 'case_number', postgresql_using='hash'),)
     dscr = relationship('DSCR', backref='bail_events')
 
     id = Column(Integer, primary_key=True)
