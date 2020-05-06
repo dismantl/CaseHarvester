@@ -38,7 +38,7 @@ Resources:
         - VPCAccessPolicy: {}
       CodeUri: ../pkg/parser
       MemorySize: 128
-      Timeout: 300
+      Timeout: 60
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt ParserFailedQueue.Arn
