@@ -152,7 +152,7 @@ class Scraper:
             }
         )
         end = datetime.now()
-        duration = (begin - end).total_seconds()
+        duration = (end - begin).total_seconds()
         self.session_pool.put_nowait(session)
             
         try:
@@ -172,9 +172,9 @@ class Scraper:
 
     def __check_scrape_response(self, case_number, response):
         if response.status_code == 500:
-            raise FailedScrape500
+            raise FailedScrape500(f'{response.status_code}: {response.text}')
         elif response.status_code != 200:
-            raise FailedScrapeUnknownError
+            raise FailedScrapeUnknownError(f'{response.status_code}: {response.text}')
         elif re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text):
             raise FailedScrapeNotFound
         elif 'Sorry, but your query has timed out after 2 minute' in response.text:
@@ -193,12 +193,17 @@ class Scraper:
     async def __store_case_details(self, case_number, detail_loc, html, scrape_duration=None):
         add = False
         try:
-            previous_fetch = config.case_details_bucket.Object(case_number).get()
-        except config.s3.meta.client.exceptions.NoSuchKey:
+            with db_session() as db:
+                latest_sha256, = db.query(ScrapeVersion.sha256).\
+                    join(Scrape, ScrapeVersion.s3_version_id == Scrape.s3_version_id).\
+                    filter(Scrape.case_number == case_number).\
+                    order_by(Scrape.timestamp.desc())[0]
+        except IndexError:
             logger.info(f"Case details for {case_number} not found, adding...")
             add = True
         else:
-            if previous_fetch['Body'].read().decode('utf-8') != html:
+            new_sha256 = sha256(html.encode('utf-8')).hexdigest()
+            if latest_sha256 != new_sha256:
                 logger.info(f"Found new version of case {case_number}, updating...")
                 add = True
 

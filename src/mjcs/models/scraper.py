@@ -9,6 +9,8 @@ class ScrapeVersion(TableBase):
     length = Column(Integer)
     sha256 = Column(String)
 
+Index('ix_scrapes_versions_case_number_s3_version_id', ScrapeVersion.case_number, ScrapeVersion.s3_version_id, unique=True)
+
 class Scrape(TableBase):
     __tablename__ = 'scrapes'
 
@@ -18,4 +20,5 @@ class Scrape(TableBase):
     timestamp = Column(DateTime)
     duration = Column(Numeric, nullable=True) # seconds
 
-Index('ix_scrape_timestamp', Scrape.case_number, Scrape.timestamp.desc())
+Index('ix_scrapes_case_number_timestamp', Scrape.case_number, Scrape.timestamp.desc(), unique=True)
+Index('ix_scrapes_case_number_s3_version_id', Scrape.case_number, Scrape.s3_version_id, unique=True)
