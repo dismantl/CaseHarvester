@@ -19,8 +19,6 @@ class DSK8Parser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        self.delete_previous(db, DSK8)
-
         case = DSK8(case_number=self.case_number)
         section_header = self.second_level_header(soup,'Case Information')
 

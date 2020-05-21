@@ -30,8 +30,6 @@ class ODYTRAFParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        self.delete_previous(db, ODYTRAF)
-
         case = ODYTRAF(case_number=self.case_number)
         section_header = self.first_level_header(soup,'Case Information')
 
@@ -39,7 +37,7 @@ class ODYTRAFParser(CaseDetailsParser):
         case.court_system = self.value_first_column(case_info_table,'Court System:',remove_newlines=True)
         case.location = self.value_first_column(case_info_table,'Location:')
         citation_number = self.value_first_column(case_info_table,'Citation Number:')
-        if self.case_number not in citation_number:
+        if self.case_number.lower() not in citation_number.lower():
             raise ParserError('Case number "%s" in case details page does not match given: %s' % (citation_number, self.case_number))
         case.case_title = self.value_first_column(case_info_table,'Case Title:')
         case.case_type = self.value_first_column(case_info_table,'Case Type:')
@@ -70,7 +68,7 @@ class ODYTRAFParser(CaseDetailsParser):
             except ParserError:
                 break
             prev_obj = t
-            prompt_re = re.compile('^([\w \']+)\s*:\s*$')
+            prompt_re = re.compile(r'^([\w \'\-/]+)\s*:\s*$')
             prompt_span = t.find('span',class_='FirstColumnPrompt',string=prompt_re)
             if not prompt_span:
                 break
@@ -110,14 +108,14 @@ class ODYTRAFParser(CaseDetailsParser):
             except ParserError:
                 break
             self.mark_for_deletion(subsection_header)
+            party_type = self.format_value(subsection_header.string)
             prev_obj = subsection_header
+            
             try:
                 name_table = self.table_next_first_column_prompt(subsection_header,'Name:')
             except ParserError:
                 pass
             else:
-                party_type = self.format_value(subsection_header.string)
-                # print(party_type)
                 # Attorneys for defendants and plaintiffs are listed in two different ways
                 if party_type == 'Attorney for Defendant' and plaintiff_id:
                     party = ODYTRAFAttorney(case_number=self.case_number)
@@ -134,14 +132,21 @@ class ODYTRAFParser(CaseDetailsParser):
                 party.agency_name = self.value_first_column(name_table,'AgencyName:',ignore_missing=True)
                 prev_obj = name_table
 
-                # Address
-                try:
-                    address_table = self.immediate_sibling(name_table,'table')
-                except ParserError:
-                    pass
-                else:
-                    if 'Address:' in address_table.stripped_strings:
-                        prev_obj = address_table
+                while True:
+                    try:
+                        t = self.immediate_sibling(prev_obj,'table')
+                    except ParserError:
+                        break
+                    
+                    if 'Race:' in t.stripped_strings or 'DOB:' in t.stripped_strings:
+                        demographics_table = t
+                        party.race = self.value_combined_first_column(demographics_table,'Race:',ignore_missing=True)
+                        party.sex = self.value_column(demographics_table,'Sex:',ignore_missing=True)
+                        party.height = self.value_column(demographics_table,'Height:',ignore_missing=True)
+                        party.weight = self.value_column(demographics_table,'Weight:',numeric=True,ignore_missing=True)
+                        party.DOB_str = self.value_combined_first_column(demographics_table,'DOB:',ignore_missing=True)
+                    elif 'Address:' in t.stripped_strings:
+                        address_table = t
                         rows = address_table.find_all('tr')
                         party.address_1 = self.value_first_column(address_table,'Address:')
                         if len(rows) == 3:
@@ -150,20 +155,9 @@ class ODYTRAFParser(CaseDetailsParser):
                         party.city = self.value_first_column(address_table,'City:')
                         party.state = self.value_column(address_table,'State:')
                         party.zip_code = self.value_column(address_table,'Zip Code:',ignore_missing=True)
-
-                # Demographic information
-                try:
-                    demographics_table = self.immediate_sibling(prev_obj)
-                except ParserError:
-                    pass
-                else:
-                    if 'Race:' in demographics_table.stripped_strings:
-                        prev_obj = demographics_table
-                        party.race = self.value_combined_first_column(demographics_table,'Race:')
-                        party.sex = self.value_column(demographics_table,'Sex:')
-                        party.height = self.value_column(demographics_table,'Height:')
-                        party.weight = self.value_column(demographics_table,'Weight:',numeric=True)
-                        party.DOB_str = self.value_combined_first_column(demographics_table,'DOB:',ignore_missing=True)
+                    elif len(list(t.stripped_strings)) > 0:
+                        break
+                    prev_obj = t
 
                 db.add(party)
                 db.flush()
@@ -190,7 +184,7 @@ class ODYTRAFParser(CaseDetailsParser):
                                 alias_.defendant_id = party.id
                             else:
                                 alias_.party_id = party.id
-                            prompt_re = re.compile('^([\w ]+)\s*:\s*$')
+                            prompt_re = re.compile(r'^([\w ]+)\s*:\s*$')
                             alias_.alias = self.value_first_column(row, span.string)
                             alias_.alias_type = prompt_re.fullmatch(span.string).group(1)
                             db.add(alias_)
@@ -203,27 +197,31 @@ class ODYTRAFParser(CaseDetailsParser):
                                 attorney.party_id = party.id
                             name_row = span.find_parent('tr')
                             attorney.name = self.value_first_column(name_row,'Name:')
-                            address_row = self.row_next_first_column_prompt(name_row,'Address Line 1:')
-                            attorney.address_1 = self.value_first_column(address_row,'Address Line 1:')
-                            prev_row = address_row
                             try:
-                                address_row_2 = self.row_next_first_column_prompt(address_row,'Address Line 2:')
+                                address_row = self.row_next_first_column_prompt(name_row,'Address Line 1:')
                             except ParserError:
                                 pass
                             else:
-                                prev_row = address_row_2
-                                attorney.address_2 = self.value_first_column(address_row_2,'Address Line 2:')
+                                attorney.address_1 = self.value_first_column(address_row,'Address Line 1:')
+                                prev_row = address_row
                                 try:
-                                    address_row_3 = self.row_next_first_column_prompt(address_row_2,'Address Line 3:')
+                                    address_row_2 = self.row_next_first_column_prompt(address_row,'Address Line 2:')
                                 except ParserError:
                                     pass
                                 else:
-                                    prev_row = address_row_3
-                                    attorney.address_3 = self.value_first_column(address_row_3,'Address Line 3:')
-                            city_row = self.row_next_first_column_prompt(prev_row,'City:')
-                            attorney.city = self.value_first_column(city_row,'City:')
-                            attorney.state = self.value_column(city_row,'State:')
-                            attorney.zip_code = self.value_column(city_row,'Zip Code:')
+                                    prev_row = address_row_2
+                                    attorney.address_2 = self.value_first_column(address_row_2,'Address Line 2:')
+                                    try:
+                                        address_row_3 = self.row_next_first_column_prompt(address_row_2,'Address Line 3:')
+                                    except ParserError:
+                                        pass
+                                    else:
+                                        prev_row = address_row_3
+                                        attorney.address_3 = self.value_first_column(address_row_3,'Address Line 3:')
+                                city_row = self.row_next_first_column_prompt(prev_row,'City:')
+                                attorney.city = self.value_first_column(city_row,'City:')
+                                attorney.state = self.value_column(city_row,'State:')
+                                attorney.zip_code = self.value_column(city_row,'Zip Code:')
                             db.add(attorney)
 
             if not party or type(party) != ODYTRAFDefendant:  # Defendant section doesn't separate parties with <hr>
@@ -286,13 +284,13 @@ class ODYTRAFParser(CaseDetailsParser):
             charge.charge_description = self.value_multi_column(t2,'Charge Description:')
             t3 = self.immediate_sibling(t2,'table')
             t4 = t3.find('table')  # weird nested table shit
-            charge.speed_limit = self.value_multi_column(t4,'Speed Limit:')
-            charge.recorded_speed = self.value_multi_column(t4,'Recorded Speed:')
-            charge.location_stopped = self.value_multi_column(t4,'Location Stopped:')
+            charge.speed_limit = self.value_multi_column(t4,'Speed Limit:',ignore_missing=True)
+            charge.recorded_speed = self.value_multi_column(t4,'Recorded Speed:',ignore_missing=True)
+            charge.location_stopped = self.value_multi_column(t4,'Location Stopped:',ignore_missing=True)
             t5 = self.immediate_sibling(t4,'table')
-            charge.probable_cause_indicator = self.value_multi_column(t5,'Probable Cause Indicator:',boolean_value=True)
-            charge.charge_contributed_to_accident = self.value_multi_column(t5,'Contributed to Accident:',boolean_value=True)
-            charge.charge_personal_injury = self.value_multi_column(t5,'Personal Injury:',boolean_value=True)
+            charge.probable_cause_indicator = self.value_multi_column(t5,'Probable Cause Indicator:',boolean_value=True,ignore_missing=True)
+            charge.charge_contributed_to_accident = self.value_multi_column(t5,'Contributed to Accident:',boolean_value=True,ignore_missing=True)
+            charge.charge_personal_injury = self.value_multi_column(t5,'Personal Injury:',boolean_value=True,ignore_missing=True)
             t6 = self.immediate_sibling(t5,'table')
             charge.property_damage = self.value_multi_column(t6,'Property Damage:',boolean_value=True)
             charge.seat_belts = self.value_multi_column(t6,'Seat Belts:',ignore_missing=True,boolean_value=True)
@@ -373,10 +371,13 @@ class ODYTRAFParser(CaseDetailsParser):
                 except ParserError:
                     pass
                 else:
-                    charge.jail_suspended_years = self.value_column(suspended_row,'Yrs:')
-                    charge.jail_suspended_months = self.value_column(suspended_row,'Mos:')
-                    charge.jail_suspended_days = self.value_column(suspended_row,'Days:')
-                    charge.jail_suspended_hours = self.value_column(suspended_row,'Hours:')
+                    try:
+                        charge.jail_suspended_years = self.value_column(suspended_row,'Yrs:')
+                        charge.jail_suspended_months = self.value_column(suspended_row,'Mos:')
+                        charge.jail_suspended_days = self.value_column(suspended_row,'Days:')
+                        charge.jail_suspended_hours = self.value_column(suspended_row,'Hours:')
+                    except ParserError:
+                        charge.jail_suspended_term = self.value_multi_column(suspended_row,'Suspended Term:')
                 try:
                     suspend_all_but_row = self.row_label(t,'Suspend All But:')
                 except ParserError:

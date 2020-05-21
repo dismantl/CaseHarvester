@@ -249,6 +249,7 @@ class ODYCRIMRestitution(ODYCRIMCaseTable, TableBase):
     restitution_amount = Column(Numeric, nullable=True)
     restitution_entered_date = Column(Date, nullable=True)
     _restitution_entered_date_str = Column('restitution_entered_date_str', String, nullable=True)
+    other_cost_amount = Column(Numeric, nullable=True)
 
     @hybrid_property
     def restitution_entered_date_str(self):

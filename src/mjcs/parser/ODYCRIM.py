@@ -31,8 +31,6 @@ class ODYCRIMParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        self.delete_previous(db, ODYCRIM)
-
         case = ODYCRIM(case_number=self.case_number)
         section_header = self.first_level_header(soup,'Case Information')
 
@@ -40,13 +38,13 @@ class ODYCRIMParser(CaseDetailsParser):
         case.court_system = self.value_first_column(case_info_table,'Court System:',remove_newlines=True)
         case.location = self.value_first_column(case_info_table,'Location:')
         case_number = self.value_first_column(case_info_table,'Case Number:')
-        if self.case_number != case_number.replace('-',''):
+        if self.case_number.lower() != case_number.replace('-','').lower():
             raise ParserError('Case number "%s" in case details page does not match given: %s' % (case_number, self.case_number))
         case.case_title = self.value_first_column(case_info_table,'Title:')
         case.case_type = self.value_first_column(case_info_table,'Case Type:')
         case.filing_date_str = self.value_first_column(case_info_table,'Filing Date:')
         case.case_status = self.value_first_column(case_info_table,'Case Status:')
-        case.tracking_numbers = self.value_first_column(case_info_table,'Tracking Number\(s\):')
+        case.tracking_numbers = self.value_first_column(case_info_table,r'Tracking Number\(s\):')
         db.add(case)
 
     #########################################################
@@ -66,7 +64,7 @@ class ODYCRIMParser(CaseDetailsParser):
             except ParserError:
                 break
             prev_obj = t
-            prompt_re = re.compile('^([\w \']+)\s*:\s*$')
+            prompt_re = re.compile(r'^([\w \'\-/]+)\s*:\s*$')
             prompt_span = t.find('span',class_='FirstColumnPrompt',string=prompt_re)
             if not prompt_span:
                 break
@@ -98,132 +96,134 @@ class ODYCRIMParser(CaseDetailsParser):
         plaintiff_id = None
         defendant_id = None
         while True:
+            party = None
+            
+            if str(prev_obj) == '<h5>Defendant</h5>':
+                continue
+            
             # Name, Agency
             try:
                 subsection_header = self.immediate_sibling(prev_obj,'h5')
-                name_table = self.table_next_first_column_prompt(subsection_header,'Name:')
             except ParserError:
                 break
             self.mark_for_deletion(subsection_header)
+            prev_obj = subsection_header
             party_type = self.format_value(subsection_header.string)
-            # print(party_type)
-            # Attorneys for defendants and plaintiffs are listed in two different ways
-            if party_type == 'Attorney for Defendant' and plaintiff_id:
-                party = ODYCRIMAttorney(case_number=self.case_number)
-                party.party_id = defendant_id
-            elif party_type == 'Attorney for Plaintiff' and plaintiff_id:
-                party = ODYCRIMAttorney(case_number=self.case_number)
-                party.party_id = plaintiff_id
-            elif party_type == 'Defendant':
-                party = ODYCRIMDefendant(case_number=self.case_number)
-            else:
-                party = ODYCRIMInvolvedParty(case_number=self.case_number)
-                party.party_type = party_type
-            party.name = self.value_first_column(name_table,'Name:')
-            party.agency_name = self.value_first_column(name_table,'AgencyName:',ignore_missing=True)
-            prev_obj = name_table
 
             try:
-                t2 = self.immediate_sibling(name_table,'table')
+                name_table = self.table_next_first_column_prompt(subsection_header,'Name:')
             except ParserError:
                 pass
             else:
-                prev_obj = t2
-                demographics_table = None
-                address_table = None
-                if 'HairColor:' in t2.stripped_strings:
-                    demographics_table = t2
-                elif len(list(t2.stripped_strings)) > 0:
-                    address_table = t2
+                # Attorneys for defendants and plaintiffs are listed in two different ways
+                if party_type == 'Attorney for Defendant' and plaintiff_id:
+                    party = ODYCRIMAttorney(case_number=self.case_number)
+                    party.party_id = defendant_id
+                elif party_type == 'Attorney for Plaintiff' and plaintiff_id:
+                    party = ODYCRIMAttorney(case_number=self.case_number)
+                    party.party_id = plaintiff_id
+                elif party_type == 'Defendant':
+                    party = ODYCRIMDefendant(case_number=self.case_number)
+                else:
+                    party = ODYCRIMInvolvedParty(case_number=self.case_number)
+                    party.party_type = party_type
+                party.name = self.value_first_column(name_table,'Name:')
+                party.agency_name = self.value_first_column(name_table,'AgencyName:',ignore_missing=True)
+                prev_obj = name_table
 
-                if not address_table:
+                while True:
                     try:
-                        address_table = self.table_next_first_column_prompt(t2,'Address:')
-                        prev_obj = address_table
+                        t = self.immediate_sibling(prev_obj,'table')
                     except ParserError:
-                        pass
+                        break
 
-                # Demographic information
-                if demographics_table:
-                    party.race = self.value_first_column(demographics_table,'Race:')
-                    party.sex = self.value_column(demographics_table,'Sex:')
-                    party.height = self.value_column(demographics_table,'Height:')
-                    party.weight = self.value_column(demographics_table,'Weight:',numeric=True)
-                    party.hair_color = self.value_first_column(demographics_table,'HairColor:')
-                    party.eye_color = self.value_column(demographics_table,'EyeColor:')
-                    party.DOB_str = self.value_first_column(demographics_table,'DOB:',ignore_missing=True)
+                    if 'Race:' in t.stripped_strings or 'DOB:' in t.stripped_strings:
+                        demographics_table = t
+                        party.race = self.value_first_column(demographics_table,'Race:')
+                        party.sex = self.value_column(demographics_table,'Sex:')
+                        party.height = self.value_column(demographics_table,'Height:')
+                        party.weight = self.value_column(demographics_table,'Weight:',numeric=True)
+                        party.hair_color = self.value_first_column(demographics_table,'HairColor:')
+                        party.eye_color = self.value_column(demographics_table,'EyeColor:')
+                        party.DOB_str = self.value_first_column(demographics_table,'DOB:',ignore_missing=True)
+                    elif 'Address:' in t.stripped_strings:
+                        address_table = t
+                        rows = address_table.find_all('tr')
+                        party.address_1 = self.value_first_column(address_table,'Address:')
+                        if len(rows) == 3:
+                            party.address_2 = self.format_value(rows[1].find('span',class_='Value').string)
+                            self.mark_for_deletion(rows[1])
+                        party.city = self.value_first_column(address_table,'City:')
+                        party.state = self.value_column(address_table,'State:')
+                        party.zip_code = self.value_column(address_table,'Zip Code:',ignore_missing=True)
+                    elif len(list(t.stripped_strings)) > 0:
+                        break
+                    prev_obj = t
 
-                # Address
-                if address_table:
-                    rows = address_table.find_all('tr')
-                    party.address_1 = self.value_first_column(address_table,'Address:')
-                    if len(rows) == 3:
-                        party.address_2 = self.format_value(rows[1].find('span',class_='Value').string)
-                        self.mark_for_deletion(rows[1])
-                    party.city = self.value_first_column(address_table,'City:')
-                    party.state = self.value_column(address_table,'State:')
-                    party.zip_code = self.value_column(address_table,'Zip Code:',ignore_missing=True)
+                db.add(party)
+                db.flush()
+                if party_type == 'Plaintiff':
+                    plaintiff_id = party.id
+                elif party_type == 'Defendant':
+                    defendant_id = party.id
 
-            db.add(party)
-            db.flush()
-            if party_type == 'Plaintiff':
-                plaintiff_id = party.id
-            elif party_type == 'Defendant':
-                defendant_id = party.id
-
-            # Aliases and Attorneys
-            while True:
-                try:
-                    subsection_header = self.immediate_sibling(prev_obj,'table')
-                    subsection_table = self.immediate_sibling(subsection_header,'table')
-                except ParserError:
-                    break
-                prev_obj = subsection_table
-                subsection_name = subsection_header.find('h5').string
-                self.mark_for_deletion(subsection_header)
-                if subsection_name == 'Aliases':
-                    for span in subsection_table.find_all('span',class_='FirstColumnPrompt'):
-                        row = span.find_parent('tr')
-                        alias_ = ODYCRIMAlias(case_number=self.case_number)
-                        if type(party) == ODYCRIMDefendant:
-                            alias_.defendant_id = party.id
-                        else:
-                            alias_.party_id = party.id
-                        prompt_re = re.compile('^([\w ]+)\s*:\s*$')
-                        alias_.alias = self.value_first_column(row, span.string)
-                        alias_.alias_type = prompt_re.fullmatch(span.string).group(1)
-                        db.add(alias_)
-                elif 'Attorney(s) for the' in subsection_name:
-                    for span in subsection_table.find_all('span',class_='FirstColumnPrompt',string='Name:'):
-                        attorney = ODYCRIMAttorney(case_number=self.case_number)
-                        if type(party) == ODYCRIMDefendant:
-                            attorney.defendant_id = party.id
-                        else:
-                            attorney.party_id = party.id
-                        name_row = span.find_parent('tr')
-                        attorney.name = self.value_first_column(name_row,'Name:')
-                        address_row = self.row_next_first_column_prompt(name_row,'Address Line 1:')
-                        attorney.address_1 = self.value_first_column(address_row,'Address Line 1:')
-                        prev_row = address_row
-                        try:
-                            address_row_2 = self.row_next_first_column_prompt(address_row,'Address Line 2:')
-                        except ParserError:
-                            pass
-                        else:
-                            prev_row = address_row_2
-                            attorney.address_2 = self.value_first_column(address_row_2,'Address Line 2:')
+                # Aliases and Attorneys
+                while True:
+                    try:
+                        subsection_header = self.immediate_sibling(prev_obj,'table')
+                        subsection_table = self.immediate_sibling(subsection_header,'table')
+                    except ParserError:
+                        break
+                    prev_obj = subsection_table
+                    subsection_name = subsection_header.find('h5').string
+                    self.mark_for_deletion(subsection_header)
+                    if subsection_name == 'Aliases':
+                        for span in subsection_table.find_all('span',class_='FirstColumnPrompt'):
+                            row = span.find_parent('tr')
+                            alias_ = ODYCRIMAlias(case_number=self.case_number)
+                            if type(party) == ODYCRIMDefendant:
+                                alias_.defendant_id = party.id
+                            else:
+                                alias_.party_id = party.id
+                            prompt_re = re.compile(r'^([\w ]+)\s*:\s*$')
+                            alias_.alias = self.value_first_column(row, span.string)
+                            alias_.alias_type = prompt_re.fullmatch(span.string).group(1)
+                            db.add(alias_)
+                    elif 'Attorney(s) for the' in subsection_name:
+                        for span in subsection_table.find_all('span',class_='FirstColumnPrompt',string='Name:'):
+                            attorney = ODYCRIMAttorney(case_number=self.case_number)
+                            if type(party) == ODYCRIMDefendant:
+                                attorney.defendant_id = party.id
+                            else:
+                                attorney.party_id = party.id
+                            name_row = span.find_parent('tr')
+                            attorney.name = self.value_first_column(name_row,'Name:')
                             try:
-                                address_row_3 = self.row_next_first_column_prompt(address_row_2,'Address Line 3:')
+                                address_row = self.row_next_first_column_prompt(name_row,'Address Line 1:')
                             except ParserError:
                                 pass
                             else:
-                                prev_row = address_row_3
-                                attorney.address_3 = self.value_first_column(address_row_3,'Address Line 3:')
-                        city_row = self.row_next_first_column_prompt(prev_row,'City:')
-                        attorney.city = self.value_first_column(city_row,'City:')
-                        attorney.state = self.value_column(city_row,'State:')
-                        attorney.zip_code = self.value_column(city_row,'Zip Code:')
-                        db.add(attorney)
+                                attorney.address_1 = self.value_first_column(address_row,'Address Line 1:')
+                                prev_row = address_row
+                                try:
+                                    address_row_2 = self.row_next_first_column_prompt(address_row,'Address Line 2:')
+                                except ParserError:
+                                    pass
+                                else:
+                                    prev_row = address_row_2
+                                    attorney.address_2 = self.value_first_column(address_row_2,'Address Line 2:')
+                                    try:
+                                        address_row_3 = self.row_next_first_column_prompt(address_row_2,'Address Line 3:')
+                                    except ParserError:
+                                        pass
+                                    else:
+                                        prev_row = address_row_3
+                                        attorney.address_3 = self.value_first_column(address_row_3,'Address Line 3:')
+                                city_row = self.row_next_first_column_prompt(prev_row,'City:')
+                                attorney.city = self.value_first_column(city_row,'City:')
+                                attorney.state = self.value_column(city_row,'State:')
+                                attorney.zip_code = self.value_column(city_row,'Zip Code:')
+                            db.add(attorney)
 
             if type(party) != ODYCRIMDefendant:  # Defendant section doesn't separate parties with <hr>
                 separator = self.immediate_sibling(prev_obj,'hr')
@@ -340,16 +340,13 @@ class ODYCRIMParser(CaseDetailsParser):
                 except ParserError:
                     pass
                 else:
-                    col1 = suspended_row.find_all('td')[1]
-                    value_span = col1.find('span',class_='Value')
-                    if value_span:
-                        self.mark_for_deletion(value_span)
-                        charge.jail_suspended_term = self.format_value(value_span.string)
-                    else:
+                    try:
                         charge.jail_suspended_years = self.value_column(suspended_row,'Yrs:')
                         charge.jail_suspended_months = self.value_column(suspended_row,'Mos:')
                         charge.jail_suspended_days = self.value_column(suspended_row,'Days:')
                         charge.jail_suspended_hours = self.value_column(suspended_row,'Hours:')
+                    except ParserError:
+                        charge.jail_suspended_term = self.value_multi_column(suspended_row,'Suspended Term:')
                 try:
                     suspend_all_but_row = self.row_label(t,'Suspend All But:')
                 except ParserError:
@@ -378,13 +375,13 @@ class ODYCRIMParser(CaseDetailsParser):
             unsupervised_row = self.immediate_sibling(supervised_row,'tr')
             probation = ODYCRIMProbation(case_number=self.case_number)
             probation.probation_start_date_str = self.value_multi_column(r1,'Start Date:')
-            probation_supervised = self.value_multi_column(supervised_row,'^Supervised\s*:\s*')
+            probation_supervised = self.value_multi_column(supervised_row,r'^Supervised\s*:\s*')
             probation.probation_supervised = True if probation_supervised == 'true' else False
             probation.probation_supervised_years = self.value_column(supervised_row,'Yrs:')
             probation.probation_supervised_months = self.value_column(supervised_row,'Mos:')
             probation.probation_supervised_days = self.value_column(supervised_row,'Days:')
             probation.probation_supervised_hours = self.value_column(supervised_row,'Hours:')
-            probation_unsupervised = self.value_multi_column(unsupervised_row,'^UnSupervised\s*:\s*')
+            probation_unsupervised = self.value_multi_column(unsupervised_row,r'^UnSupervised\s*:\s*')
             probation.probation_unsupervised = True if probation_unsupervised == 'true' else False
             probation.probation_unsupervised_years = self.value_column(unsupervised_row,'Yrs:')
             probation.probation_unsupervised_months = self.value_column(unsupervised_row,'Mos:')
@@ -406,8 +403,9 @@ class ODYCRIMParser(CaseDetailsParser):
         if len(list(t.stripped_strings)) > 0:
             for row in t.find_all('tr'):
                 restitution = ODYCRIMRestitution(case_number=self.case_number)
-                restitution.restitution_amount = self.value_multi_column(row,'Restitution Amount:',money=True)
-                restitution.restitution_entered_date_str = self.value_column(row,'Entered Date:')
+                restitution.restitution_amount = self.value_multi_column(row,'Restitution Amount:',money=True,ignore_missing=True)
+                restitution.restitution_entered_date_str = self.value_column(row,'Entered Date:',ignore_missing=True)
+                restitution.other_cost_amount = self.value_multi_column(row,'OtherCost Amount:',money=True,ignore_missing=True)
                 db.add(restitution)
 
     #########################################################

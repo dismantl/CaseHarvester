@@ -21,8 +21,6 @@ class CCParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        self.delete_previous(db, CC)
-
         section_header = self.second_level_header(soup,'Case Information')
         t1 = self.table_next_first_column_prompt(section_header,'Court System:')
 

@@ -18,8 +18,6 @@ class DSCIVILParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        self.delete_previous(db, DSCIVIL)
-
         section_header = self.first_level_header(soup,'Case Information')
         t1 = self.table_next_first_column_prompt(section_header,'Court System:')
         t2 = self.table_next_first_column_prompt(t1,'Case Number:')

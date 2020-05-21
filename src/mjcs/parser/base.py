@@ -32,8 +32,10 @@ class CaseDetailsParser(ABC):
         self.marked_for_deletion = []
 
     def parse(self):
+        # All parsing is done within a single database transaction, so no partial data is added or destroyed
         with db_session() as db:
             self.header(self.soup)
+            self.delete_previous(db)
             self.case(db, self.soup)
             db.flush() # so related subtables can satisfy foreign key constraint
             self.consume_all(db)
@@ -41,6 +43,9 @@ class CaseDetailsParser(ABC):
             self.finalize(db)
 
     def mark_for_deletion(self, obj):
+        for marked in self.marked_for_deletion:
+            if obj is marked:  # compare for identity, not equality (https://www.crummy.com/software/BeautifulSoup/bs4/doc/#comparing-objects-for-equality)
+                return
         self.marked_for_deletion.append(obj)
 
     def consume_all(self, db):
@@ -74,10 +79,10 @@ class CaseDetailsParser(ABC):
     def case(self, db, soup):
         raise NotImplementedError
 
-    def delete_previous(self, db, case_table_class):
+    def delete_previous(self, db):
         # Disable foreign key on delete cascade triggers for performance
         db.execute('SET session_replication_role = replica')
-        for cls_name, cls in inspect.getmembers(inspect.getmodule(self), lambda obj: hasattr(obj, '__tablename__')):
+        for _, cls in inspect.getmembers(inspect.getmodule(self), lambda obj: hasattr(obj, '__tablename__')):
             db.execute(cls.__table__.delete()\
             .where(cls.case_number == self.case_number))
         db.execute('SET session_replication_role = DEFAULT')
@@ -148,7 +153,7 @@ class CaseDetailsParser(ABC):
         return left
 
     def fourth_level_header(self, base, header_name):
-        h6 = soup\
+        h6 = base\
             .find('h6',string=re.compile(header_name))
         if not h6:
             raise ParserError('Fourth level header "%s" not found' % header_name)

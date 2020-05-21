@@ -52,6 +52,7 @@ def parse_case(case, detail_loc=None):
             detail_loc = case_details['Metadata']['detail_loc']
         except KeyError:
             detail_loc = get_detail_loc(case_number)
+    logger.debug(f'Parsing case {case_number}')
     return parse_case_from_html(case_number, detail_loc, case_html)
 
 def invoke_parser_lambda(detail_loc=None):
@@ -89,20 +90,14 @@ class Parser:
             filter = and_(Case.last_parse == None, Case.last_scrape != None,
                 Case.parse_exempt != True, Case.detail_loc.in_([c for c,p in parsers]))
         with db_session() as db:
-            logger.info('Getting count of unparsed cases...')
-            counter = {
-                'total': db.query(Case.case_number).filter(filter).count(),
-                'count': 0
-            }
-            logger.info('Generating batch queries...')
+            logger.info('Generating batch queries')
             batch_filters = cases_batch_filter(db, filter)
-            logger.info('Done.')
         for batch_filter in batch_filters:
             with db_session() as db:
-                logger.debug('Fetching batch of cases from database...',end='',flush=True)
+                logger.debug('Fetching batch of cases from database')
                 case_numbers = [c for c, in db.query(Case.case_number).filter(batch_filter)]
                 logger.debug('Done.')
-            process_cases(parse_case, case_numbers, None, self.on_error, self.threads, counter)
+            process_cases(parse_case, case_numbers, None, self.on_error, self.threads)
 
     def parse_failed_queue(self, detail_loc=None):
         counter = {

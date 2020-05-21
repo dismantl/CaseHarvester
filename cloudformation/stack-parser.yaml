@@ -39,6 +39,7 @@ Resources:
       CodeUri: ../pkg/parser
       MemorySize: 128
       Timeout: 60
+      ReservedConcurrentExecutions: 100  # So don't overload DB with connections
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt ParserFailedQueue.Arn

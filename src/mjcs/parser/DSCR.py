@@ -19,8 +19,6 @@ class DSCRParser(CaseDetailsParser):
     # CASE INFORMATION
     #########################################################
     def case(self, db, soup):
-        self.delete_previous(db, DSCR)
-
         case = DSCR(case_number=self.case_number)
         section_header = self.first_level_header(soup,'Case Information')
 
@@ -55,7 +53,7 @@ class DSCRParser(CaseDetailsParser):
         table1 = self.table_next_first_column_prompt(section_header, 'Trial Date:')
         schedule.date_str = self.value_first_column(table1, 'Trial Date:')
         schedule.time_str = self.value_column(table1, 'Trial Time:')
-        schedule.room = self.value_column(table1, 'Room:')
+        schedule.room = self.value_column(table1, 'Room:',ignore_missing=True)
 
         table2 = self.table_next_first_column_prompt(table1, 'Trial Type:')
         schedule.trial_type = self.value_first_column(table2, 'Trial Type:')
@@ -294,7 +292,7 @@ class DSCRParser(CaseDetailsParser):
             event.comment = self.format_value(event_fields[2].string)
             self.mark_for_deletion(event_fields[2])
             if event.event_name == 'BALR' or event.event_name == 'BSET' or event.event_name == 'INIT':
-                match = re.fullmatch(r'(?P<date>\d{6});(?P<amount>\d+\.\d\d);\s*(?P<code>[A-Z]+)\s*;(?P<percent>[\d\.]+);\s*(?P<bond>[A-Z]*)\s*;(?P<judge>[A-Z0-9]+)\s*', event.comment)
+                match = re.fullmatch(r'\s*(?P<date>\d{6})\s*;\s*(?P<amount>\d+\.\d\d)\s*;\s*(?P<code>[A-Z]+)\s*;\s*(?P<percent>[\d\.]+)?\s*;\s*(?P<bond>[A-Z]*)?\s*;\s*(?P<judge>[A-Z0-9]+)?\s*', event.comment)
                 bail_event = DSCRBailEvent(case_number=self.case_number)
                 bail_event.event_name = event.event_name
                 bail_event.date_str = self.format_value(match.group('date'))

@@ -83,7 +83,7 @@ def process_cases(func, cases, on_success=None, on_error=None, threads=1, counte
                 except Exception as e:
                     continue_processing = False
                     # logger.exception(e)
-                    # logger.warning("Failed to process case %s" % case_number)
+                    logger.warning(f"Failed to process case {case_number}: {type(e).__name__}: {e}")
                     if on_error:
                         action = on_error(e, case)
                         if action == 'delete':
@@ -115,7 +115,7 @@ def process_cases(func, cases, on_success=None, on_error=None, threads=1, counte
                         for future in future_to_case:
                             future.cancel()
                         # logger.exception(e)
-                        # logger.warning("Failed to process case %s" % case_number)
+                        logger.warning(f"Failed to process case {case_number}: {type(e).__name__}: {e}")
                         if on_error:
                             action = on_error(e, case)
                             if action == 'delete':
