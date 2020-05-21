@@ -84,7 +84,7 @@ def downgrade():
 
     for model in tertiary_models:
         print(f'[+] Dropping hash indexes for {model.__tablename__}')
-        op.drop_index(f'ixh_{model.__tablename__}_case_number'), model.__tablename__)
+        op.drop_index(f'ixh_{model.__tablename__}_case_number', model.__tablename__)
 
         print('[+] Temporarily dropping foreign key constraints')
         op.drop_constraint(f'{model.__tablename__}_case_number_fkey', table_name=model.__tablename__)
