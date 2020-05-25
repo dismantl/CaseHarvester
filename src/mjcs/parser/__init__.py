@@ -10,11 +10,8 @@ import logging
 import queue
 from os import getpid
 from contextlib import contextmanager
-from multiprocessing import Pool, set_start_method
-from multiprocessing_logging import install_mp_handler
 
 logger = logging.getLogger(__name__)
-install_mp_handler(logger)
 
 class BaseParserError(Exception):
     pass
@@ -90,6 +87,8 @@ class Parser:
     def __init__(self, ignore_errors=False, parallel=False):
         self.ignore_errors = ignore_errors
         self.parallel = parallel
+        from multiprocessing_logging import install_mp_handler
+        install_mp_handler(logger)
 
     def parse_case(self, case_number, detail_loc=None):
         logger.debug(f'Worker {getpid()} parsing {case_number} of type {detail_loc}')
@@ -101,6 +100,7 @@ class Parser:
                 raise
 
     def parse_failed_queue(self):
+        from multiprocessing import Pool, set_start_method
         logger.info('Parsing cases from failed queue')
         if self.parallel:
             set_start_method('fork')  # multiprocessing logging won't work with the spawn method
