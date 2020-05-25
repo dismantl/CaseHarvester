@@ -2,17 +2,18 @@ from abc import ABC, abstractmethod
 from bs4 import BeautifulSoup, SoupStrainer
 from ..util import db_session
 from ..models import Case
+from . import BaseParserError
 import re
 from datetime import datetime
 import inspect
 import sys
 
-class ParserError(Exception):
+class ParserError(BaseParserError):
     def __init__(self, message, content=None):
         self.message = message
         self.content = content
 
-class UnparsedDataError(Exception):
+class UnparsedDataError(BaseParserError):
     def __init__(self, message, content):
         self.message = message
         self.content = content

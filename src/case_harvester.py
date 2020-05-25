@@ -5,7 +5,7 @@ from mjcs.models.common import TableBase
 from mjcs.util import db_session, delete_latest_scrape
 from mjcs.spider import Spider
 from mjcs.scraper import Scraper
-from mjcs.parser import Parser, invoke_parser_lambda
+from mjcs.parser import Parser, load_failed_queue
 import boto3
 from datetime import datetime, timedelta
 import sys
@@ -234,44 +234,24 @@ def run_scraper(args):
     else:
         raise Exception("Must specify --service or --rescrape-start/--rescrape-end.")
 
-def parser_prompt(exception, case_number):
-    if type(exception) == NotImplementedError:
-        return 'delete'
-    print(exception)
-    while True:
-        print('Continue parsing?')
-        print('\t\t(y)es    - ignore error and continue parsing (default)')
-        print('\t\t(n)o     - stop parsing and raise exception')
-        print('\t\t(d)elete - delete scrape and remove from queue')
-        answer = input('Answer: (Y/n/d) ')
-        if answer == 'y' or answer == 'Y' or not answer:
-            return 'continue'
-        elif answer == 'n':
-            raise exception
-        elif answer == 'd':
-            with db_session() as db:
-                delete_latest_scrape(db, case_number)
-            return 'delete'
-        else:
-            print('Invalid answer')
-
 def run_parser(args):
-    on_error = None
-    if args.ignore_errors:
-        on_error = lambda e,c: 'delete'
-    elif args.prompt_on_error:
-        on_error = parser_prompt
-
-    parser = Parser(on_error, args.threads)
+    parser = Parser(args.ignore_errors, args.parallel)
 
     if args.failed_queue:
-        parser.parse_failed_queue(args.type)
-    elif args.invoke_lambda:
-        invoke_parser_lambda(args.type)
+        parser.parse_failed_queue()
     elif args.case:
         parser.parse_case(args.case)
-    else:
-        parser.parse_unparsed_cases(args.type)
+    elif args.load_failed_queue:
+        load_failed_queue(args.load_failed_queue, args.type)
+
+def failed_queue_validator(string):
+    try:
+        if string == 'all':
+            return string
+        elif int(string) > 0:
+            return int(string)
+    except ValueError:
+        raise argparse.ArgumentTypeError('Value must be a positive integer')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -335,19 +315,18 @@ if __name__ == '__main__':
         "Parse unparsed details from cases downloaded from the Maryland Judiciary Case Search")
     parser_parser.add_argument('--type', '-t', choices=['DSCR','DSK8','DSCIVIL','CC','ODYTRAF','ODYCRIM'],
         help="Only parse cases of this type (detail_loc)")
-    parser_parser.add_argument('--ignore-errors', action='store_true',
+    parser_parser.add_argument('--ignore-errors', action='store_true', default=False,
         help="Ignore parsing errors")
-    parser_parser.add_argument('--prompt-on-error', action='store_true',
-        help="Prompt for actions when an error occurs")
     parser_parser.add_argument('--failed-queue', action='store_true',
         help="Parse cases in the parser failed queue")
-    parser_parser.add_argument('--invoke-lambda', action='store_true',
-        help="Use Lambda function to parse all unparsed cases")
-    parser_parser.add_argument('--threads', type=int, default=1,
-        help="Number of threads for parsing unparsed cases (default: 1)")
+    parser_parser.add_argument('--parallel', '-p', action='store_true', default=False,
+        help=f"Parse cases in parallel with {os.cpu_count()} worker processes")
     parser_parser.add_argument('--case', '-c', help="Parse a specific case number")
     parser_parser.add_argument('--verbose', '-v', action='store_true',
         help="Print debug information")
+    parser_parser.add_argument('--load-failed-queue', nargs='?', const='all', type=failed_queue_validator, metavar='NCASES',
+        help="Load unparsed cases into the parser failed queue for later processing. \
+            Optional argument limits the number of cases sent to the queue.")
     parser_parser.set_defaults(func=run_parser)
 
     if os.getenv('DEV_MODE'):

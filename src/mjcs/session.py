@@ -43,7 +43,7 @@ class AsyncSession:
             )
         except (asks.errors.BadHttpResponse, h11.RemoteProtocolError, 
                     OSError, asks.errors.RequestTimeout) as e:
-            await trio.sleep(1)
+            await trio.sleep(30)
             logger.warning(f'{type(e).__name__}: {e}')
             # Replace current asks session object
             self.session = asks.Session(connections=1, persist_cookies=True)

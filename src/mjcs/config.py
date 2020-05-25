@@ -47,17 +47,22 @@ class Config:
             else:
                 raise Exception('Invalid environment %s' % environment)
 
+        # General options
         self.CASE_BATCH_SIZE = int(os.getenv('CASE_BATCH_SIZE',1000))
         self.QUERY_TIMEOUT = int(os.getenv('QUERY_TIMEOUT',135)) # seconds
+        self.QUEUE_WAIT = int(os.getenv('QUEUE_WAIT',5)) # seconds
+        self.USER_AGENT = os.getenv('USER_AGENT')
 
+        # Spider options
         self.SPIDER_DEFAULT_CONCURRENCY = int(os.getenv('SPIDER_DEFAULT_CONCURRENCY',10))
         self.SPIDER_DAYS_PER_QUERY = int(os.getenv('SPIDER_DAYS_PER_QUERY',16))
         self.SPIDER_UPDATE_FREQUENCY = int(os.getenv('SPIDER_UPDATE_FREQUENCY',900)) # seconds
 
+        # Scraper options
         self.SCRAPER_DEFAULT_CONCURRENCY = int(os.getenv('SCRAPER_DEFAULT_CONCURRENCY',10)) # must be multiple of 2
         self.SCRAPER_WAIT_INTERVAL = int(os.getenv('SCRAPER_WAIT_INTERVAL',600)) # 10 mins
-        self.QUEUE_WAIT = int(os.getenv('QUEUE_WAIT',5)) # seconds
         
+        # Infrastructure identifiers
         self.MJCS_DATABASE_URL = os.getenv('MJCS_DATABASE_URL')
         self.CASE_DETAILS_BUCKET = os.getenv('CASE_DETAILS_BUCKET')
         self.SPIDER_DYNAMODB_TABLE_NAME = os.getenv('SPIDER_DYNAMODB_TABLE_NAME')
@@ -71,8 +76,7 @@ class Config:
         self.VPC_SUBNET_2_ID = os.getenv('VPC_SUBNET_2_ID')
         self.ECS_CLUSTER_ARN = os.getenv('ECS_CLUSTER_ARN')
 
-        self.USER_AGENT = os.getenv('USER_AGENT')
-
+        # SQLAlchemy database engine
         if self.__getattribute__('MJCS_DATABASE_URL'):
             self.db_engine = create_engine(self.MJCS_DATABASE_URL)
 

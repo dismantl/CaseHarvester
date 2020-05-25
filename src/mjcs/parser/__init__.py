@@ -1,18 +1,23 @@
 from ..config import config
-from ..util import fetch_from_queue, NoItemsInQueue, db_session, cases_batch_filter, get_detail_loc, process_cases
+from ..util import (fetch_from_queue, NoItemsInQueue, db_session, cases_batch_filter, 
+    get_detail_loc, send_to_queue)
 from ..models import Case
 from sqlalchemy import and_
 import json
 import time
 import concurrent.futures
 import logging
+import queue
+from os import getpid
+from contextlib import contextmanager
+from multiprocessing import Pool, set_start_method
+from multiprocessing_logging import install_mp_handler
 
 logger = logging.getLogger(__name__)
+install_mp_handler(logger)
 
-# TODO move these to config
-CONCURRENCY_AVAILABLE = 87
-CONCURRENCY_RATIO = 0.9
-AVERAGE_PARSER_DURATION = 5 # seconds
+class BaseParserError(Exception):
+    pass
 
 # begin parser module exports
 from .DSCR import DSCRParser
@@ -31,16 +36,37 @@ parsers = [
     ('ODYCRIM',ODYCRIMParser)
 ]
 
-def parse_case_from_html(case_number, detail_loc, html):
-    for category,parser in parsers:
-        if detail_loc == category:
-            return parser(case_number, html).parse()
-    err = f'Unsupported case type {detail_loc} for case number {case_number}'
-    logger.debug(err)
-    raise NotImplementedError(err)
+def load_failed_queue(ncases, detail_loc=None):
+    if detail_loc:
+        filter = and_(Case.last_parse == None, Case.last_scrape != None,
+            Case.parse_exempt != True, Case.detail_loc == detail_loc)
+    else:
+        filter = and_(Case.last_parse == None, Case.last_scrape != None,
+            Case.parse_exempt != True, Case.detail_loc.in_([c for c,p in parsers]))
+    with db_session() as db:
+        logger.info('Generating batch queries')
+        batch_filters = cases_batch_filter(db, filter, limit=ncases if ncases != 'all' else None)
+    for batch_filter in batch_filters:
+        with db_session() as db:
+            logger.debug('Fetching batch of cases from database')
+            query = db.query(Case.case_number, Case.detail_loc).filter(batch_filter)
+            if ncases != 'all':
+                query = query.limit(ncases)
+            messages = [
+                json.dumps({
+                    'Records': [
+                        {
+                            'manual': {
+                                'case_number': case_number,
+                                'detail_loc': detail_loc
+                            }
+                        }
+                    ]
+                }) for case_number, detail_loc in query
+            ]
+            send_to_queue(config.parser_failed_queue, messages)
 
-def parse_case(case, detail_loc=None):
-    case_number = case['case_number'] if isinstance(case, dict) else case
+def parse_case(case_number, detail_loc=None):
     # check if parse_exempt before scraping
     with db_session() as db:
         if db.query(Case.parse_exempt).filter(Case.case_number == case_number).scalar() == True:
@@ -53,114 +79,92 @@ def parse_case(case, detail_loc=None):
         except KeyError:
             detail_loc = get_detail_loc(case_number)
     logger.debug(f'Parsing case {case_number}')
-    return parse_case_from_html(case_number, detail_loc, case_html)
-
-def invoke_parser_lambda(detail_loc=None):
-    if detail_loc:
-        filter = and_(Case.last_parse == None, Case.last_scrape != None,
-            Case.parse_exempt != True, Case.detail_loc == detail_loc)
-    else:
-        filter = and_(Case.last_parse == None, Case.last_scrape != None,
-            Case.parse_exempt != True, Case.detail_loc.in_([c for c,p in parsers]))
-    with db_session() as db:
-        num_cases = db.query(Case.case_number).filter(filter).count()
-        case_count = 1
-        for batch_filter in cases_batch_filter(db, filter):
-            for case_number,detail_loc in db.query(Case.case_number,Case.detail_loc).filter(batch_filter):
-                logger.debug(f'Invoking Parser lambda for case {case_number} ({case_count} of {num_cases})')
-                case_count += 1
-                config.parser_trigger.publish(
-                    Message='{"case_number":"%s","detail_loc":"%s"}' % (case_number,detail_loc)
-                )
-                time.sleep( AVERAGE_PARSER_DURATION / ( CONCURRENCY_AVAILABLE * CONCURRENCY_RATIO ) ) # so lambda doesn't get throttled
+    for category,parser in parsers:
+        if detail_loc == category:
+            return parser(case_number, case_html).parse()
+    err = f'Unsupported case type {detail_loc} for case number {case_number}'
+    logger.debug(err)
+    raise NotImplementedError(err)
 
 class Parser:
-    def __init__(self, on_error=None, threads=1):
-        self.on_error = on_error
-        self.threads = threads
+    def __init__(self, ignore_errors=False, parallel=False):
+        self.ignore_errors = ignore_errors
+        self.parallel = parallel
 
-    def parse_case(self, case_number):
-        return parse_case(case_number)
+    def parse_case(self, case_number, detail_loc=None):
+        logger.debug(f'Worker {getpid()} parsing {case_number} of type {detail_loc}')
+        try:
+            parse_case(case_number, detail_loc)
+        except BaseParserError as e:
+            logger.error(f'Error parsing case {case_number} (http://casesearch.courts.state.md.us/casesearch/inquiryDetail.jis?caseId={case_number}&detailLoc={detail_loc}): {e}', exc_info=not self.ignore_errors)
+            if not self.ignore_errors:
+                raise
 
-    def parse_unparsed_cases(self, detail_loc=None):
-        if detail_loc:
-            filter = and_(Case.last_parse == None, Case.last_scrape != None,
-                Case.parse_exempt != True, Case.detail_loc == detail_loc)
+    def parse_failed_queue(self):
+        logger.info('Parsing cases from failed queue')
+        if self.parallel:
+            set_start_method('fork')  # multiprocessing logging won't work with the spawn method
+            # start worker processes according to available CPU resources
+            with Pool() as worker_pool:
+                jobs = []
+                while True:
+                    try:
+                        cases = self.__fetch_cases_from_failed_queue()
+                    except NoItemsInQueue:
+                        logger.info('No items found in parser failed queue')
+                        break
+                    for case_number, detail_loc, receipt_handle in cases:    
+                        logger.debug(f'Dispatching {case_number} {detail_loc} to worker')
+                        def callback_wrapper(case_number, receipt_handle):
+                            def callback(unused):
+                                logger.debug(f'Deleting {case_number} from parser failed queue')
+                                config.parser_failed_queue.delete_messages(Entries=[{'Id': 'unused', 'ReceiptHandle': receipt_handle}])
+                            return callback
+                        callback = callback_wrapper(case_number, receipt_handle)
+                        job = worker_pool.apply_async(self.parse_case, (case_number, detail_loc), callback=callback, error_callback=callback)
+                        jobs.append(job)
+                    # Prune completed jobs from active list
+                    for job in jobs:
+                        try:
+                            if job.ready():
+                                jobs.remove(job)
+                        except ValueError:
+                            # Job not finished, let it keep running
+                            pass
+                logger.info('Wait for remaining jobs to complete before exiting')
+                for job in jobs:
+                    job.wait(timeout=60)
         else:
-            filter = and_(Case.last_parse == None, Case.last_scrape != None,
-                Case.parse_exempt != True, Case.detail_loc.in_([c for c,p in parsers]))
-        with db_session() as db:
-            logger.info('Generating batch queries')
-            batch_filters = cases_batch_filter(db, filter)
-        for batch_filter in batch_filters:
-            with db_session() as db:
-                logger.debug('Fetching batch of cases from database')
-                case_numbers = [c for c, in db.query(Case.case_number).filter(batch_filter)]
-                logger.debug('Done.')
-            process_cases(parse_case, case_numbers, None, self.on_error, self.threads)
-
-    def parse_failed_queue(self, detail_loc=None):
-        counter = {
-            'total': 0,
-            'count': 0
-        }
-
-        while True:
-            queue_items = fetch_from_queue(config.parser_failed_queue)
-            if not queue_items:
-                logger.info("No items found in queue")
-                break
-            counter['total'] += len(queue_items)
-
-            missing_case_type = {}
-            cases = []
-            case_number_to_item = {}
-            for item in queue_items:
-                record = json.loads(item.body)['Records'][0]
-                if 's3' in record:
-                    case_number = record['s3']['object']['key']
-                    if detail_loc:
-                        missing_case_type[case_number] = item
-                    else:
-                        cases.append({
-                            'case_number': case_number,
-                            'item': item
-                        })
-                        case_number_to_item[case_number] = item
-                elif 'Sns' in record:
-                    msg = json.loads(record['Sns']['Message'])
-                    case_number = msg['case_number']
-                    case_type = msg['detail_loc']
-                    if not detail_loc or detail_loc == case_type:
-                        cases.append({
-                            'case_number': case_number,
-                            'item': item
-                        })
-                        case_number_to_item[case_number] = item
-
-            if missing_case_type:
-                with db_session() as db:
-                    query = db.query(Case.case_number,Case.detail_loc).filter(Case.case_number.in_([x for x in missing_case_type.keys()]))
-                    for case_number, case_type in query:
-                        if detail_loc == case_type:
-                            cases.append({
-                                'case_number': case_number,
-                                'item': missing_case_type[case_number]
-                            })
-                            case_number_to_item[case_number] = missing_case_type[case_number]
-
-            def queue_on_success(case):
-                case['item'].delete()
-            def queue_on_error(exception, case):
-                if self.on_error:
-                    action = self.on_error(exception, case['case_number'])
-                    if action == 'delete':
-                        case['item'].delete()
-                    return action
-                raise exception
-
-            process_cases(parse_case, cases, queue_on_success, queue_on_error, self.threads, counter)
-
-        logger.info(f"Total number of parsed cases: {counter['count']}")
-        if counter['count'] == 0:
+            while True:
+                try:
+                    cases = self.__fetch_cases_from_failed_queue()
+                except NoItemsInQueue:
+                    logger.info('No items found in parser failed queue')
+                    break
+                for case_number, detail_loc, receipt_handle in cases:
+                    self.parse_case(case_number, detail_loc)
+                    config.parser_failed_queue.delete_messages(Entries=[{'Id': 'unused', 'ReceiptHandle': receipt_handle}])
+    
+    def __fetch_cases_from_failed_queue(self):
+        logger.debug('Requesting 10 items from parser failed queue')
+        queue_items = config.parser_failed_queue.receive_messages(
+            WaitTimeSeconds = config.QUEUE_WAIT,
+            MaxNumberOfMessages = 10
+        )
+        if not queue_items:
             raise NoItemsInQueue
+        cases = []
+        for item in queue_items:
+            record = json.loads(item.body)['Records'][0]
+            if 's3' in record:
+                case_number = record['s3']['object']['key']
+                detail_loc = None
+            elif 'Sns' in record:
+                msg = json.loads(record['Sns']['Message'])
+                case_number = msg['case_number']
+                detail_loc = msg['detail_loc']
+            elif 'manual' in record:
+                case_number = record['manual']['case_number']
+                detail_loc = record['manual']['detail_loc']
+            cases.append((case_number, detail_loc, item.receipt_handle))
+        return cases

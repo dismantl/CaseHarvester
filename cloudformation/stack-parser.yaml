@@ -80,7 +80,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       MessageRetentionPeriod: 1209600
-      VisibilityTimeout: 300
+      VisibilityTimeout: 30
       QueueName: !Sub mjcs_parser_failed_queue_${EnvironmentType}
 
 Outputs:
