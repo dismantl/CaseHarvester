@@ -1,5 +1,5 @@
 from .config import config
-from .util import db_session, split_date_range, chunks, JSONDatetimeEncoder, float_to_decimal, decimal_to_float
+from .util import db_session, split_date_range, send_to_queue, JSONDatetimeEncoder, float_to_decimal, decimal_to_float
 from .models import Case
 from .session import AsyncSessionPool
 import trio
@@ -372,7 +372,7 @@ class SearchNode:
         return 's3://'
 
     def is_root(self):
-        return not self.parent and not self.search_string
+        return not self.parent
 
     def export(self):
         assert self.is_root()
@@ -578,18 +578,14 @@ class SearchNode:
             db.bulk_save_objects(new_cases)
 
             # Then send them to the scraper queue
-            entries = []
-            for idx, case in enumerate(new_cases):
-                entries.append({
-                    'Id': str(idx),
-                    'MessageBody': json.dumps({
-                        'case_number': case.case_number,
-                        'loc': case.loc,
-                        'detail_loc': case.detail_loc
-                    })
-                })
-            for chunk in chunks(entries, 10):  # SQS limit of 10/request
-                config.scraper_queue.send_messages(Entries=chunk)
+            messages = [
+                json.dumps({
+                    'case_number': case.case_number,
+                    'loc': case.loc,
+                    'detail_loc': case.detail_loc
+                }) for case in new_cases
+            ]
+            send_to_queue(config.scraper_queue, messages)
             
         if len(new_cases) > 0:
             logger.debug(f"{self.id} added {len(new_cases)} new cases")

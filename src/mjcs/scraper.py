@@ -1,6 +1,6 @@
 from .config import config
 from .session import AsyncSessionPool
-from .util import db_session, get_detail_loc, chunks
+from .util import db_session, get_detail_loc, send_to_queue
 from .models import ScrapeVersion, Scrape, Case
 from hashlib import sha256
 import logging
@@ -89,23 +89,15 @@ class Scraper:
         logger.info(f'Found {len(cases)} cases in time range')
 
         # add cases to scraper queue
-        count = 0
-        for chunk in chunks(cases, 10):  # can only do 10 messages per batch request
-            count += len(chunk)
-            Entries=[
-                {
-                    'Id': str(idx),
-                    'MessageBody': json.dumps({
-                        'case_number': case[0],
-                        'loc': case[1],
-                        'detail_loc': case[2]
-                    })
-                } for idx, case in enumerate(chunk)
-            ]
-            config.scraper_queue.send_messages(
-                Entries=Entries
-            )
-        logger.info(f'Submitted {count} cases for rescraping')
+        messages = [
+            json.dumps({
+                'case_number': case[0],
+                'loc': case[1],
+                'detail_loc': case[2]
+            }) for case in cases
+        ]
+        send_to_queue(config.scraper_queue, messages)
+        logger.info(f'Submitted {len(cases)} cases for rescraping')
     
     async def __start_service(self):
         logger.info('Initiating scraper service.')

@@ -45,13 +45,25 @@ def fetch_from_queue(queue, nitems=100):
                 queue_items += result
     return queue_items
 
+def send_to_queue(queue, items):
+    # Can only send <= 10 items at a time
+    chunks = [items[i:i + 10] for i in range(0, len(items), 10)]
+    for chunk in chunks:
+        Entries = [
+            {
+                'Id': str(idx),
+                'MessageBody': item
+            } for idx, item in enumerate(chunk)
+        ]
+        queue.send_messages(Entries=Entries)
+
 def total_cases(db):
     return db.query(Case).count()
 
-def cases_batch_filter(db, filter=None, batch_size=None):
+def cases_batch_filter(db, filter=None, batch_size=None, limit=None):
     if not batch_size:
         batch_size = config.CASE_BATCH_SIZE
-    for whereclause in column_windows(db, Case.case_number, batch_size, filter=filter):
+    for whereclause in column_windows(db, Case.case_number, batch_size, filter, limit):
         yield whereclause
 
 def cases_batch(db, batch_filter):
@@ -153,20 +165,12 @@ def db_session():
 
 # https://stackoverflow.com/questions/7389759/memory-efficient-built-in-sqlalchemy-iterator-generator
 # Adapted from https://bitbucket.org/zzzeek/sqlalchemy/wiki/UsageRecipes/WindowedRangeQuery
-def column_windows(session, column, windowsize, filter=None):
+def column_windows(session, column, windowsize, filter=None, limit=None):
     """Return a series of WHERE clauses against
     a given column that break it into windows.
 
-    Result is an iterable of tuples, consisting of
-    ((start, end), whereclause), where (start, end) are the ids.
-
     Requires a database that supports window functions,
     i.e. Postgresql, SQL Server, Oracle.
-
-    Enhance this yourself !  Add a "where" argument
-    so that windows of just a subset of rows can
-    be computed.
-
     """
     def int_for_range(start_id, end_id):
         if filter is not None:
@@ -190,21 +194,31 @@ def column_windows(session, column, windowsize, filter=None):
             else:
                 return column>=start_id
 
+    # Use the row_number() window function to order and number all rows
     q = session.query(
                 column,
                 func.row_number().\
                         over(order_by=column).\
                         label('rownum')
                 )
+    
+    # Add any additional filters that will be applied before the window function
     if filter is not None: # http://docs.sqlalchemy.org/en/latest/changelog/migration_06.html#an-important-expression-language-gotcha
         q = q.filter(filter)
+    
+    # Limit the inner subquery where rows are sorted and numbered
+    if limit:
+        q = q.limit(limit)
+
+    # Create outer query selecting from inner subquery
     q = q.from_self(column)
 
+    # Collect the column IDs for the rows at the boundary of each window
     if windowsize > 1:
-        q = q.filter(sqlalchemy.text("rownum %% %d=1" % windowsize))
-
+        q = q.filter(sqlalchemy.text(f'rownum % {windowsize}=1'))
     intervals = [id for id, in q]
 
+    # Yield WHERE clauses using column ID ranges 
     while intervals:
         start = intervals.pop(0)
         if intervals:
@@ -276,10 +290,6 @@ def split_date_range(start_date, end_date):
         range1 = [start_date, start_date + timedelta(int(days_diff / 2))]
         range2 = [start_date + timedelta(math.ceil((days_diff + 1) / 2)), end_date]
     return range1, range2
-
-def chunks(l, n):
-    for i in range(0, len(l), n):
-        yield l[i:i + n]
 
 def float_to_decimal(obj):
     if isinstance(obj, float):
