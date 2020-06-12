@@ -39,22 +39,24 @@ def run_db_init(args):
 
     if args.create_tables_only:
         create_tables()
-        setup_redactions(db_url)
+        run_db_init_scripts(db_url)
     elif args.write_env_only:
         write_env_file(args.environment, args.environment_short, exports, args.db_name, db_username, db_password)
     else:
         create_database_and_users(db_hostname, args.db_name, secrets)
         write_env_file(args.environment, args.environment_short, exports, args.db_name, db_username, db_password)
         create_tables()
-        setup_redactions(db_url)
+        run_db_init_scripts(db_url)
 
-def setup_redactions(db_url):
-    print('Running redactions SQL script')
+def run_db_init_scripts(db_url):
     conn = create_engine(db_url).connect()
-    script_path = os.path.join(os.path.dirname(__file__), 'redactions.sql')
-    with open(script_path, 'r') as script:
-        commands = script.read()
-    conn.execute(text(commands))
+    scripts_path = os.path.join(os.path.dirname(__file__), '..', 'db', 'sql')
+    for file in os.listdir(scripts_path):
+        if file.endswith('.sql'):
+            print(f'Running SQL initialization script {file}')
+            with open(os.path.join(scripts_path, file), 'r') as script:
+                commands = script.read()
+            conn.execute(text(commands))
     conn.close()
 
 def create_database_and_users(db_hostname, db_name, secrets):
@@ -227,12 +229,14 @@ def run_scraper(args):
     scraper = Scraper(args.concurrency)
     if args.case:
         scraper.scrape_specific_case(args.case)
+    elif args.stale:
+        scraper.rescrape_stale()
     elif args.rescrape_end:
         scraper.rescrape(days_ago_start=args.rescrape_start, days_ago_end=args.rescrape_end)
     elif args.service:
         scraper.start_service()
     else:
-        raise Exception("Must specify --service or --rescrape-start/--rescrape-end.")
+        raise Exception("Must specify --service, --stale, or --rescrape-start/--rescrape-end.")
 
 def run_parser(args):
     parser = Parser(args.ignore_errors, args.parallel)
@@ -303,6 +307,8 @@ if __name__ == '__main__':
     parser_scraper.add_argument('--case', '-c', help="Scrape specific case number")
     parser_scraper.add_argument('--verbose', '-v', action='store_true',
         help="Print debug information")
+    parser_scraper.add_argument('--stale', action='store_true',
+        help='Send stale cases to scraper queue based on scrape age')
     parser_scraper.add_argument('--rescrape-start', type=int, default=0,
         help="Send existing cases to scraper queue for rescraping, starting this many days ago (default 0)")
     parser_scraper.add_argument('--rescrape-end', type=int,

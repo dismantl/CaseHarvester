@@ -1,6 +1,6 @@
 from .config import config
 from .session import AsyncSessionPool
-from .util import db_session, get_detail_loc, send_to_queue
+from .util import db_session, get_detail_loc, send_to_queue, cases_batch_filter
 from .models import ScrapeVersion, Scrape, Case
 from hashlib import sha256
 import logging
@@ -11,10 +11,9 @@ import json
 import trio
 import asks
 from datetime import datetime, timedelta
+from sqlalchemy import and_, or_, text
 
 logger = logging.getLogger(__name__)
-
-SQS_REQUEST_MAX = 10
 
 class ScraperItem:
     def __init__(self, case_number, detail_loc):
@@ -73,6 +72,44 @@ class Scraper:
             await self.__scrape_case(case_number, detail_loc)
         trio.run(__scrape_specific_case, case_number)
     
+    def rescrape_stale(self, days=None):
+        filter = and_(
+            and_(
+                text("cases.status NOT ILIKE '%inactive%'"),
+                or_(
+                    text("cases.status ILIKE '%active%'"),
+                    text("cases.status ILIKE '%open%'")
+                )
+            ),
+            text("cases.filing_date < current_date"),  # Sometimes MJCS lists filing dates in the future
+            or_(
+                text(f"age_days(cases.last_scrape) > ceiling({config.RESCRAPE_COEFFICIENT}*age_days(cases.filing_date))"),
+                text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE}")  # age_days function is defined in db/sql/functions.sql
+            )
+        )
+        if days is not None:
+            filter = and_(filter, text(f"age(filing_date) < '{days} days'"))
+        logger.info('Generating batch queries')
+        with db_session() as db:
+            batch_filters = cases_batch_filter(db, filter)
+        total = 0
+        for batch_filter in batch_filters:
+            logger.debug('Fetching batch of cases from database')
+            with db_session() as db:
+                cases = db.query(Case.case_number, Case.detail_loc).filter(batch_filter).all()
+            
+            # add cases to scraper queue
+            messages = [
+                json.dumps({
+                    'case_number': case[0],
+                    'detail_loc': case[1]
+                }) for case in cases
+            ]
+            send_to_queue(config.scraper_queue, messages)
+            logger.info(f'Submitted {len(cases)} cases for rescraping')
+            total += len(cases)
+        logger.info(f"Submitted a total of {total} cases for rescraping")
+
     def rescrape(self, days_ago_end, days_ago_start=0):
         # calculate date range
         today = datetime.now().date()
@@ -82,7 +119,7 @@ class Scraper:
 
         # query DB for cases filed in range
         with db_session() as db:
-            cases = db.query(Case.case_number, Case.loc, Case.detail_loc).\
+            cases = db.query(Case.case_number, Case.detail_loc).\
                 filter(Case.filing_date >= date_start).\
                 filter(Case.filing_date < date_end).\
                 all()
@@ -92,8 +129,7 @@ class Scraper:
         messages = [
             json.dumps({
                 'case_number': case[0],
-                'loc': case[1],
-                'detail_loc': case[2]
+                'detail_loc': case[1]
             }) for case in cases
         ]
         send_to_queue(config.scraper_queue, messages)
@@ -113,10 +149,10 @@ class Scraper:
     async def __queue_manager(self, nursery):
         while True:
             if len(nursery.child_tasks) < 100:
-                logger.debug(f'Requesting {SQS_REQUEST_MAX} items from scraper queue')
+                logger.debug('Requesting 10 items from scraper queue')
                 queue_items = config.scraper_queue.receive_messages(
                     WaitTimeSeconds = config.QUEUE_WAIT,
-                    MaxNumberOfMessages = SQS_REQUEST_MAX
+                    MaxNumberOfMessages = 10
                 )
                 if queue_items:
                     for item in queue_items:
@@ -198,25 +234,32 @@ class Scraper:
             if latest_sha256 != new_sha256:
                 logger.info(f"Found new version of case {case_number}, updating...")
                 add = True
-
-        if add:
-            timestamp = datetime.now()
-            obj = config.case_details_bucket.put_object(
-                Body = html,
-                Key = case_number,
-                Metadata = {
-                    'timestamp': timestamp.isoformat(),
-                    'detail_loc': detail_loc
-                }
+        
+        timestamp = datetime.now()
+        with db_session() as db:
+            # last_scrape gets updated on a successful scrape, even if new version not added
+            db.execute(
+                Case.__table__.update()\
+                    .where(Case.case_number == case_number)\
+                    .values(last_scrape = timestamp)
             )
-            try:
-                version_id = obj.version_id
-            except botocore.exceptions.ClientError:
-                # Sometimes the version_id property isn't available from S3 when we first try to access it, so wait and try again
-                await trio.sleep(60)
-                version_id = obj.version_id
-            
-            with db_session() as db:
+
+            if add:
+                obj = config.case_details_bucket.put_object(
+                    Body = html,
+                    Key = case_number,
+                    Metadata = {
+                        'timestamp': timestamp.isoformat(),
+                        'detail_loc': detail_loc
+                    }
+                )
+                try:
+                    version_id = obj.version_id
+                except botocore.exceptions.ClientError:
+                    # Sometimes the version_id property isn't available from S3 when we first try to access it, so wait and try again
+                    await trio.sleep(60)
+                    version_id = obj.version_id
+                
                 scrape_version = ScrapeVersion(
                     s3_version_id = version_id,
                     case_number = case_number,
@@ -232,8 +275,3 @@ class Scraper:
                 db.add(scrape_version)
                 db.flush() # to satisfy foreign key constraint of scrapes
                 db.add(scrape)
-                db.execute(
-                    Case.__table__.update()\
-                        .where(Case.case_number == case_number)\
-                        .values(last_scrape = timestamp)
-                )
