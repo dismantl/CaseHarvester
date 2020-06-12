@@ -27,13 +27,13 @@ The parser component is a Lambda function that parses the fields of information 
 
 ![Parser diagram](./img/parser.svg)
 
-Case details in the MJCS are displayed differently depending on the county and type of case (e.g. district vs circuit court, criminal vs civil, etc.). MJCS assigns a code to each of these different case types, which can be thought of as schemas or formats for rendering case details. Case Harvester currently has [parsers](src/mjcs/parser) for the following schemas:
-* CC: Circuit court civil cases (Baltimore City)
-* DSCIVIL: District court civil cases (Baltimore City)
-* DSCR: District court criminal cases (Baltimore City)
-* DSK8: Circuit court criminal cases (Baltimore City)
-* ODYCRIM: Criminal cases (outside Baltimore City)
-* ODYTRAF: Traffic cases (outside Baltimore City)
+Case details in the MJCS are formatted differently depending on the county and type of case (e.g. district vs circuit court, criminal vs civil, etc.), and whether it is in one of the new [MDEC](https://mdcourts.gov/mdec/about)-compatible formats. MJCS [assigns a code to each of these different case types](https://www.muckrock.com/foi/maryland-154/case-search-court-classifications-56516/#comm-564971). While the case details for all discovered cases are stored in S3, Case Harvester only has full parser support for the following types of cases (see [issue #10](https://github.com/dismantl/CaseHarvester/issues/10)):
+* CC: Circuit Court Civil Cases
+* DSCIVIL: District Court Civil Cases
+* DSCR: District Court Criminal Cases
+* DSK8: Baltimore City Criminal Cases
+* ODYCRIM: MDEC Criminal Cases
+* ODYTRAF: MDEC Traffic Cases
 
 Each different parser breaks down the case details to a granular level and stores the data in a number of database tables. This [schematic diagram](https://disman.tl/caseharvester/relationships.html) illustrates how this data is represented in the database.
 
