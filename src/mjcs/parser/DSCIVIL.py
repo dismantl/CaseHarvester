@@ -4,6 +4,10 @@ from .base import CaseDetailsParser, consumer, ParserError
 import re
 
 class DSCIVILParser(CaseDetailsParser):
+    inactive_statuses = [
+        'CLOSED'
+    ]
+
     def header(self, soup):
         header = soup.find('div',class_='Header')
         header.decompose()
@@ -33,6 +37,7 @@ class DSCIVILParser(CaseDetailsParser):
             case.district_code, case.location_code = district_location_codes.replace(' ','').split('/')
         case.filing_date_str = self.value_column(t2,'Filing Date:',ignore_missing=True)
         case.case_status = self.value_column(t2,'Case Status:',ignore_missing=True)
+        self.case_status = case.case_status
         db.add(case)
 
     #########################################################

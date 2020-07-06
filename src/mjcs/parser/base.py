@@ -23,6 +23,8 @@ def consumer(func):
     return func
 
 class CaseDetailsParser(ABC):
+    inactive_statuses = []
+
     def __init__(self, case_number, html):
         # <body> should only have a single child div that holds the data
         self.case_number = case_number
@@ -31,6 +33,7 @@ class CaseDetailsParser(ABC):
         if len(self.soup.contents) != 1 or not self.soup.div:
             raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
+        self.case_status = None
 
     def parse(self):
         # All parsing is done within a single database transaction, so no partial data is added or destroyed
@@ -65,8 +68,13 @@ class CaseDetailsParser(ABC):
         db.execute(
             Case.__table__.update()\
                 .where(Case.case_number == self.case_number)\
-                .values(last_parse = datetime.now())
+                .values(last_parse = datetime.now(), active = self.is_active())
         )
+
+    def is_active(self):
+        if self.case_status and self.case_status not in self.inactive_statuses:
+            return True
+        return False
 
     @abstractmethod
     def header(self, soup):

@@ -9,6 +9,14 @@ from bs4 import BeautifulSoup, SoupStrainer
 
 # Note that consumers may not be called in order
 class ODYCRIMParser(CaseDetailsParser):
+    inactive_statuses = [
+        'Citation Voided',
+        'Inactive / Incompetency',
+        'Closed / Inactive',
+        'Closed',
+        'Completed'
+    ]
+
     def __init__(self, case_number, html):
         self.case_number = case_number
         strainer = SoupStrainer('div',class_='BodyWindow')
@@ -44,6 +52,7 @@ class ODYCRIMParser(CaseDetailsParser):
         case.case_type = self.value_first_column(case_info_table,'Case Type:')
         case.filing_date_str = self.value_first_column(case_info_table,'Filing Date:')
         case.case_status = self.value_first_column(case_info_table,'Case Status:')
+        self.case_status = case.case_status
         case.tracking_numbers = self.value_first_column(case_info_table,r'Tracking Number\(s\):')
         db.add(case)
 

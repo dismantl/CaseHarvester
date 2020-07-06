@@ -8,6 +8,15 @@ from bs4 import BeautifulSoup, SoupStrainer
 
 # Note that consumers may not be called in order
 class ODYTRAFParser(CaseDetailsParser):
+    inactive_statuses = [
+        'Citation Voided',
+        'Inactive / Incompetency',
+        'Closed / Inactive',
+        'Closed',
+        'Expunged',
+        'Inactive'
+    ]
+
     def __init__(self, case_number, html):
         self.case_number = case_number
         strainer = SoupStrainer('div',class_='BodyWindow')
@@ -49,6 +58,7 @@ class ODYTRAFParser(CaseDetailsParser):
         case.officer_id = self.value_first_column(case_info_table,'Officer ID:')
         case.officer_name = self.value_column(case_info_table,'Officer Name:')
         case.case_status = self.value_first_column(case_info_table,'Case Status:')
+        self.case_status = case.case_status
         db.add(case)
 
     #########################################################

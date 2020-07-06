@@ -62,6 +62,7 @@ class Config:
         self.SCRAPER_DEFAULT_CONCURRENCY = int(os.getenv('SCRAPER_DEFAULT_CONCURRENCY',10)) # must be multiple of 2
         self.SCRAPER_WAIT_INTERVAL = int(os.getenv('SCRAPER_WAIT_INTERVAL',600)) # 10 mins
         self.MAX_SCRAPE_AGE = int(os.getenv('MAX_SCRAPE_AGE', 14)) # days
+        self.MAX_SCRAPE_AGE_INACTIVE = int(os.getenv('MAX_SCRAPE_AGE_INACTIVE', 60)) # days
         self.RESCRAPE_COEFFICIENT = float(os.getenv('RESCRAPE_COEFFICIENT', self.MAX_SCRAPE_AGE / (365 * 4 + 1) ))
         
         # Infrastructure identifiers

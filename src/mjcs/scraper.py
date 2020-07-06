@@ -73,18 +73,24 @@ class Scraper:
         trio.run(__scrape_specific_case, case_number)
     
     def rescrape_stale(self, days=None):
-        filter = and_(
+        filter = or_(
+            text("cases.last_scrape is null"),
             and_(
-                text("cases.status NOT ILIKE '%inactive%'"),
+                text("cases.active = True"),
                 or_(
-                    text("cases.status ILIKE '%active%'"),
-                    text("cases.status ILIKE '%open%'")
+                    text("cases.filing_date > current_date"),  # Sometimes MJCS lists filing dates in the future
+                    or_(
+                        text(f"age_days(cases.last_scrape) > ceiling({config.RESCRAPE_COEFFICIENT}*age_days(cases.filing_date))"),
+                        text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE}")  # age_days function is defined in db/sql/functions.sql
+                    )
                 )
             ),
-            text("cases.filing_date < current_date"),  # Sometimes MJCS lists filing dates in the future
-            or_(
-                text(f"age_days(cases.last_scrape) > ceiling({config.RESCRAPE_COEFFICIENT}*age_days(cases.filing_date))"),
-                text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE}")  # age_days function is defined in db/sql/functions.sql
+            and_(
+                text("cases.active = False"),
+                or_(
+                    text("cases.filing_date > current_date"),
+                    text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE_INACTIVE}")
+                )
             )
         )
         if days is not None:

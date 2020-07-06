@@ -5,6 +5,11 @@ from .base import CaseDetailsParser, consumer, ParserError
 import re
 
 class DSK8Parser(CaseDetailsParser):
+    inactive_statuses = [
+        'INACTIVE',
+        'CLOSED'
+    ]
+
     def header(self, soup):
         header = soup.find('div',class_='Header')
         header.decompose()
@@ -31,6 +36,7 @@ class DSK8Parser(CaseDetailsParser):
         if case_number != self.case_number:
             raise ParserError('Case number "%s" in case details page does not match given: %s' % (case_number, self.case_number))
         case.case_status = self.value_column(t1,'Case Status:')
+        self.case_status = case.case_status
         case.status_date_str = self.value_first_column(t1, 'Status Date:')
 
         case.tracking_number = self.value_first_column(t2,'Tracking Number:',ignore_missing=True)

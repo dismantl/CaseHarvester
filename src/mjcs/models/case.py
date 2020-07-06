@@ -22,3 +22,4 @@ class Case(TableBase):
     last_parse = Column(DateTime, nullable=True)
     scrape_exempt = Column(Boolean, default=False)
     parse_exempt = Column(Boolean, default=False)
+    active = Column(Boolean, default=False)

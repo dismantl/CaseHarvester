@@ -82,8 +82,11 @@ if context.is_offline_mode():
 else:
     run_migrations_online()
 
-# Run redactions after every database update
-print('Running redactions SQL script')
-with open(os.path.join(src_path, 'redactions.sql'), 'r') as setup_file:
-    user_reset_commands = setup_file.read()
-my_config.db_engine.execute(text(user_reset_commands))
+# Run idempotent SQL scripts
+scripts_path = os.path.join(os.path.dirname(__file__), 'sql')
+for file in os.listdir(scripts_path):
+    if file.endswith('.sql'):
+        print(f'Running SQL initialization script {file}')
+        with open(os.path.join(scripts_path, file), 'r') as script:
+            commands = script.read()
+            my_config.db_engine.execute(text(commands))

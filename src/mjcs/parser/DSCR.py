@@ -5,6 +5,11 @@ import re
 
 # Note that consumers may not be called in order
 class DSCRParser(CaseDetailsParser):
+    inactive_statuses = [
+        'INACTIVE DUE TO INCOMPETENCY',
+        'CLOSED'
+    ]
+
     def header(self, soup):
         header = soup.find('div',class_='Header')
         header.decompose()
@@ -36,6 +41,7 @@ class DSCRParser(CaseDetailsParser):
         case.document_type = self.value_first_column(case_info_table,'Document Type:',ignore_missing=True)
         case.issued_date_str = self.value_column(case_info_table,'Issued Date:',ignore_missing=True)
         case.case_status = self.value_first_column(case_info_table,'Case Status:',ignore_missing=True)
+        self.case_status = case.case_status
         case.case_disposition = self.value_column(case_info_table,'Case Disposition:',ignore_missing=True)
         db.add(case)
 

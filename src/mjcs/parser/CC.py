@@ -7,6 +7,10 @@ from .base import CaseDetailsParser, consumer, ParserError
 import re
 
 class CCParser(CaseDetailsParser):
+    inactive_statuses = [
+        'Closed/Inactive'
+    ]
+
     def header(self, soup):
         header = soup.find('div',class_='Header')
         header.decompose()
@@ -33,6 +37,7 @@ class CCParser(CaseDetailsParser):
         case.case_type = self.value_first_column(t1,'Case Type:',ignore_missing=True)
         case.filing_date_str = self.value_column(t1,'Filing Date:',ignore_missing=True)
         case.case_status = self.value_first_column(t1,'Case Status:',ignore_missing=True)
+        self.case_status = case.case_status
         case.case_disposition = self.value_first_column(t1,'Case Disposition:',ignore_missing=True)
         case.disposition_date_str = self.value_column(t1,'Disposition Date:',ignore_missing=True)
         db.add(case)
