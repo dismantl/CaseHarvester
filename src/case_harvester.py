@@ -125,7 +125,6 @@ def write_env_file(env_long, env_short, exports, db_name, username, password):
         f.write(f"SPIDER_RUNS_BUCKET_NAME={get_export_val(exports,env_short,'SpiderRunsBucketName')}\n")
         f.write(f"SPIDER_TASK_DEFINITION_ARN={get_export_val(exports,env_short,'SpiderTaskDefinitionArn')}\n")
         f.write(f"SCRAPER_QUEUE_NAME={get_export_val(exports,env_short,'ScraperQueueName')}\n")
-        f.write(f"SCRAPER_FAILED_QUEUE_NAME={get_export_val(exports,env_short,'ScraperFailedQueueName')}\n")
         f.write(f"PARSER_FAILED_QUEUE_NAME={get_export_val(exports,env_short,'ParserFailedQueueName')}\n")
         f.write(f"PARSER_TRIGGER_ARN={get_export_val(exports,env_short,'ParserTriggerArn')}\n")
         f.write(f"VPC_SUBNET_1_ID={get_export_val(exports,env_short,'VPCPublicSubnet1Id')}\n")

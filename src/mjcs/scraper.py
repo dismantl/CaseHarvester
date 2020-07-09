@@ -57,7 +57,7 @@ class ExpiredSession(Exception):
 
 class Scraper:
     def __init__(self, concurrency=None):
-        self.cases_scraped = 0
+        self.successful_scrapes = 0
 
         # Set up concurrency
         self.concurrency = concurrency or config.SCRAPER_DEFAULT_CONCURRENCY
@@ -73,23 +73,26 @@ class Scraper:
         trio.run(__scrape_specific_case, case_number)
     
     def rescrape_stale(self, days=None):
-        filter = or_(
-            text("cases.last_scrape is null"),
-            and_(
-                text("cases.active = True"),
-                or_(
-                    text("cases.filing_date > current_date"),  # Sometimes MJCS lists filing dates in the future
+        filter = and_(
+            text("cases.scrape_exempt = False"),
+            or_(
+                text("cases.last_scrape is null"),
+                and_(
+                    text("cases.active = True"),
                     or_(
-                        text(f"age_days(cases.last_scrape) > ceiling({config.RESCRAPE_COEFFICIENT}*age_days(cases.filing_date))"),
-                        text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE}")  # age_days function is defined in db/sql/functions.sql
+                        text("cases.filing_date > current_date"),  # Sometimes MJCS lists filing dates in the future
+                        or_(
+                            text(f"age_days(cases.last_scrape) > ceiling({config.RESCRAPE_COEFFICIENT}*age_days(cases.filing_date))"),
+                            text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE}")  # age_days function is defined in db/sql/functions.sql
+                        )
                     )
-                )
-            ),
-            and_(
-                text("cases.active = False"),
-                or_(
-                    text("cases.filing_date > current_date"),
-                    text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE_INACTIVE}")
+                ),
+                and_(
+                    text("cases.active = False"),
+                    or_(
+                        text("cases.filing_date > current_date"),
+                        text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE_INACTIVE}")
+                    )
                 )
             )
         )
@@ -128,6 +131,7 @@ class Scraper:
             cases = db.query(Case.case_number, Case.detail_loc).\
                 filter(Case.filing_date >= date_start).\
                 filter(Case.filing_date < date_end).\
+                filter(Case.scrape_exempt == False).\
                 all()
         logger.info(f'Found {len(cases)} cases in time range')
 
@@ -149,7 +153,7 @@ class Scraper:
                 nursery.start_soon(self.__queue_manager, nursery)
         except KeyboardInterrupt:
             print("\nCaught KeyboardInterrupt: stopping service.")
-        logger.info(f'Successfully scraped {self.cases_scraped} cases.')
+        logger.info(f'Successfully scraped {self.successful_scrapes} cases.')
         logger.info("Scraper service stopped.")
 
     async def __queue_manager(self, nursery):
@@ -189,20 +193,38 @@ class Scraper:
         duration = (end - begin).total_seconds()
         self.session_pool.put_nowait(session)
             
-        try:
-            self.__check_scrape_response(case_number, response)
-            self.cases_scraped += 1
-        except FailedScrape as e:
-            logger.warning(f'Scrape error {type(e).__name__}: {e}')
-            await trio.sleep(1) #anti hammer
-            config.scraper_failed_queue.send_message(
-                MessageBody = json.dumps({
-                    'case_number': case_number,
-                    'detail_loc': detail_loc
-                })
+        with db_session() as db:
+            # last_scrape gets updated regardless of whether scrape was successful
+            db.execute(
+                Case.__table__.update()\
+                    .where(Case.case_number == case_number)\
+                    .values(last_scrape = begin)
             )
-        else:
-            await self.__store_case_details(case_number, detail_loc, response.text, duration)
+
+            # Handle scrape result
+            try:
+                self.__check_scrape_response(case_number, response)
+                self.successful_scrapes += 1
+            except FailedScrape as e:
+                logger.warning(f'Scrape error {type(e).__name__}: {e}')
+                await trio.sleep(1) #anti hammer
+                scrape = Scrape(
+                    case_number=case_number,
+                    timestamp=begin,
+                    duration=duration,
+                    error=type(e).__name__
+                )
+                db.add(scrape)
+                # if 3 bad scrapes, scrape_exempt = True
+                last_scrapes = db.query(Scrape).filter(Scrape.case_number == case_number).filter(Scrape.error != None).limit(3).all()
+                if last_scrapes and len(last_scrapes) == 3:
+                    db.execute(
+                        Case.__table__.update()\
+                            .where(Case.case_number == case_number)\
+                            .values(scrape_exempt = True)
+                    )
+            else:
+                await self.__store_case_details(db, case_number, detail_loc, response.text, begin, duration)
 
     def __check_scrape_response(self, case_number, response):
         if response.status_code == 500:
@@ -224,14 +246,13 @@ class Scraper:
                 and not re.search(r'[\- ]*'.join(case_number.lower()),response.text):
             raise FailedScrapeNoCaseNumber
 
-    async def __store_case_details(self, case_number, detail_loc, html, scrape_duration=None):
+    async def __store_case_details(self, db, case_number, detail_loc, html, timestamp, scrape_duration=None):
         add = False
         try:
-            with db_session() as db:
-                latest_sha256, = db.query(ScrapeVersion.sha256).\
-                    join(Scrape, ScrapeVersion.s3_version_id == Scrape.s3_version_id).\
-                    filter(Scrape.case_number == case_number).\
-                    order_by(Scrape.timestamp.desc())[0]
+            latest_sha256, = db.query(ScrapeVersion.sha256).\
+                join(Scrape, ScrapeVersion.s3_version_id == Scrape.s3_version_id).\
+                filter(Scrape.case_number == case_number).\
+                order_by(Scrape.timestamp.desc())[0]
         except IndexError:
             logger.info(f"Case details for {case_number} not found, adding...")
             add = True
@@ -241,43 +262,34 @@ class Scraper:
                 logger.info(f"Found new version of case {case_number}, updating...")
                 add = True
         
-        timestamp = datetime.now()
-        with db_session() as db:
-            # last_scrape gets updated on a successful scrape, even if new version not added
-            db.execute(
-                Case.__table__.update()\
-                    .where(Case.case_number == case_number)\
-                    .values(last_scrape = timestamp)
+        if add:
+            obj = config.case_details_bucket.put_object(
+                Body = html,
+                Key = case_number,
+                Metadata = {
+                    'timestamp': timestamp.isoformat(),
+                    'detail_loc': detail_loc
+                }
             )
+            try:
+                version_id = obj.version_id
+            except botocore.exceptions.ClientError:
+                # Sometimes the version_id property isn't available from S3 when we first try to access it, so wait and try again
+                await trio.sleep(60)
+                version_id = obj.version_id
 
-            if add:
-                obj = config.case_details_bucket.put_object(
-                    Body = html,
-                    Key = case_number,
-                    Metadata = {
-                        'timestamp': timestamp.isoformat(),
-                        'detail_loc': detail_loc
-                    }
-                )
-                try:
-                    version_id = obj.version_id
-                except botocore.exceptions.ClientError:
-                    # Sometimes the version_id property isn't available from S3 when we first try to access it, so wait and try again
-                    await trio.sleep(60)
-                    version_id = obj.version_id
-                
-                scrape_version = ScrapeVersion(
-                    s3_version_id = version_id,
-                    case_number = case_number,
-                    length = len(html),
-                    sha256 = sha256(html.encode('utf-8')).hexdigest()
-                )
-                scrape = Scrape(
-                    case_number = case_number,
-                    s3_version_id = version_id,
-                    timestamp = timestamp,
-                    duration = scrape_duration
-                )
-                db.add(scrape_version)
-                db.flush() # to satisfy foreign key constraint of scrapes
-                db.add(scrape)
+            scrape_version = ScrapeVersion(
+                s3_version_id = version_id,
+                case_number = case_number,
+                length = len(html),
+                sha256 = sha256(html.encode('utf-8')).hexdigest()
+            )
+            scrape = Scrape(
+                case_number = case_number,
+                s3_version_id = version_id,
+                timestamp = timestamp,
+                duration = scrape_duration
+            )
+            db.add(scrape_version)
+            db.flush() # to satisfy foreign key constraint of scrapes
+            db.add(scrape)

@@ -72,7 +72,6 @@ class Config:
         self.SPIDER_RUNS_BUCKET_NAME = os.getenv('SPIDER_RUNS_BUCKET_NAME')
         self.SPIDER_TASK_DEFINITION_ARN = os.getenv('SPIDER_TASK_DEFINITION_ARN')
         self.SCRAPER_QUEUE_NAME = os.getenv('SCRAPER_QUEUE_NAME')
-        self.SCRAPER_FAILED_QUEUE_NAME = os.getenv('SCRAPER_FAILED_QUEUE_NAME')
         self.PARSER_FAILED_QUEUE_NAME = os.getenv('PARSER_FAILED_QUEUE_NAME')
         self.PARSER_TRIGGER_ARN = os.getenv('PARSER_TRIGGER_ARN')
         self.VPC_SUBNET_1_ID = os.getenv('VPC_SUBNET_1_ID')
@@ -102,8 +101,6 @@ class Config:
             self.spider_runs_bucket = self.s3.Bucket(self.SPIDER_RUNS_BUCKET_NAME)
         if self.__getattribute__('SCRAPER_QUEUE_NAME'):
             self.scraper_queue = self.sqs.get_queue_by_name(QueueName=self.SCRAPER_QUEUE_NAME)
-        if self.__getattribute__('SCRAPER_FAILED_QUEUE_NAME'):
-            self.scraper_failed_queue = self.sqs.get_queue_by_name(QueueName=self.SCRAPER_FAILED_QUEUE_NAME)
         if self.__getattribute__('PARSER_TRIGGER_ARN'):
             self.parser_trigger = self.sns.Topic(self.PARSER_TRIGGER_ARN)
         if self.__getattribute__('PARSER_FAILED_QUEUE_NAME'):

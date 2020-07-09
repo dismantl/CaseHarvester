@@ -50,7 +50,7 @@ class DSCRCharge(DSCRCaseTable, TableBase):
     _amended_date_str = Column('amended_date_str',String, nullable=True)
     cjis_code = Column(String, nullable=True)
     mo_pll = Column(String, nullable=True)
-    probable_cause = Column(Boolean, default=False)
+    probable_cause = Column(Boolean)
     incident_date_from = Column(Date, nullable=True)
     _incident_date_from_str = Column('incident_date_from_str',String, nullable=True)
     incident_date_to = Column(Date, nullable=True)

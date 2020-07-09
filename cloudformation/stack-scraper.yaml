@@ -38,13 +38,6 @@ Resources:
       VisibilityTimeout: 300
       QueueName: !Sub mjcs_scraper_queue_${EnvironmentType}
 
-  ScraperFailedQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      MessageRetentionPeriod: 1209600
-      VisibilityTimeout: 300
-      QueueName: !Sub mjcs_scraper_failed_queue_${EnvironmentType}
-
   ScraperTaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -104,8 +97,6 @@ Resources:
                   db_name: !Ref DatabaseName
             - Name: SCRAPER_QUEUE_NAME
               Value: !GetAtt ScraperQueue.QueueName
-            - Name: SCRAPER_FAILED_QUEUE_NAME
-              Value: !GetAtt ScraperFailedQueue.QueueName
             - Name: CASE_DETAILS_BUCKET
               Value:
                 Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
@@ -156,8 +147,6 @@ Resources:
                   db_name: !Ref DatabaseName
             - Name: SCRAPER_QUEUE_NAME
               Value: !GetAtt ScraperQueue.QueueName
-            - Name: SCRAPER_FAILED_QUEUE_NAME
-              Value: !GetAtt ScraperFailedQueue.QueueName
             - Name: CASE_DETAILS_BUCKET
               Value:
                 Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
@@ -208,8 +197,6 @@ Resources:
                   db_name: !Ref DatabaseName
             - Name: SCRAPER_QUEUE_NAME
               Value: !GetAtt ScraperQueue.QueueName
-            - Name: SCRAPER_FAILED_QUEUE_NAME
-              Value: !GetAtt ScraperFailedQueue.QueueName
             - Name: CASE_DETAILS_BUCKET
               Value:
                 Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
@@ -260,8 +247,6 @@ Resources:
                   db_name: !Ref DatabaseName
             - Name: SCRAPER_QUEUE_NAME
               Value: !GetAtt ScraperQueue.QueueName
-            - Name: SCRAPER_FAILED_QUEUE_NAME
-              Value: !GetAtt ScraperFailedQueue.QueueName
             - Name: CASE_DETAILS_BUCKET
               Value:
                 Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
@@ -312,8 +297,6 @@ Resources:
                   db_name: !Ref DatabaseName
             - Name: SCRAPER_QUEUE_NAME
               Value: !GetAtt ScraperQueue.QueueName
-            - Name: SCRAPER_FAILED_QUEUE_NAME
-              Value: !GetAtt ScraperFailedQueue.QueueName
             - Name: CASE_DETAILS_BUCKET
               Value:
                 Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
@@ -438,11 +421,6 @@ Resources:
                   - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
 
 Outputs:
-  ScraperFailedQueueName:
-    Description: Scraper failed queue name
-    Value: !GetAtt ScraperFailedQueue.QueueName
-    Export:
-      Name: !Sub ${AWS::StackName}-ScraperFailedQueueName
   ScraperQueueName:
     Description: Scraper queue name
     Value: !GetAtt ScraperQueue.QueueName
