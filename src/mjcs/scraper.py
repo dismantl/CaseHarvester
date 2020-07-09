@@ -192,22 +192,15 @@ class Scraper:
         end = datetime.now()
         duration = (end - begin).total_seconds()
         self.session_pool.put_nowait(session)
-            
-        with db_session() as db:
-            # last_scrape gets updated regardless of whether scrape was successful
-            db.execute(
-                Case.__table__.update()\
-                    .where(Case.case_number == case_number)\
-                    .values(last_scrape = begin)
-            )
 
-            # Handle scrape result
-            try:
-                self.__check_scrape_response(case_number, response)
-                self.successful_scrapes += 1
-            except FailedScrape as e:
-                logger.warning(f'Scrape error {type(e).__name__}: {e}')
-                await trio.sleep(1) #anti hammer
+        # Handle scrape result
+        try:
+            self.__check_scrape_response(case_number, response)
+            self.successful_scrapes += 1
+        except FailedScrape as e:
+            logger.warning(f'Scrape error {type(e).__name__}: {e}')
+            await trio.sleep(1) #anti hammer
+            with db_session() as db:
                 scrape = Scrape(
                     case_number=case_number,
                     timestamp=begin,
@@ -221,10 +214,16 @@ class Scraper:
                     db.execute(
                         Case.__table__.update()\
                             .where(Case.case_number == case_number)\
-                            .values(scrape_exempt = True)
+                            .values(scrape_exempt=True, last_scrape=begin)
                     )
-            else:
-                await self.__store_case_details(db, case_number, detail_loc, response.text, begin, duration)
+                else:
+                    db.execute(
+                        Case.__table__.update()\
+                            .where(Case.case_number == case_number)\
+                            .values(last_scrape = begin)
+                    )
+        else:
+            await self.__store_case_details(case_number, detail_loc, response.text, begin, duration)
 
     def __check_scrape_response(self, case_number, response):
         if response.status_code == 500:
@@ -246,13 +245,14 @@ class Scraper:
                 and not re.search(r'[\- ]*'.join(case_number.lower()),response.text):
             raise FailedScrapeNoCaseNumber
 
-    async def __store_case_details(self, db, case_number, detail_loc, html, timestamp, scrape_duration=None):
+    async def __store_case_details(self, case_number, detail_loc, html, timestamp, scrape_duration=None):
         add = False
         try:
-            latest_sha256, = db.query(ScrapeVersion.sha256).\
-                join(Scrape, ScrapeVersion.s3_version_id == Scrape.s3_version_id).\
-                filter(Scrape.case_number == case_number).\
-                order_by(Scrape.timestamp.desc())[0]
+            with db_session() as db:
+                latest_sha256, = db.query(ScrapeVersion.sha256).\
+                    join(Scrape, ScrapeVersion.s3_version_id == Scrape.s3_version_id).\
+                    filter(Scrape.case_number == case_number).\
+                    order_by(Scrape.timestamp.desc())[0]
         except IndexError:
             logger.info(f"Case details for {case_number} not found, adding...")
             add = True
@@ -262,34 +262,43 @@ class Scraper:
                 logger.info(f"Found new version of case {case_number}, updating...")
                 add = True
         
-        if add:
-            obj = config.case_details_bucket.put_object(
-                Body = html,
-                Key = case_number,
-                Metadata = {
-                    'timestamp': timestamp.isoformat(),
-                    'detail_loc': detail_loc
-                }
+        with db_session() as db:
+            # last_scrape gets updated on a successful scrape, even if new version not added
+            db.execute(
+                Case.__table__.update()\
+                    .where(Case.case_number == case_number)\
+                    .values(last_scrape = timestamp)
             )
-            try:
-                version_id = obj.version_id
-            except botocore.exceptions.ClientError:
-                # Sometimes the version_id property isn't available from S3 when we first try to access it, so wait and try again
-                await trio.sleep(60)
-                version_id = obj.version_id
 
-            scrape_version = ScrapeVersion(
-                s3_version_id = version_id,
-                case_number = case_number,
-                length = len(html),
-                sha256 = sha256(html.encode('utf-8')).hexdigest()
-            )
-            scrape = Scrape(
-                case_number = case_number,
-                s3_version_id = version_id,
-                timestamp = timestamp,
-                duration = scrape_duration
-            )
-            db.add(scrape_version)
-            db.flush() # to satisfy foreign key constraint of scrapes
-            db.add(scrape)
+            if add:
+                obj = config.case_details_bucket.put_object(
+                    Body = html,
+                    Key = case_number,
+                    Metadata = {
+                        'timestamp': timestamp.isoformat(),
+                        'detail_loc': detail_loc
+                    }
+                )
+                try:
+                    version_id = obj.version_id
+                except botocore.exceptions.ClientError:
+                    # Sometimes the version_id property isn't available from S3 when we first try to access it, so wait and try again
+                    await trio.sleep(60)
+                    version_id = obj.version_id
+
+                with db_session() as db:
+                    scrape_version = ScrapeVersion(
+                        s3_version_id = version_id,
+                        case_number = case_number,
+                        length = len(html),
+                        sha256 = sha256(html.encode('utf-8')).hexdigest()
+                    )
+                    scrape = Scrape(
+                        case_number = case_number,
+                        s3_version_id = version_id,
+                        timestamp = timestamp,
+                        duration = scrape_duration
+                    )
+                    db.add(scrape_version)
+                    db.flush() # to satisfy foreign key constraint of scrapes
+                    db.add(scrape)
