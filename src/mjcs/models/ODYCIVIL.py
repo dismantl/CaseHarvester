@@ -213,16 +213,16 @@ class ODYCIVILJudgmentStatus(ODYCIVILCaseTable, TableBase):
 class ODYCIVILJudgmentComment(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_judgment_comments'
     __table_args__ = (Index('ixh_odycivil_judgment_comments_case_number', 'case_number', postgresql_using='hash'),)
-    odycivil = relationship('ODYCIVIL', backref='judgment_comments')
 
     id = Column(Integer, primary_key=True)
     amount = Column(Numeric)
     interest = Column(Numeric)
     atty_fee = Column(Numeric)
     judg_cost = Column(Numeric)
+    post_interest_rate = Column(String)
     other_amount = Column(Numeric)
     poss_of_prop = Column(Numeric)
-    damanges_pop = Column(Numeric)
+    damages_pop = Column(Numeric)
     value_of_prop = Column(Numeric)
     damgs_val_of_prop = Column(Numeric)
     repl_detn_amnt = Column(Numeric)
@@ -231,8 +231,23 @@ class ODYCIVILJudgmentComment(ODYCIVILCaseTable, TableBase):
     judg_location = Column(String)
     judg_date = Column(Date)
     _judg_date_str = Column('judg_date_str',String)
+    cc_recorded_date = Column(Date)
+    _cc_recorded_date_str = Column('cc_recorded_date_str',String)
+    satisfaction_date = Column(Date)
+    _satisfaction_date_str = Column('satisfaction_date_str',String)
+    sat_date_entered = Column(Date)
+    _sat_date_entered_str = Column('sat_date_entered_str',String)
     date_entered = Column(Date)
     _date_entered_str = Column('date_entered_str',String)
+    amendcorrect = Column(String)
+    defreason = Column(String)
+    freetext = Column(String)
+    printdate = Column(Date)
+    _printdate_str = Column('printdate_str',String)
+    totalinterest = Column(Numeric)
+    totaljudg = Column(Numeric)
+    totalprincipal = Column(Numeric)
+    totdecimalprin = Column(Numeric)
 
     @hybrid_property
     def judg_date_str(self):
@@ -243,12 +258,76 @@ class ODYCIVILJudgmentComment(ODYCIVILCaseTable, TableBase):
         self._judg_date_str = val
 
     @hybrid_property
+    def cc_recorded_date_str(self):
+        return self._cc_recorded_date_str
+    @cc_recorded_date_str.setter
+    def cc_recorded_date_str(self,val):
+        self.cc_recorded_date = date_from_str(val)
+        self._cc_recorded_date_str = val
+    
+    @hybrid_property
+    def satisfaction_date_str(self):
+        return self._satisfaction_date_str
+    @satisfaction_date_str.setter
+    def satisfaction_date_str(self,val):
+        self.satisfaction_date = date_from_str(val)
+        self._satisfaction_date_str = val
+    
+    @hybrid_property
+    def sat_date_entered_str(self):
+        return self._sat_date_entered_str
+    @sat_date_entered_str.setter
+    def sat_date_entered_str(self,val):
+        self.sat_date_entered = date_from_str(val)
+        self._sat_date_entered_str = val
+
+    @hybrid_property
     def date_entered_str(self):
         return self._date_entered_str
     @date_entered_str.setter
     def date_entered_str(self,val):
         self.date_entered = date_from_str(val)
-        self._date_entered_str = val    
+        self._date_entered_str = val
+    
+    @hybrid_property
+    def printdate_str(self):
+        return self._printdate_str
+    @printdate_str.setter
+    def printdate_str(self,val):
+        self.printdate = date_from_str(val)
+        self._printdate_str = val
+
+class ODYCIVILDisposition(ODYCIVILCaseTable, TableBase):
+    __tablename__ = 'odycivil_dispositions'
+    __table_args__ = (Index('ixh_odycivil_dispositions_case_number', 'case_number', postgresql_using='hash'),)
+
+    id = Column(Integer, primary_key=True)
+    disp_date = Column(Date)
+    _disp_date_str = Column('disp_date_str',String)
+    disp_code = Column(String)
+    disp_description = Column(String)
+    disp_stage = Column(String)
+    disp_stage_description = Column(String)
+    user = Column(String)
+    usercdate = Column(Date)
+    _usercdate_str = Column('usercdate_str',String)
+
+    @hybrid_property
+    def disp_date_str(self):
+        return self._disp_date_str
+    @disp_date_str.setter
+    def disp_date_str(self,val):
+        self.disp_date = date_from_str(val)
+        self._disp_date_str = val
+
+    @hybrid_property
+    def usercdate_str(self):
+        return self._usercdate_str
+    @usercdate_str.setter
+    def usercdate_str(self,val):
+        self.usercdate = date_from_str(val)
+        self._usercdate_str = val
+
 
 class ODYCIVILCourtSchedule(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_court_schedule'

@@ -25,4 +25,4 @@ from .ODYCIVIL import (ODYCIVIL, ODYCIVILReferenceNumber, ODYCIVILCause,
                        ODYCIVILAlias, ODYCIVILAttorney, ODYCIVILJudgment, 
                        ODYCIVILJudgmentStatus, ODYCIVILCourtSchedule, ODYCIVILWarrant,
                        ODYCIVILDocument, ODYCIVILService, ODYCIVILJudgmentComment,
-                       ODYCIVILBondSetting, ODYCIVILBailBond)
+                       ODYCIVILBondSetting, ODYCIVILBailBond, ODYCIVILDisposition)

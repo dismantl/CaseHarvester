@@ -2,7 +2,7 @@ from ..models import (ODYCIVIL, ODYCIVILReferenceNumber, ODYCIVILCause,
                        ODYCIVILCauseRemedy, ODYCIVILDefendant, ODYCIVILInvolvedParty,
                        ODYCIVILAlias, ODYCIVILAttorney, ODYCIVILJudgment, 
                        ODYCIVILJudgmentStatus, ODYCIVILJudgmentComment, ODYCIVILCourtSchedule, ODYCIVILWarrant,
-                       ODYCIVILDocument, ODYCIVILService, ODYCIVILBondSetting, ODYCIVILBailBond)
+                       ODYCIVILDocument, ODYCIVILService, ODYCIVILBondSetting, ODYCIVILBailBond, ODYCIVILDisposition)
 from .base import CaseDetailsParser, consumer, ParserError
 import re
 from bs4 import BeautifulSoup, SoupStrainer
@@ -327,8 +327,35 @@ class ODYCIVILParser(CaseDetailsParser):
                     text = row.find('td').string
                     for line in text.split('\n'):
                         label = line.split(':')[0].lower()
-                        setattr(jc, label, self.format_value(line.split(':')[1]))
+                        val = line.split(':')[1].strip()
+                        if val[-1] == ';':
+                            val = val.rstrip(';')
+                        assert(hasattr(jc,label))
+                        if re.fullmatch(r'[\d\.,]+', val):
+                            setattr(jc, label, self.format_value(val,money=True))
+                        else:
+                            setattr(jc, label, self.format_value(val))
                     db.add(jc)
+            
+            if section.find('h5', string='Case Disposition History'):
+                section_header = section.find('h5', string='Case Disposition History')
+                self.mark_for_deletion(section_header)
+                table = self.immediate_sibling(section_header, 'table')
+                for row in table.find_all('tr'):
+                    self.mark_for_deletion(row)
+                    d = ODYCIVILDisposition(case_number=self.case_number)
+                    text = row.find('td').string
+                    for line in text.split('\n'):
+                        label = line.split(':')[0].lower().replace(' ','_')
+                        val = line.split(':')[1].strip()
+                        if val[-1] == ';':
+                            val = val.rstrip(';')
+                        assert(hasattr(d,label))
+                        if re.fullmatch(r'[\d\.,]+', val):
+                            setattr(d, label, self.format_value(val,money=True))
+                        else:
+                            setattr(d, label, self.format_value(val))
+                    db.add(d)
 
     def judgment(self, db, section, judgment_type):
         for judgment in section.find_all('span',class_='Value',string=judgment_type):
