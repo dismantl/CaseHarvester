@@ -20,3 +20,9 @@ from .ODYCRIM import (ODYCRIM, ODYCRIMReferenceNumber, ODYCRIMDefendant,
                       ODYCRIMCourtSchedule, ODYCRIMCharge, ODYCRIMProbation,
                       ODYCRIMRestitution, ODYCRIMWarrant, ODYCRIMBailBond,
                       ODYCRIMBondSetting, ODYCRIMDocument, ODYCRIMService)
+from .ODYCIVIL import (ODYCIVIL, ODYCIVILReferenceNumber, ODYCIVILCause, 
+                       ODYCIVILCauseRemedy, ODYCIVILDefendant, ODYCIVILInvolvedParty,
+                       ODYCIVILAlias, ODYCIVILAttorney, ODYCIVILJudgment, 
+                       ODYCIVILJudgmentStatus, ODYCIVILCourtSchedule, ODYCIVILWarrant,
+                       ODYCIVILDocument, ODYCIVILService, ODYCIVILJudgmentComment,
+                       ODYCIVILBondSetting, ODYCIVILBailBond)
