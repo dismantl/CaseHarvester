@@ -1,4 +1,5 @@
 asks == 2.3.7
+anyio == 1.4.0
 trio == 0.13.0
 sqlalchemy >= 1.2.6
 psycopg2 >= 2.7.4
