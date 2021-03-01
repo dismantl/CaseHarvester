@@ -125,7 +125,7 @@ class ODYCRIMParser(CaseDetailsParser):
                 pass
             else:
                 # Attorneys for defendants and plaintiffs are listed in two different ways
-                if party_type == 'Attorney for Defendant' and plaintiff_id:
+                if party_type == 'Attorney for Defendant' and defendant_id:
                     party = ODYCRIMAttorney(case_number=self.case_number)
                     party.party_id = defendant_id
                 elif party_type == 'Attorney for Plaintiff' and plaintiff_id:

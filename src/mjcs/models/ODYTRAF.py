@@ -3,6 +3,7 @@ from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignK
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
+from datetime import datetime
 
 class ODYTRAF(CaseTable, TableBase):
     __tablename__ = 'odytraf'
