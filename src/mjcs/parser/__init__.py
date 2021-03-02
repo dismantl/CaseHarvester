@@ -8,8 +8,9 @@ import time
 import concurrent.futures
 import logging
 import queue
-from os import getpid
+from os import getpid, cpu_count
 from contextlib import contextmanager
+from time import sleep
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,7 @@ class Parser:
         from multiprocessing import Pool, set_start_method
         logger.info('Parsing cases from failed queue')
         if self.parallel:
+            cpus = cpu_count()
             set_start_method('fork')  # multiprocessing logging won't work with the spawn method
             # start worker processes according to available CPU resources
             with Pool() as worker_pool:
@@ -126,13 +128,14 @@ class Parser:
                         job = worker_pool.apply_async(self.parse_case, (case_number, detail_loc), callback=callback, error_callback=callback)
                         jobs.append(job)
                     # Prune completed jobs from active list
-                    for job in jobs:
-                        try:
-                            if job.ready():
-                                jobs.remove(job)
-                        except ValueError:
-                            # Job not finished, let it keep running
-                            pass
+                    while len(jobs) > cpus:
+                        for job in jobs:
+                            try:
+                                if job.ready():
+                                    jobs.remove(job)
+                            except ValueError:
+                                # Job not finished, let it keep running
+                                pass
                 logger.info('Wait for remaining jobs to complete before exiting')
                 for job in jobs:
                     job.wait(timeout=60)
