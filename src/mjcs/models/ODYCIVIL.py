@@ -89,6 +89,10 @@ class ODYCIVILInvolvedParty(ODYCIVILCaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     party_type = Column(String, nullable=False)
     name = Column(String, nullable=False)
+    appearance_date = Column(Date)
+    _appearance_date_str = Column('appearance_date_str', String)
+    removal_date = Column(Date)
+    _removal_date_str = Column('removal_date_str', String)
     address_1 = Column(String, nullable=True)
     address_2 = Column(String, nullable=True)
     city = Column(String, nullable=True)
@@ -96,6 +100,22 @@ class ODYCIVILInvolvedParty(ODYCIVILCaseTable, TableBase):
     zip_code = Column(String, nullable=True)
     aliases = relationship('ODYCIVILAlias')
     attorneys = relationship('ODYCIVILAttorney')
+
+    @hybrid_property
+    def appearance_date_str(self):
+        return self._appearance_date_str
+    @appearance_date_str.setter
+    def appearance_date_str(self,val):
+        self.appearance_date = date_from_str(val)
+        self._appearance_date_str = val
+
+    @hybrid_property
+    def removal_date_str(self):
+        return self._removal_date_str
+    @removal_date_str.setter
+    def removal_date_str(self,val):
+        self.removal_date = date_from_str(val)
+        self._removal_date_str = val
 
 class ODYCIVILAlias(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_aliases'
@@ -222,11 +242,13 @@ class ODYCIVILJudgmentComment(ODYCIVILCaseTable, TableBase):
     post_interest_rate = Column(String)
     other_amount = Column(Numeric)
     poss_of_prop = Column(Numeric)
+    pop_award_to = Column(String)
     damages_pop = Column(Numeric)
     value_of_prop = Column(Numeric)
     damgs_val_of_prop = Column(Numeric)
     repl_detn_amnt = Column(Numeric)
     judg_type = Column(String)
+    in_favor_of_def = Column(String)
     judg_district = Column(String)
     judg_location = Column(String)
     judg_date = Column(Date)
@@ -239,6 +261,14 @@ class ODYCIVILJudgmentComment(ODYCIVILCaseTable, TableBase):
     _sat_date_entered_str = Column('sat_date_entered_str',String)
     date_entered = Column(Date)
     _date_entered_str = Column('date_entered_str',String)
+    dis_with_prej = Column(String)
+    j_and_s_code = Column(String)
+    renewed_date = Column(Date)
+    _renewed_date_str = Column('renewed_date_str',String)
+    renewed_lien_date = Column(Date)
+    _renewed_lien_date_str = Column('renewed_lien_date_str',String)
+    renewed_date_ent = Column(Date)
+    _renewed_date_ent_str = Column('renewed_date_end_str',String)
     amendcorrect = Column(String)
     defreason = Column(String)
     freetext = Column(String)
@@ -246,8 +276,19 @@ class ODYCIVILJudgmentComment(ODYCIVILCaseTable, TableBase):
     _printdate_str = Column('printdate_str',String)
     totalinterest = Column(Numeric)
     totaljudg = Column(Numeric)
-    totalprincipal = Column(Numeric)
+    totalprincipal = Column(String)
     totdecimalprin = Column(Numeric)
+    user = Column(String)
+    usercdate = Column(Date)
+    _usercdate_str = Column('usercdate_str',String)
+
+    @hybrid_property
+    def usercdate_str(self):
+        return self._usercdate_str
+    @usercdate_str.setter
+    def usercdate_str(self,val):
+        self.usercdate = date_from_str(val)
+        self._usercdate_str = val
 
     @hybrid_property
     def judg_date_str(self):
@@ -296,6 +337,30 @@ class ODYCIVILJudgmentComment(ODYCIVILCaseTable, TableBase):
     def printdate_str(self,val):
         self.printdate = date_from_str(val)
         self._printdate_str = val
+    
+    @hybrid_property
+    def renewed_date_str(self):
+        return self._renewed_date_str
+    @renewed_date_str.setter
+    def renewed_date_str(self,val):
+        self.renewed_date = date_from_str(val)
+        self._renewed_date_str = val
+    
+    @hybrid_property
+    def renewed_lien_date_str(self):
+        return self._renewed_lien_date_str
+    @renewed_lien_date_str.setter
+    def renewed_lien_date_str(self,val):
+        self.renewed_lien_date = date_from_str(val)
+        self._renewed_lien_date_str = val
+    
+    @hybrid_property
+    def renewed_date_ent_str(self):
+        return self._renewed_date_ent_str
+    @renewed_date_ent_str.setter
+    def renewed_date_ent_str(self,val):
+        self.renewed_date_ent = date_from_str(val)
+        self._renewed_date_ent_str = val
 
 class ODYCIVILDisposition(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_dispositions'

@@ -6,6 +6,9 @@ from ..models import (ODYCIVIL, ODYCIVILReferenceNumber, ODYCIVILCause,
 from .base import CaseDetailsParser, consumer, ParserError
 import re
 from bs4 import BeautifulSoup, SoupStrainer
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Note that consumers may not be called in order
 class ODYCIVILParser(CaseDetailsParser):
@@ -175,6 +178,10 @@ class ODYCIVILParser(CaseDetailsParser):
                         party.city = self.value_first_column(address_table,'City:')
                         party.state = self.value_column(address_table,'State:')
                         party.zip_code = self.value_column(address_table,'Zip Code:',ignore_missing=True)
+                    elif 'Removal Date:' in t.stripped_strings:
+                        party.removal_date_str = self.value_first_column(t,'Removal Date:')
+                    elif 'Appearance Date:' in t.stripped_strings:
+                        party.appearance_date_str = self.value_first_column(t,'Appearance Date:')
                     elif len(list(t.stripped_strings)) > 0:
                         break
                     prev_obj = t
@@ -330,8 +337,12 @@ class ODYCIVILParser(CaseDetailsParser):
                         val = line.split(':')[1].strip()
                         if val[-1] == ';':
                             val = val.rstrip(';')
-                        assert(hasattr(jc,label))
-                        if re.fullmatch(r'[\d\.,]+', val):
+                        try:
+                            assert(hasattr(jc,label))
+                        except AssertionError:
+                            logger.error(f'{label} not found')
+                            raise
+                        if re.fullmatch(r'\$?[\d\.,]+', val):
                             setattr(jc, label, self.format_value(val,money=True))
                         else:
                             setattr(jc, label, self.format_value(val))
@@ -350,8 +361,12 @@ class ODYCIVILParser(CaseDetailsParser):
                         val = line.split(':')[1].strip()
                         if val[-1] == ';':
                             val = val.rstrip(';')
-                        assert(hasattr(d,label))
-                        if re.fullmatch(r'[\d\.,]+', val):
+                        try:
+                            assert(hasattr(d,label))
+                        except AssertionError:
+                            logger.error(f'{label} not found')
+                            raise
+                        if re.fullmatch(r'\$?[\d\.,]+', val):
                             setattr(d, label, self.format_value(val,money=True))
                         else:
                             setattr(d, label, self.format_value(val))
@@ -463,7 +478,13 @@ class ODYCIVILParser(CaseDetailsParser):
                 t = self.immediate_sibling(prev_obj,'table')
                 separator = self.immediate_sibling(t,'hr')
             except ParserError:
-                break
+                try:
+                    # Sometimes there is a blank table in between entries
+                    _ = self.immediate_sibling(prev_obj,'table')
+                    t = self.immediate_sibling(_,'table')
+                    separator = self.immediate_sibling(t,'hr')
+                except ParserError:
+                    break
             prev_obj = separator
             b = ODYCIVILBondSetting(case_number=self.case_number)
             b.bail_date_str = self.value_first_column(t,'Bail Date:')
