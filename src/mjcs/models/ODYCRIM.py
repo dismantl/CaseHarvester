@@ -63,6 +63,10 @@ class ODYCRIMInvolvedParty(ODYCRIMCaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     party_type = Column(String, nullable=False)
     name = Column(String, nullable=False)
+    appearance_date = Column(Date)
+    _appearance_date_str = Column('appearance_date_str', String)
+    removal_date = Column(Date)
+    _removal_date_str = Column('removal_date_str', String)
     agency_name = Column(String, nullable=True)
     address_1 = Column(String, nullable=True)
     address_2 = Column(String, nullable=True)
@@ -71,6 +75,22 @@ class ODYCRIMInvolvedParty(ODYCRIMCaseTable, TableBase):
     zip_code = Column(String, nullable=True)
     aliases = relationship('ODYCRIMAlias')
     attorneys = relationship('ODYCRIMAttorney')
+
+    @hybrid_property
+    def appearance_date_str(self):
+        return self._appearance_date_str
+    @appearance_date_str.setter
+    def appearance_date_str(self,val):
+        self.appearance_date = date_from_str(val)
+        self._appearance_date_str = val
+
+    @hybrid_property
+    def removal_date_str(self):
+        return self._removal_date_str
+    @removal_date_str.setter
+    def removal_date_str(self,val):
+        self.removal_date = date_from_str(val)
+        self._removal_date_str = val
 
 class ODYCRIMAlias(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_aliases'
@@ -88,6 +108,10 @@ class ODYCRIMAttorney(ODYCRIMCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=True)
+    appearance_date = Column(Date)
+    _appearance_date_str = Column('appearance_date_str', String)
+    removal_date = Column(Date)
+    _removal_date_str = Column('removal_date_str', String)
     address_1 = Column(String, nullable=True)
     address_2 = Column(String, nullable=True)
     address_3 = Column(String, nullable=True)
@@ -96,6 +120,22 @@ class ODYCRIMAttorney(ODYCRIMCaseTable, TableBase):
     zip_code = Column(String, nullable=True)
     defendant_id = Column(Integer, ForeignKey('odycrim_defendants.id'),nullable=True)
     party_id = Column(Integer, ForeignKey('odycrim_involved_parties.id'),nullable=True)
+
+    @hybrid_property
+    def appearance_date_str(self):
+        return self._appearance_date_str
+    @appearance_date_str.setter
+    def appearance_date_str(self,val):
+        self.appearance_date = date_from_str(val)
+        self._appearance_date_str = val
+
+    @hybrid_property
+    def removal_date_str(self):
+        return self._removal_date_str
+    @removal_date_str.setter
+    def removal_date_str(self,val):
+        self.removal_date = date_from_str(val)
+        self._removal_date_str = val
 
 class ODYCRIMCourtSchedule(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_court_schedule'

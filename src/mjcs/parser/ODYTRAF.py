@@ -165,6 +165,10 @@ class ODYTRAFParser(CaseDetailsParser):
                         party.city = self.value_first_column(address_table,'City:')
                         party.state = self.value_column(address_table,'State:')
                         party.zip_code = self.value_column(address_table,'Zip Code:',ignore_missing=True)
+                    elif 'Removal Date:' in t.stripped_strings:
+                        party.removal_date_str = self.value_first_column(t,'Removal Date:')
+                    elif 'Appearance Date:' in t.stripped_strings:
+                        party.appearance_date_str = self.value_first_column(t,'Appearance Date:')
                     elif len(list(t.stripped_strings)) > 0:
                         break
                     prev_obj = t
@@ -207,8 +211,26 @@ class ODYTRAFParser(CaseDetailsParser):
                                 attorney.party_id = party.id
                             name_row = span.find_parent('tr')
                             attorney.name = self.value_first_column(name_row,'Name:')
+                            prev_row = name_row
+
                             try:
-                                address_row = self.row_next_first_column_prompt(name_row,'Address Line 1:')
+                                appearance_date_row = self.row_next_first_column_prompt(prev_row,'Appearance Date:')
+                            except ParserError:
+                                pass
+                            else:
+                                prev_row = appearance_date_row
+                                attorney.appearance_date_str = self.value_first_column(appearance_date_row,'Appearance Date:')
+                            
+                            try:
+                                removal_date_row = self.row_next_first_column_prompt(prev_row,'Removal Date:')
+                            except ParserError:
+                                pass
+                            else:
+                                prev_row = removal_date_row
+                                attorney.removal_date_str = self.value_first_column(removal_date_row,'Removal Date:')
+
+                            try:
+                                address_row = self.row_next_first_column_prompt(prev_row,'Address Line 1:')
                             except ParserError:
                                 pass
                             else:
