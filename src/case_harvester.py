@@ -325,7 +325,7 @@ if __name__ == '__main__':
     parser_parser.add_argument('--failed-queue', action='store_true',
         help="Parse cases in the parser failed queue")
     parser_parser.add_argument('--parallel', '-p', action='store_true', default=False,
-        help=f"Parse cases in parallel with {os.cpu_count()} worker processes (Unix only)")
+        help=f"Parse cases in parallel with {os.cpu_count()} worker processes")
     parser_parser.add_argument('--case', '-c', help="Parse a specific case number")
     parser_parser.add_argument('--verbose', '-v', action='store_true',
         help="Print debug information")
