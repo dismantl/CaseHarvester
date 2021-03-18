@@ -3,6 +3,8 @@ Case Harvester is a project designed to mine the [Maryland Judiciary Case Search
 
 > **NOTE: Unless you are modifying Case Harvester for specific purposes, please do not run your own instance so that MJCS is spared unneccesary load. If you are a values-aligned researcher or journalist, you are welcome to access our public case database scraped from MJCS with defendant information redacted; reach out to us at [dan@acabenterprises.net](mailto:dan@acabenterprises.net).**
 
+There is also a [web interface and set of APIs in the works](https://github.com/dismantl/CaseExplorer) for exploring the data scraped from the Maryland Judiciary Case Search. We are in need of web design help for that, so if you are interested in volunteering please [get in touch](mailto:dan@acabenterprises.net).
+
 # Architecture
 Case Harvester is split into three main components: spider, scraper, and parser. Each component is a part of a pipeline that finds, downloads, and parses case data from the MJCS. The following diagram shows at a high level how each of these components interact:
 
