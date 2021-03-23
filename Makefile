@@ -238,7 +238,7 @@ sync_prod:
 docs:
 	rm -rf $(DOCS_DIR)
 	mkdir -p $(DOCS_DIR)
-	$(call create_docs_f,prod)
+	$(call create_docs_f,dev)
 
 clean:
 	rm -rf $(PACKAGE_DIR)
