@@ -271,7 +271,7 @@ class CaseDetailsParser(ABC):
         if strip:
             val = val.strip()
         if remove_extra_spaces:
-            val = re.sub(' +',' ',val)
+            val = re.sub('[ \t]+',' ',val)
         if remove_newlines:
             val = val.replace('\n','')
         if numeric or money:
