@@ -1,9 +1,9 @@
 # Case Harvester
 Case Harvester is a project designed to mine the [Maryland Judiciary Case Search](http://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp) (MJCS) and build a near-complete database of Maryland court cases that can be queried and analyzed without the limitations of the MJCS interface. It is designed to leverage [Amazon Web Services (AWS)](https://aws.amazon.com/) for scalability and performance.
 
-> **NOTE: Unless you are modifying Case Harvester for specific purposes, please do not run your own instance so that MJCS is spared unneccesary load. If you are a values-aligned researcher or journalist, you are welcome to access our public case database scraped from MJCS with defendant information redacted; reach out to us at [dan@acabenterprises.net](mailto:dan@acabenterprises.net).**
+> **NOTE: Unless you are modifying Case Harvester for specific purposes, please do not run your own instance so that MJCS is spared unneccesary load. If you are a values-aligned researcher or journalist, you are welcome to access our public case database scraped from MJCS with defendant information redacted; reach out to us at [dan@acab.enterprises](mailto:dan@acab.enterprises).**
 
-There is also a [web interface and set of APIs in the works](https://github.com/dismantl/CaseExplorer) for exploring the data scraped from the Maryland Judiciary Case Search. We are in need of web design help for that, so if you are interested in volunteering please [get in touch](mailto:dan@acabenterprises.net).
+There is also a [web interface and set of APIs in the works](https://github.com/dismantl/CaseExplorer) for exploring the data scraped from the Maryland Judiciary Case Search. We are in need of web design help for that, so if you are interested in volunteering please [get in touch](mailto:dan@acab.enterprises).
 
 # Architecture
 Case Harvester is split into three main components: spider, scraper, and parser. Each component is a part of a pipeline that finds, downloads, and parses case data from the MJCS. The following diagram shows at a high level how each of these components interact:
@@ -11,7 +11,7 @@ Case Harvester is split into three main components: spider, scraper, and parser.
 ![High level diagram](./img/main.svg)
 
 ### Spider
-The spider component is responsible for discovering case numbers. It does this by submitting search queries to the MJCS and iterating through the results. Because the MJCS only returns a maximum of 500 results, the search algorithm splits queries that return 500 results into a set of more narrowed queries which are then submitted. Each of these queries is then split again if more than 500 results are returned, and so forth, until the MJCS is exhaustively searched for case numbers. Each discovered case number is submitted to a PostgreSQL database, and then added to a queue for scraping:
+The spider component is responsible for discovering new case numbers. It does this by submitting search queries to the MJCS and iterating through the results. Because the MJCS only returns a maximum of 500 results, the search algorithm splits queries that return 500 results into a set of more narrowed queries which are then submitted. Each of these queries is then split again if more than 500 results are returned, and so forth, until the MJCS is exhaustively searched for case numbers. Each discovered case number is submitted to a PostgreSQL database, and then added to a queue for scraping:
 
 ![Spider diagram](./img/spider.svg)
 
@@ -39,6 +39,18 @@ Case details in the MJCS are formatted differently depending on the county and t
 * ODYCIVIL: MDEC Civil Cases
 
 Each different parser breaks down the case details to a granular level and stores the data in a number of database tables. This [schematic diagram](https://disman.tl/caseharvester/relationships.html) illustrates how this data is represented in the database.
+
+# Schedule
+Case Harvester essentially has two main tasks:
+1. Discover new case numbers, and
+2. Capture updates/changes to case details for known cases.
+
+In order to find new case numbers, Case Harvester uses scheduled tasks to run the spider component according to the following schedule:
+- Every day, spider for cases filed within the last month
+- Every week, spider for cases filed within the last 6 months
+- Every month, spider for cases filed within the last year
+
+The scraper component runs daily to capture any updated case details in MJCS. Case numbers are chosen for rescraping based on the case's age (since filing date), with newer cases being rescraped more frequently than older cases. For example, cases less than 3 months old are rescraped every day while a 4-year-old case will be rescraped every 2 weeks. These settings can be tuned with the `RESCRAPE_COEFFICIENT`, `MAX_SCRAPE_AGE`, and `MAX_SCRAPE_AGE_INACTIVE` configuration variables. When updates to a case are found by the scraper, a new version of the case details HTML is saved in S3 and the database is updated to reflect the most recent case details.
 
 # Installation
 Case Harvester can be run or deployed from any workstation running Python 3, [GNU Make](https://www.gnu.org/software/make/), and [jq](https://stedolan.github.io/jq/). The required Python 3 modules are in `requirements.txt` and can be installed with `pip3 install -r requirements.txt`. Creating a Python virtual environment is recommended.
@@ -102,19 +114,5 @@ By default, `case_harvester.py` runs in your development AWS environment (see [D
 ./src/case_harvester.py spider --environment production -s 1/1/2000 -e 12/31/2000 --county 'BALTIMORE CITY'
 ```
 
-# Schedule
-Case Harvester uses a number of scheduled tasks to automate both the spider and scraper components. These components run according to the following schedule:
-
-**Spider** (find new case numbers):
-- Every day, spider for cases filed in the last month
-- Every week, spider for cases filed in the last 6 months
-- Every month, spider for cases filed in the last year
-
-**Scraper** (download case details and send to parser):
-- Every day, re-scrape case details for cases filed in the last 30 days
-- Every week, re-scrape case details for cases filed in the last 6 months
-- Every month, re-scrape case details for cases filed in the last 2 years
-- Every 3 months, re-scrape case details for cases filed in the last 4 years
-
 # Questions
-For questions or more information, email [dan@acabenterprises.net](mailto:dan@acabenterprises.net).
+For questions or more information, email [dan@acab.enterprises](mailto:dan@acab.enterprises).

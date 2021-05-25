@@ -30,7 +30,7 @@ Resources:
       Handler: parser_lambda.lambda_handler
       Runtime: python3.6
       Policies:
-        - AWSLambdaFullAccess
+        - AWSLambda_FullAccess
         - S3ReadPolicy:
             BucketName:
               Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
