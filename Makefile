@@ -2,6 +2,7 @@ CODE_SRC=src
 PACKAGE_DIR=pkg
 LIB_DIR=lib
 DOCS_DIR=docs
+ENV_DIR=env
 SPIDER_DEPS=$(addprefix $(CODE_SRC)/,case_harvester.py \
 	$(addprefix mjcs/,__init__.py spider.py config.py util.py session.py models/*.py))
 SCRAPER_DEPS=$(addprefix $(CODE_SRC)/,case_harvester.py \
@@ -35,6 +36,8 @@ define deploy_stack_f
 $(eval component = $(1))
 $(eval environment = $(2))
 $(eval env_long = $(subst prod,production,$(subst dev,development,$(environment))))
+$(eval include $(ENV_DIR)/base.env)
+$(eval include $(ENV_DIR)/$(env_long).env)
 aws cloudformation package --template-file cloudformation/stack-$(component).yaml \
 	--output-template-file cloudformation/stack-$(component)-output.yaml \
 	--s3-bucket $(STACK_PREFIX)-$(component)-$(environment)
@@ -49,6 +52,7 @@ aws cloudformation deploy --template-file cloudformation/stack-$(component)-outp
 		ScraperStackName=$(STACK_PREFIX)-scraper-$(environment) \
 		AWSRegion=$(AWS_REGION) \
 		DockerRepoName=$(environment)_$(DOCKER_REPO_NAME) \
+		UserAgent=$(USER_AGENT) \
 		$(shell jq -r '.$(env_long) as $$x|$$x|keys[]|. + "=" + $$x[.]' $(SECRETS_FILE))
 endef
 

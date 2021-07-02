@@ -602,7 +602,7 @@ class SearchNode:
         try:
             response_html = await self.__query_mjcs(
                 session,
-                url = 'http://casesearch.courts.state.md.us/casesearch/inquirySearch.jis',
+                url = f'{config.MJCS_BASE_URL}/inquirySearch.jis',
                 method = 'POST',
                 post_params = query_params,
                 xml = False
@@ -634,7 +634,7 @@ class SearchNode:
             try:
                 response_html = await self.__query_mjcs(
                     session,
-                    url = 'http://casesearch.courts.state.md.us' + html.find('span',class_='pagelinks').find('a',string='Next')['href'],
+                    url = 'https://casesearch.courts.state.md.us' + html.find('span',class_='pagelinks').find('a',string='Next')['href'],
                     method = 'GET'
                 )
             except FailedSearch as e:

@@ -29,6 +29,9 @@ Parameters:
     Description: AWS Region
     Type: String
     Default: us-east-1
+  UserAgent:
+    Description: User Agent to use for requests to MJCS
+    Type: String
 
 Resources:
   ScraperQueue:
@@ -100,6 +103,8 @@ Resources:
             - Name: CASE_DETAILS_BUCKET
               Value:
                 Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
+            - Name: USER_AGENT
+              Value: !Ref UserAgent
           Image: !Sub
             - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
             - repo_name:
@@ -147,6 +152,8 @@ Resources:
             - Name: CASE_DETAILS_BUCKET
               Value:
                 Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
+            - Name: USER_AGENT
+              Value: !Ref UserAgent
           Image: !Sub
             - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
             - repo_name:

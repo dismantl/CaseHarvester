@@ -32,6 +32,9 @@ Parameters:
     Description: AWS Region
     Type: String
     Default: us-east-1
+  UserAgent:
+    Description: User Agent to use for requests to MJCS
+    Type: String
 
 Resources:
   SpiderTable:
@@ -105,6 +108,8 @@ Resources:
               Value: !Ref SpiderTable
             - Name: SPIDER_RUNS_BUCKET_NAME
               Value: !Ref SpiderRunsBucket
+            - Name: USER_AGENT
+              Value: !Ref UserAgent
           Image: !Sub
             - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
             - repo_name:
@@ -157,6 +162,8 @@ Resources:
               Value: !Ref SpiderTable
             - Name: SPIDER_RUNS_BUCKET_NAME
               Value: !Ref SpiderRunsBucket
+            - Name: USER_AGENT
+              Value: !Ref UserAgent
           Image: !Sub
             - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
             - repo_name:
@@ -209,6 +216,8 @@ Resources:
               Value: !Ref SpiderTable
             - Name: SPIDER_RUNS_BUCKET_NAME
               Value: !Ref SpiderRunsBucket
+            - Name: USER_AGENT
+              Value: !Ref UserAgent
           Image: !Sub
             - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
             - repo_name:
@@ -261,6 +270,8 @@ Resources:
               Value: !Ref SpiderTable
             - Name: SPIDER_RUNS_BUCKET_NAME
               Value: !Ref SpiderRunsBucket
+            - Name: USER_AGENT
+              Value: !Ref UserAgent
           Image: !Sub
             - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
             - repo_name:

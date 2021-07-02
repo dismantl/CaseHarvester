@@ -184,7 +184,7 @@ class Scraper:
         begin = datetime.now()
         response = await session.request(
             'POST',
-            'http://casesearch.courts.state.md.us/casesearch/inquiryByCaseNum.jis',
+            f'{config.MJCS_BASE_URL}/inquiryByCaseNum.jis',
             data = {
                 'caseId': case_number
             }

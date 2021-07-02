@@ -55,7 +55,7 @@ class AsyncSession:
                 retries=1
             )
         if (response.history and response.history[0].status_code == 302 \
-                    and response.history[0].headers['location'] == 'http://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp') \
+                    and response.history[0].headers['location'] == f'{config.MJCS_BASE_URL}/inquiry-index.jsp') \
                 or "Acceptance of the following agreement is" in response.text:
             logger.debug("Renewing session...")
             await self.renew()
@@ -65,7 +65,7 @@ class AsyncSession:
     async def renew(self):
         response = await self.request(
             'POST',
-            'http://casesearch.courts.state.md.us/casesearch/processDisclaimer.jis',
+            f'{config.MJCS_BASE_URL}/processDisclaimer.jis',
             data = {
                 'disclaimer':'Y',
                 'action':'Continue'

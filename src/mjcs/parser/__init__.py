@@ -98,7 +98,7 @@ class Parser:
         try:
             parse_case(case_number, detail_loc)
         except BaseParserError as e:
-            logger.error(f'Error parsing case {case_number} (http://casesearch.courts.state.md.us/casesearch/inquiryDetail.jis?caseId={case_number}&detailLoc={detail_loc}): {e}', exc_info=not self.ignore_errors)
+            logger.error(f'Error parsing case {case_number} ({config.MJCS_BASE_URL}/inquiryDetail.jis?caseId={case_number}&detailLoc={detail_loc}): {e}', exc_info=not self.ignore_errors)
             if not self.ignore_errors:
                 raise
 

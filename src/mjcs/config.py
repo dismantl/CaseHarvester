@@ -48,6 +48,7 @@ class Config:
                 raise Exception('Invalid environment %s' % environment)
 
         # General options
+        self.MJCS_BASE_URL = os.getenv('MJCS_BASE_URL', 'https://casesearch.courts.state.md.us/casesearch')
         self.CASE_BATCH_SIZE = int(os.getenv('CASE_BATCH_SIZE',1000))
         self.QUERY_TIMEOUT = int(os.getenv('QUERY_TIMEOUT',135)) # seconds
         self.QUEUE_WAIT = int(os.getenv('QUEUE_WAIT',5)) # seconds

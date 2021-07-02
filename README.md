@@ -1,5 +1,5 @@
 # Case Harvester
-Case Harvester is a project designed to mine the [Maryland Judiciary Case Search](http://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp) (MJCS) and build a near-complete database of Maryland court cases that can be queried and analyzed without the limitations of the MJCS interface. It is designed to leverage [Amazon Web Services (AWS)](https://aws.amazon.com/) for scalability and performance.
+Case Harvester is a project designed to mine the [Maryland Judiciary Case Search](https://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp) (MJCS) and build a near-complete database of Maryland court cases that can be queried and analyzed without the limitations of the MJCS interface. It is designed to leverage [Amazon Web Services (AWS)](https://aws.amazon.com/) for scalability and performance.
 
 > **NOTE: Unless you are modifying Case Harvester for specific purposes, please do not run your own instance so that MJCS is spared unneccesary load. If you are a values-aligned researcher or journalist, you are welcome to access our public case database scraped from MJCS with defendant information redacted; reach out to us at [dan@acab.enterprises](mailto:dan@acab.enterprises).**
 
@@ -18,7 +18,7 @@ The spider component is responsible for discovering new case numbers. It does th
 The Spider is launched using Elastic Container Service (ECS) Fargate tasks run at [regularly scheduled intervals](#schedule). These tasks run Case Harvester from a Docker image pulled from an Elastic Container Registry (ECR). Periodically the spider will save its state using a combination of DynamoDB and S3, which allows resuming failed or canceled spider runs.
 
 ### Scraper
-The scraper component downloads and stores the case details for every case number discovered by the spider. The full HTML for each case ([example](http://casesearch.courts.state.md.us/casesearch/inquiryDetail.jis?caseId=116090001&loc=69&detailLoc=DSK8)) is added to an S3 bucket. Version information is kept for each case, including a timestamp of when each version was downloaded, so changes to a case can be recorded and referenced.
+The scraper component downloads and stores the case details for every case number discovered by the spider. The full HTML for each case ([example](https://casesearch.courts.state.md.us/casesearch/inquiryDetail.jis?caseId=116090001&loc=69&detailLoc=DSK8)) is added to an S3 bucket. Version information is kept for each case, including a timestamp of when each version was downloaded, so changes to a case can be recorded and referenced.
 
 ![Scraper diagram](./img/scraper.svg)
 
