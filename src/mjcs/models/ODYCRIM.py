@@ -174,10 +174,10 @@ class ODYCRIMCourtSchedule(ODYCRIMCaseTable, TableBase):
 class ODYCRIMCharge(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_charges'
     __table_args__ = (Index('ixh_odycrim_charges_case_number', 'case_number', postgresql_using='hash'),)
-    odycrim = relationship('ODYCRIM', backref='charges')
 
     id = Column(Integer, primary_key=True)
     charge_number = Column(Integer)
+    possibly_expunged = Column(Boolean, nullable=False, server_default='false')
     cjis_code = Column(String)
     statute_code = Column(String, nullable=True)
     charge_description = Column(String, nullable=True)

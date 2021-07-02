@@ -93,7 +93,7 @@ class CaseDetailsParser(ABC):
         db.execute('SET session_replication_role = replica')
         for _, cls in inspect.getmembers(inspect.getmodule(self), lambda obj: hasattr(obj, '__tablename__')):
             db.execute(cls.__table__.delete()\
-            .where(cls.case_number == self.case_number))
+                .where(cls.case_number == self.case_number))
         db.execute('SET session_replication_role = DEFAULT')
 
     def immediate_previous_sibling(self, next_sibling, *args, **kwargs):
