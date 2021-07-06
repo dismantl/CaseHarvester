@@ -65,6 +65,7 @@ class Config:
         self.MAX_SCRAPE_AGE = int(os.getenv('MAX_SCRAPE_AGE', 14)) # days
         self.MAX_SCRAPE_AGE_INACTIVE = int(os.getenv('MAX_SCRAPE_AGE_INACTIVE', 60)) # days
         self.RESCRAPE_COEFFICIENT = float(os.getenv('RESCRAPE_COEFFICIENT', self.MAX_SCRAPE_AGE / (365 * 4 + 1) ))
+        self.SCRAPE_QUEUE_THRESHOLD = int(os.getenv('SCRAPE_QUEUE_THRESHOLD', 5000000))
         
         # Infrastructure identifiers
         self.MJCS_DATABASE_URL = os.getenv('MJCS_DATABASE_URL')

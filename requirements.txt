@@ -10,5 +10,4 @@ alembic >= 0.9.9
 pytest >= 3.5.0
 python-dotenv >= 0.8.2
 awscli >= 1.16.226
-passlib >= 1.7.2
 multiprocessing_logging >= 0.3.1

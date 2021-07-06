@@ -1,6 +1,6 @@
 from .config import config
 from .session import AsyncSessionPool
-from .util import db_session, get_detail_loc, send_to_queue, cases_batch_filter
+from .util import db_session, get_detail_loc, send_to_queue, cases_batch_filter, get_queue_count
 from .models import ScrapeVersion, Scrape, Case
 from hashlib import sha256
 import logging
@@ -73,6 +73,11 @@ class Scraper:
         trio.run(__scrape_specific_case, case_number)
     
     def rescrape_stale(self, days=None):
+        # Abort if the scraper queue is already full
+        if get_queue_count(config.scraper_queue) > config.SCRAPE_QUEUE_THRESHOLD:
+            logger.info('Scraper queue is already full, aborting...')
+            return
+        
         filter = and_(
             text("cases.scrape_exempt = False"),
             or_(

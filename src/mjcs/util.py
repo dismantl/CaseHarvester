@@ -237,9 +237,6 @@ def decimal_to_float(obj):
         return { k: decimal_to_float(v) for k, v in obj.items() }
     return obj
 
-def generate_postgres_hashed_pass(username):
-    from passlib.apps import postgres_context
-    password = getpass.getpass()
-    hashed_pass = postgres_context.hash(password, user=username)
-    print(f'Postgresql hashed password: {hashed_pass}')
-    return hashed_pass
+def get_queue_count(queue):
+    queue.load()
+    return int(queue.attributes['ApproximateNumberOfMessages'])
