@@ -2,7 +2,8 @@ from ..models import (ODYCRIM, ODYCRIMReferenceNumber, ODYCRIMDefendant,
                      ODYCRIMInvolvedParty, ODYCRIMAlias, ODYCRIMAttorney,
                      ODYCRIMCourtSchedule, ODYCRIMCharge, ODYCRIMProbation,
                      ODYCRIMRestitution, ODYCRIMWarrant, ODYCRIMBailBond,
-                     ODYCRIMBondSetting, ODYCRIMDocument, ODYCRIMService)
+                     ODYCRIMBondSetting, ODYCRIMDocument, ODYCRIMService,
+                     ODYCRIMSexOffenderRegistration)
 from .base import CaseDetailsParser, consumer, ParserError
 import re
 from bs4 import BeautifulSoup, SoupStrainer
@@ -25,6 +26,7 @@ class ODYCRIMParser(CaseDetailsParser):
         if len(self.soup.contents) != 1 or not self.soup.div:
             raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
+        self.allow_unparsed_data = self.allow_unparsed_data()
 
     def delete_previous(self, db):
         # We don't want to delete charges entries since we compare current parsed charges to existing charges in case of expungement (HB 1336)
@@ -350,8 +352,8 @@ class ODYCRIMParser(CaseDetailsParser):
                 t1 = self.immediate_sibling(subsection_header,'table')
                 charge.plea = self.value_multi_column(t1,'Plea:',ignore_missing=True)
                 charge.plea_date_str = self.value_column(t1,'Plea Date:',ignore_missing=True)
-                charge.disposition = self.value_multi_column(t1,'Disposition:')
-                charge.disposition_date_str = self.value_column(t1,'Disposition Date:')
+                charge.disposition = self.value_multi_column(t1,'Disposition:',ignore_missing=True)
+                charge.disposition_date_str = self.value_column(t1,'Disposition Date:',ignore_missing=True)
 
             # Converted Disposition
             try:
@@ -375,6 +377,7 @@ class ODYCRIMParser(CaseDetailsParser):
                 charge.jail_life = self.value_multi_column(t,'Life:',boolean_value=True)
                 charge.jail_death = self.value_multi_column(t,'Death:',boolean_value=True)
                 charge.jail_start_date_str = self.value_multi_column(t,'Start Date:')
+                charge.jail_cons_conc = self.value_multi_column(t,'Cons/Conc:',ignore_missing=True)
                 jail_row = self.row_label(t,'Jail Term:')
                 charge.jail_years = self.value_column(jail_row,'Yrs:')
                 charge.jail_months = self.value_column(jail_row,'Mos:')
@@ -463,6 +466,31 @@ class ODYCRIMParser(CaseDetailsParser):
                 restitution.restitution_entered_date_str = self.value_column(row,'Entered Date:',ignore_missing=True)
                 restitution.other_cost_amount = self.value_multi_column(row,'OtherCost Amount:',money=True,ignore_missing=True)
                 db.add(restitution)
+
+    #########################################################
+    # SEX OFFENDER REGISTRATION
+    #########################################################
+    @consumer
+    def sex_offender_registration(self, db, soup):
+        try:
+            section_header = soup.find('i',string='Sex Offender Registration:').find_parent('left')
+        except (ParserError, AttributeError):
+            return
+        self.mark_for_deletion(section_header)
+        t = self.immediate_sibling(section_header,'table')
+        if len(list(t.stripped_strings)) > 0:
+            registration = ODYCRIMSexOffenderRegistration(case_number=self.case_number)
+            registration.type = self.value_column(t,'Type:')
+            notes = ''
+            for row in t.find_all('tr'):
+                if 'Value' in list(row.stripped_strings) and 'Prompt' not in list(row.stripped_strings):
+                    if len(notes) > 0:
+                        notes += "\n"
+                    notes += row.find('span',class_='Value').string
+                self.mark_for_deletion(row)
+            if len(notes) > 0:
+                registration.notes = notes
+            db.add(registration)
 
     #########################################################
     # WARRANTS INFORMATION

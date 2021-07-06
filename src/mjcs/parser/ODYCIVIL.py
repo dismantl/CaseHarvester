@@ -23,6 +23,7 @@ class ODYCIVILParser(CaseDetailsParser):
         if len(self.soup.contents) != 1 or not self.soup.div:
             raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
+        self.allow_unparsed_data = self.allow_unparsed_data()
 
     def header(self, soup):
         header = soup.find('div',class_='Header')
@@ -102,15 +103,19 @@ class ODYCIVILParser(CaseDetailsParser):
             return
 
         prev_obj = section_header
+        prompt_re = re.compile(r'^([\w \'\-/]+)\s*:\s*$')
+        empty_re = re.compile(r'^\s*:\s*$')
         while True:
             try:
                 t = self.immediate_sibling(prev_obj,'table')
             except ParserError:
                 break
             prev_obj = t
-            prompt_re = re.compile(r'^([\w \'\-/]+)\s*:\s*$')
             prompt_span = t.find('span',class_='FirstColumnPrompt',string=prompt_re)
             if not prompt_span:
+                if t.find('span',class_='FirstColumnPrompt',string=empty_re):
+                    self.mark_for_deletion(t)
+                    continue
                 break
             ref_num = ODYCIVILReferenceNumber(case_number=self.case_number)
             ref_num.ref_num = self.value_first_column(t, prompt_span.string)
@@ -137,28 +142,40 @@ class ODYCIVILParser(CaseDetailsParser):
             try:
                 subsection_header = self.immediate_sibling(prev_obj,'h5')
             except ParserError:
-                break
-            self.mark_for_deletion(subsection_header)
-            prev_obj = subsection_header
-            party_type = self.format_value(subsection_header.string)
+                try:  # sometimes there are parties that are minors and so their info is not included, but they can still have attorneys and aliases
+                    t = self.immediate_sibling(prev_obj,'table')
+                except ParserError:
+                    break
+                if not list(t.stripped_strings):
+                    party_type = None
+                    prev_obj = t
+                else:
+                    break
+            else:
+                self.mark_for_deletion(subsection_header)
+                prev_obj = subsection_header
+                party_type = self.format_value(subsection_header.string)
+
+            if party_type == 'Attorney for Defendant' and defendant_id:
+                party = ODYCIVILAttorney(case_number=self.case_number)
+                party.party_id = defendant_id
+            elif party_type == 'Attorney for Plaintiff' and plaintiff_id:
+                party = ODYCIVILAttorney(case_number=self.case_number)
+                party.party_id = plaintiff_id
+            elif party_type == 'Defendant':
+                party = ODYCIVILDefendant(case_number=self.case_number)
+            else:
+                party = ODYCIVILInvolvedParty(case_number=self.case_number)
+                if party_type:
+                    party.party_type = party_type
 
             try:
-                name_table = self.table_next_first_column_prompt(subsection_header,'Name:')
+                name_table = self.table_next_first_column_prompt(prev_obj,'Name:')
             except ParserError:
                 pass
             else:
                 # Attorneys for defendants and plaintiffs are listed in two different ways
-                if party_type == 'Attorney for Defendant' and defendant_id:
-                    party = ODYCIVILAttorney(case_number=self.case_number)
-                    party.party_id = defendant_id
-                elif party_type == 'Attorney for Plaintiff' and plaintiff_id:
-                    party = ODYCIVILAttorney(case_number=self.case_number)
-                    party.party_id = plaintiff_id
-                elif party_type == 'Defendant':
-                    party = ODYCIVILDefendant(case_number=self.case_number)
-                else:
-                    party = ODYCIVILInvolvedParty(case_number=self.case_number)
-                    party.party_type = party_type
+                
                 party.name = self.value_first_column(name_table,'Name:')
                 prev_obj = name_table
 
@@ -182,92 +199,101 @@ class ODYCIVILParser(CaseDetailsParser):
                         party.removal_date_str = self.value_first_column(t,'Removal Date:')
                     elif 'Appearance Date:' in t.stripped_strings:
                         party.appearance_date_str = self.value_first_column(t,'Appearance Date:')
+                    elif 'DOB:' in t.stripped_strings:
+                        party.DOB_str = self.value_combined_first_column(t,'DOB:')
                     elif len(list(t.stripped_strings)) > 0:
                         break
                     prev_obj = t
 
-                db.add(party)
-                db.flush()
-                if party_type == 'Plaintiff':
-                    plaintiff_id = party.id
-                elif party_type == 'Defendant':
-                    defendant_id = party.id
+            db.add(party)
+            db.flush()
+            if party_type == 'Plaintiff':
+                plaintiff_id = party.id
+            elif party_type == 'Defendant':
+                defendant_id = party.id
 
-                # Aliases and Attorneys
-                while True:
-                    try:
-                        subsection_header = self.immediate_sibling(prev_obj,'table')
-                        subsection_table = self.immediate_sibling(subsection_header,'table')
-                    except ParserError:
-                        break
-                    prev_obj = subsection_table
-                    subsection_name = subsection_header.find('h5').string
-                    self.mark_for_deletion(subsection_header)
-                    if subsection_name == 'Aliases':
-                        for span in subsection_table.find_all('span',class_='FirstColumnPrompt'):
-                            row = span.find_parent('tr')
-                            alias_ = ODYCIVILAlias(case_number=self.case_number)
-                            if type(party) == ODYCIVILDefendant:
-                                alias_.defendant_id = party.id
-                            else:
-                                alias_.party_id = party.id
-                            prompt_re = re.compile(r'^([\w ]+)\s*:\s*$')
-                            alias_.alias = self.value_first_column(row, span.string)
-                            alias_.alias_type = prompt_re.fullmatch(span.string).group(1)
-                            db.add(alias_)
-                    elif 'Attorney(s) for the' in subsection_name:
-                        for span in subsection_table.find_all('span',class_='FirstColumnPrompt',string='Name:'):
-                            attorney = ODYCIVILAttorney(case_number=self.case_number)
-                            if type(party) == ODYCIVILDefendant:
-                                attorney.defendant_id = party.id
-                            else:
-                                attorney.party_id = party.id
-                            name_row = span.find_parent('tr')
-                            attorney.name = self.value_first_column(name_row,'Name:')
-                            prev_row = name_row
+            # Aliases and Attorneys
+            while True:
+                try:
+                    subsection_header = self.immediate_sibling(prev_obj,'table')
+                    subsection_table = self.immediate_sibling(subsection_header,'table')
+                except ParserError:
+                    break
+                prev_obj = subsection_table
+                subsection_name = subsection_header.find('h5').string
+                self.mark_for_deletion(subsection_header)
+                if subsection_name == 'Aliases':
+                    for span in subsection_table.find_all('span',class_='FirstColumnPrompt'):
+                        row = span.find_parent('tr')
+                        alias_ = ODYCIVILAlias(case_number=self.case_number)
+                        if type(party) == ODYCIVILDefendant:
+                            alias_.defendant_id = party.id
+                        else:
+                            alias_.party_id = party.id
+                        prompt_re = re.compile(r'^([\w ]+)\s*:\s*$')
+                        alias_.alias = self.value_first_column(row, span.string)
+                        alias_.alias_type = prompt_re.fullmatch(span.string).group(1)
+                        db.add(alias_)
+                elif 'Attorney(s) for the' in subsection_name:
+                    for span in subsection_table.find_all('span',class_='FirstColumnPrompt',string='Name:'):
+                        attorney = ODYCIVILAttorney(case_number=self.case_number)
+                        if type(party) == ODYCIVILDefendant:
+                            attorney.defendant_id = party.id
+                        else:
+                            attorney.party_id = party.id
+                        name_row = span.find_parent('tr')
+                        attorney.name = self.value_first_column(name_row,'Name:')
+                        prev_row = name_row
 
+                        try:
+                            appearance_date_row = self.row_next_first_column_prompt(prev_row,'Appearance Date:')
+                        except ParserError:
+                            pass
+                        else:
+                            prev_row = appearance_date_row
+                            attorney.appearance_date_str = self.value_first_column(appearance_date_row,'Appearance Date:')
+                        
+                        try:
+                            removal_date_row = self.row_next_first_column_prompt(prev_row,'Removal Date:')
+                        except ParserError:
+                            pass
+                        else:
+                            prev_row = removal_date_row
+                            attorney.removal_date_str = self.value_first_column(removal_date_row,'Removal Date:')
+                        
+                        try:
+                            address_row = self.row_next_first_column_prompt(prev_row,'Address Line 1:')
+                        except ParserError:
+                            pass
+                        else:
+                            attorney.address_1 = self.value_first_column(address_row,'Address Line 1:')
+                            prev_row = address_row
                             try:
-                                appearance_date_row = self.row_next_first_column_prompt(prev_row,'Appearance Date:')
+                                address_row_2 = self.row_next_first_column_prompt(address_row,'Address Line 2:')
                             except ParserError:
-                                pass
-                            else:
-                                prev_row = appearance_date_row
-                                attorney.appearance_date_str = self.value_first_column(appearance_date_row,'Appearance Date:')
-                            
-                            try:
-                                removal_date_row = self.row_next_first_column_prompt(prev_row,'Removal Date:')
-                            except ParserError:
-                                pass
-                            else:
-                                prev_row = removal_date_row
-                                attorney.removal_date_str = self.value_first_column(removal_date_row,'Removal Date:')
-                            
-                            try:
-                                address_row = self.row_next_first_column_prompt(prev_row,'Address Line 1:')
-                            except ParserError:
-                                pass
-                            else:
-                                attorney.address_1 = self.value_first_column(address_row,'Address Line 1:')
-                                prev_row = address_row
+                                # Workaround for addresses that list lines 1 and 3 but not 2
                                 try:
-                                    address_row_2 = self.row_next_first_column_prompt(address_row,'Address Line 2:')
+                                    address_row_3 = self.row_next_first_column_prompt(prev_row,'Address Line 3:')
                                 except ParserError:
                                     pass
                                 else:
-                                    prev_row = address_row_2
-                                    attorney.address_2 = self.value_first_column(address_row_2,'Address Line 2:')
-                                    try:
-                                        address_row_3 = self.row_next_first_column_prompt(address_row_2,'Address Line 3:')
-                                    except ParserError:
-                                        pass
-                                    else:
-                                        prev_row = address_row_3
-                                        attorney.address_3 = self.value_first_column(address_row_3,'Address Line 3:')
-                                city_row = self.row_next_first_column_prompt(prev_row,'City:')
-                                attorney.city = self.value_first_column(city_row,'City:')
-                                attorney.state = self.value_column(city_row,'State:')
-                                attorney.zip_code = self.value_column(city_row,'Zip Code:')
-                            db.add(attorney)
+                                    prev_row = address_row_3
+                                    attorney.address_2 = self.value_first_column(address_row_3,'Address Line 3:')
+                            else:
+                                prev_row = address_row_2
+                                attorney.address_2 = self.value_first_column(address_row_2,'Address Line 2:')
+                                try:
+                                    address_row_3 = self.row_next_first_column_prompt(address_row_2,'Address Line 3:')
+                                except ParserError:
+                                    pass
+                                else:
+                                    prev_row = address_row_3
+                                    attorney.address_3 = self.value_first_column(address_row_3,'Address Line 3:')
+                            city_row = self.row_next_first_column_prompt(prev_row,'City:')
+                            attorney.city = self.value_first_column(city_row,'City:')
+                            attorney.state = self.value_column(city_row,'State:')
+                            attorney.zip_code = self.value_column(city_row,'Zip Code:')
+                        db.add(attorney)
 
             try:
                 separator = self.immediate_sibling(prev_obj,'hr')
@@ -312,17 +338,11 @@ class ODYCIVILParser(CaseDetailsParser):
     def judgments(self, db, soup):
         for section_header in soup.find_all('h5', string="Judgment Information"):
             self.mark_for_deletion(section_header)
+            section_header_t = section_header.find_parent('table')
+            if section_header_t:
+                section_header = section_header_t
             section = self.immediate_sibling(section_header,'div',class_='AltBodyWindow1')
-            if section.find('span',class_='Value',string='Monetary') \
-                    or section.find('span',class_='Value',string='Property'):
-                self.judgment(db, section, 'Monetary')
-                self.judgment(db, section, 'Property')
-            elif section.find('span', class_='FirstColumnPrompt', string='Judgment Event Type:'):
-                for span in section.find_all('span', class_='FirstColumnPrompt', string='Judgment Event Type:'):
-                    row = span.find_parent('tr')
-                    j = ODYCIVILJudgment(case_number=self.case_number)
-                    j.judgment_event_type = self.value_first_column(row,'Judgment Event Type:')
-                    db.add(j)
+            self.judgment(db, section)
             
             if section.find('h5', string='Case Judgment Comment History'):
                 section_header = section.find('h5', string='Case Judgment Comment History')
@@ -372,67 +392,139 @@ class ODYCIVILParser(CaseDetailsParser):
                             setattr(d, label, self.format_value(val))
                     db.add(d)
 
-    def judgment(self, db, section, judgment_type):
-        for judgment in section.find_all('span',class_='Value',string=judgment_type):
-            self.mark_for_deletion(judgment)
-            r1 = judgment.find_parent('tr')
-            t1 = judgment.find_parent('table')
-            judgment_description = self.immediate_sibling(r1, 'tr').find('h6')
-            self.mark_for_deletion(judgment_description)
+    def judgment(self, db, section):
+        for t in section.find_all('table', recursive=False):
             j = ODYCIVILJudgment(case_number=self.case_number)
-            j.judgment_description = self.format_value(judgment_description.string)
-            j.judgment_type = judgment_type
-            if judgment_type == 'Monetary':
-                j.judgment_event_type = self.value_first_column(t1,'Judgment Event Type:')
-                j.postjudgment_interest = self.value_multi_column(t1,'PostJudgment Interest:')
-                j.principal_amount = self.value_multi_column(t1,'Principal Amount:',money=True)
-                j.prejudgment_interest = self.value_multi_column(t1,'PreJudgment Interest:',money=True)
-                j.other_fee = self.value_multi_column(t1,'Other Fee:',money=True)
-                j.service_fee = self.value_multi_column(t1,'Service Fee:',money=True)
-                j.appearance_fee = self.value_multi_column(t1,'Appearance Fee:',money=True)
-                j.witness_fee = self.value_multi_column(t1,'Witness Fee:',money=True)
-                j.filing_fee = self.value_multi_column(t1,'Filing Fee:',money=True)
-                j.attorney_fee = self.value_multi_column(t1,'Attorney Fee:',money=True)
-                j.amount_of_judgment = self.value_multi_column(t1,'Amount of Judgment:',money=True)
-                j.total_indexed_judgment = self.value_multi_column(t1,'Total Indexed Judgment:',money=True)
-                j.comment = self.value_multi_column(t1,'Comment:')
-            elif judgment_type == 'Property':
-                j.judgment_event_type = self.value_multi_column(t1,'Judgment Event Type:')
-                awarded_to_span = t1.find('span', class_='Prompt', string='Awarded To:')
+            if t.find('span',class_='Value',string='LandLord Tenants'):
+                judgment = t.find('span',class_='Value',string='LandLord Tenants')
+                if judgment:
+                    self.mark_for_deletion(judgment)
+                    r1 = judgment.find_parent('tr')
+                    judgment_description = self.immediate_sibling(r1, 'tr').find('h6')
+                    self.mark_for_deletion(judgment_description)
+                    j.judgment_description = self.format_value(judgment_description.string)
+                j.judgment_type = 'LandLord Tenants'
+                try:
+                    j.judgment_event_type = self.value_multi_column(t,'Judgment Event Type:')
+                except ParserError:
+                    j.judgment_event_type = self.value_first_column(t,'Judgment Event Type:')
+                j.judgment_for = self.value_multi_column(t,'Judgment For:',ignore_missing=True)
+                j.possession = self.value_multi_column(t,'Possession:',ignore_missing=True,boolean_value=True)
+                j.premise_description = self.value_multi_column(t,'Premise Description:',ignore_missing=True)
+                j.costs = self.value_multi_column(t,'Costs ?',boolean_value=True,ignore_missing=True)
+                j.stay_upon_filing_of_bond = self.value_multi_column(t,'Stay Upon filing of Bond ?',boolean_value=True,ignore_missing=True)
+                j.stay_of_execution_until_str = self.value_multi_column(t,'Stay of execution until:',ignore_missing=True)
+                j.monetary_judgment = self.value_multi_column(t,'Monetary Judgment ?',boolean_value=True,ignore_missing=True)
+                j.judgment_against = self.value_multi_column(t,'Judgment Against:',ignore_missing=True)
+                j.appeal_bond_amount = self.value_multi_column(t,'Appeal Bond Amount:',ignore_missing=True,money=True)
+                j.party = self.value_first_column(t,'Party:',ignore_missing=True)
+            elif t.find('span',class_='Value',string='Land Lord Tenants'):
+                judgment = t.find('span',class_='Value',string='Land Lord Tenants')
+                if judgment:
+                    self.mark_for_deletion(judgment)
+                    r1 = judgment.find_parent('tr')
+                    judgment_description = self.immediate_sibling(r1, 'tr').find('h6')
+                    self.mark_for_deletion(judgment_description)
+                    j.judgment_description = self.format_value(judgment_description.string)
+                j.judgment_type = 'Land Lord Tenants'
+                j.judgment_event_type = self.value_first_column_table(t,'Judgment Event Type:')
+                j.judgment_for = self.value_first_column_table(t,'Judgment For:',ignore_missing=True)
+                j.possession = self.value_first_column_table(t,'Possession ?',ignore_missing=True,boolean_value=True)
+                j.premise_description = self.value_first_column_table(t,'Premise Description:',ignore_missing=True)
+                j.costs = self.value_first_column(t,'Costs ?',boolean_value=True,ignore_missing=True)
+                j.costs_ = self.value_first_column(t,'Costs:',ignore_missing=True)
+                j.stay_upon_filing_of_bond = self.value_first_column_table(t,'Stay Upon filing of Bond ?',boolean_value=True,ignore_missing=True)
+                j.stay_of_execution_until_str = self.value_first_column_table(t,'Stay of execution until:',ignore_missing=True)
+                j.stay_details = self.value_first_column_table(t,'Stay Details:',ignore_missing=True)
+                j.monetary_judgment = self.value_first_column_table(t,'Monetary Judgment ?',boolean_value=True,ignore_missing=True)
+                j.judgment_against = self.value_first_column_table(t,'Judgment Against:',ignore_missing=True)
+                j.judgment = self.value_first_column(t,'Judgment:',ignore_missing=True)
+                j.appeal_bond_amount = self.value_first_column(t,'Appeal Bond Amount:',ignore_missing=True,money=True)
+                j.court_costs = self.value_first_column(t,'Court Costs:',ignore_missing=True)
+                j.attorney_fee = self.value_first_column(t,'Attorney Fees:',ignore_missing=True)
+                j.comment = self.value_first_column_table(t,'Comment:',ignore_missing=True)
+                j.party = self.value_first_column(t,'Party:',ignore_missing=True)
+            elif t.find('span',class_='Value',string='Monetary'):
+                judgment = t.find('span',class_='Value',string='Monetary')
+                if judgment:
+                    self.mark_for_deletion(judgment)
+                    r1 = judgment.find_parent('tr')
+                    judgment_description = self.immediate_sibling(r1, 'tr').find('h6')
+                    self.mark_for_deletion(judgment_description)
+                    j.judgment_description = self.format_value(judgment_description.string)
+                j.judgment_type = 'Monetary'
+                j.judgment_event_type = self.value_first_column(t,'Judgment Event Type:')
+                j.postjudgment_interest = self.value_multi_column(t,'PostJudgment Interest:',ignore_missing=True)
+                j.principal_amount = self.value_multi_column(t,'Principal Amount:',money=True)
+                j.prejudgment_interest = self.value_multi_column(t,'PreJudgment Interest:',money=True,ignore_missing=True)
+                if not j.prejudgment_interest:
+                    j.prejudgment_interest = self.value_multi_column(t,'Pre-Judgment Interest:',money=True,ignore_missing=True)
+                j.other_fee = self.value_multi_column(t,'Other Fee:',money=True,ignore_missing=True)
+                j.service_fee = self.value_multi_column(t,'Service Fee:',money=True,ignore_missing=True)
+                j.appearance_fee = self.value_multi_column(t,'Appearance Fee:',money=True,ignore_missing=True)
+                j.witness_fee = self.value_multi_column(t,'Witness Fee:',money=True,ignore_missing=True)
+                j.filing_fee = self.value_multi_column(t,'Filing Fee:',money=True,ignore_missing=True)
+                j.attorney_fee = self.value_multi_column(t,'Attorney Fee:',money=True,ignore_missing=True)
+                j.amount_of_judgment = self.value_multi_column(t,'Amount of Judgment:',money=True)
+                j.total_indexed_judgment = self.value_multi_column(t,'Total Indexed Judgment:',money=True)
+                j.comment = self.value_multi_column(t,'Comment:')
+                j.judgment_against = self.value_multi_column(t,'Judgment Against:')
+                j.judgment_in_favor_of = self.value_multi_column(t,'Judgment in Favor of:')
+                j.judgment_ordered_date_str = self.value_multi_column(t,'Judgment Ordered Date:')
+                j.judgment_entry_date_str = self.value_multi_column(t,'Judgment Entry Date:')
+                j.judgment_expiration_date_str = self.value_multi_column(t,'Judgment Expiration Date:',ignore_missing=True)
+            elif t.find('span',class_='Value',string='Property'):
+                judgment = t.find('span',class_='Value',string='Property')
+                if judgment:
+                    self.mark_for_deletion(judgment)
+                    r1 = judgment.find_parent('tr')
+                    judgment_description = self.immediate_sibling(r1, 'tr').find('h6')
+                    self.mark_for_deletion(judgment_description)
+                    j.judgment_description = self.format_value(judgment_description.string)
+                j.judgment_type = 'Property'
+                j.judgment_event_type = self.value_multi_column(t,'Judgment Event Type:')
+                awarded_to_span = t.find('span', class_='Prompt', string='Awarded To:')
                 self.mark_for_deletion(awarded_to_span)
                 awarded_to_val = self.immediate_sibling(awarded_to_span.find_parent('td'), 'td')
                 self.mark_for_deletion(awarded_to_val)
                 j.awarded_to = self.format_value(list(awarded_to_val.stripped_strings)[0])
-                j.property_value = self.value_multi_column(t1,'Property Value:',money=True)
-                j.damages = self.value_multi_column(t1,'Damages:',money=True)
-                j.property_description = self.value_multi_column(t1,'Property Description:')
-                j.replivin_or_detinue = self.value_multi_column(t1,'Replivin or Detinue:')
-                j.r_d_amount = self.value_multi_column(t1,'R/D Amount:',money=True)
-            j.judgment_against = self.value_multi_column(t1,'Judgment Against:')
-            j.judgment_in_favor_of = self.value_multi_column(t1,'Judgment in Favor of:')
-            j.judgment_ordered_date_str = self.value_multi_column(t1,'Judgment Ordered Date:')
-            j.judgment_entry_date_str = self.value_multi_column(t1,'Judgment Entry Date:')
+                j.property_value = self.value_multi_column(t,'Property Value:',money=True)
+                j.damages = self.value_multi_column(t,'Damages:',money=True)
+                j.property_description = self.value_multi_column(t,'Property Description:')
+                if not j.property_description:
+                    j.property_description = self.value_multi_column_table(t,'Property Description:')
+                j.replivin_or_detinue = self.value_multi_column(t,'Replivin or Detinue:')
+                j.r_d_amount = self.value_multi_column(t,'R/D Amount:',money=True)
+                j.judgment_against = self.value_multi_column(t,'Judgment Against:')
+                j.judgment_in_favor_of = self.value_multi_column(t,'Judgment in Favor of:')
+                j.judgment_ordered_date_str = self.value_multi_column(t,'Judgment Ordered Date:')
+                j.judgment_entry_date_str = self.value_multi_column(t,'Judgment Entry Date:')
+            elif t.find('span', class_='FirstColumnPrompt', string='Judgment Event Type:'):
+                j.judgment_event_type = self.value_first_column(t,'Judgment Event Type:')
+                j.party = self.value_first_column(t,'Party:',ignore_missing=True)
 
             db.add(j)
             db.flush()
 
             # Judgment Status
-            status_header_row = t1.find('th',class_='tableHeader',string='Judgment Status').find_parent('tr')
-            self.mark_for_deletion(status_header_row)
-            prev_obj = status_header_row
-            while True:
-                try:
-                    row = self.immediate_sibling(prev_obj,'tr')
-                except ParserError:
-                    break
-                prev_obj = row
-                self.mark_for_deletion(row)
-                vals = row.find_all('span',class_='Value')
-                js = ODYCIVILJudgmentStatus(case_number=self.case_number)
-                js.judgment_id = j.id
-                js.judgment_status = self.format_value(vals[0].string)
-                js.judgment_date_str = self.format_value(vals[1].string)
-                db.add(js)
+            status_header = t.find('th',class_='tableHeader',string='Judgment Status')
+            if status_header:
+                status_header_row = status_header.find_parent('tr')
+                self.mark_for_deletion(status_header_row)
+                prev_obj = status_header_row
+                while True:
+                    try:
+                        row = self.immediate_sibling(prev_obj,'tr')
+                    except ParserError:
+                        break
+                    prev_obj = row
+                    self.mark_for_deletion(row)
+                    vals = row.find_all('span',class_='Value')
+                    js = ODYCIVILJudgmentStatus(case_number=self.case_number)
+                    js.judgment_id = j.id
+                    js.judgment_status = self.format_value(vals[0].string)
+                    js.judgment_date_str = self.format_value(vals[1].string)
+                    db.add(js)
 
     #########################################################
     # WARRANTS INFORMATION

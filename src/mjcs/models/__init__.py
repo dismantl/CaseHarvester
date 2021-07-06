@@ -19,7 +19,8 @@ from .ODYCRIM import (ODYCRIM, ODYCRIMReferenceNumber, ODYCRIMDefendant,
                       ODYCRIMInvolvedParty, ODYCRIMAlias, ODYCRIMAttorney,
                       ODYCRIMCourtSchedule, ODYCRIMCharge, ODYCRIMProbation,
                       ODYCRIMRestitution, ODYCRIMWarrant, ODYCRIMBailBond,
-                      ODYCRIMBondSetting, ODYCRIMDocument, ODYCRIMService)
+                      ODYCRIMBondSetting, ODYCRIMDocument, ODYCRIMService,
+                      ODYCRIMSexOffenderRegistration)
 from .ODYCIVIL import (ODYCIVIL, ODYCIVILReferenceNumber, ODYCIVILCause, 
                        ODYCIVILCauseRemedy, ODYCIVILDefendant, ODYCIVILInvolvedParty,
                        ODYCIVILAlias, ODYCIVILAttorney, ODYCIVILJudgment, 

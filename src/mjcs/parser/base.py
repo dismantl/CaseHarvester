@@ -4,6 +4,7 @@ from ..util import db_session
 from ..models import Case
 from . import BaseParserError
 import re
+from sqlalchemy.sql import select
 from datetime import datetime
 import inspect
 import sys
@@ -34,6 +35,14 @@ class CaseDetailsParser(ABC):
             raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
         self.case_status = None
+        self.allow_unparsed_data = self.allow_unparsed_data()
+
+    def allow_unparsed_data(self):
+        with db_session() as db:
+            return db.execute(
+                select([Case.allow_unparsed_data])\
+                .where(Case.case_number == self.case_number)
+            ).scalar()
 
     def parse(self):
         # All parsing is done within a single database transaction, so no partial data is added or destroyed
@@ -62,7 +71,7 @@ class CaseDetailsParser(ABC):
     def finalize(self, db):
         for obj in self.marked_for_deletion:
             obj.decompose()
-        if list(self.soup.stripped_strings):
+        if list(self.soup.stripped_strings) and not self.allow_unparsed_data:
             raise UnparsedDataError("Data remaining in DOM after parsing:",list(self.soup.stripped_strings))
         # update last_parse in DB
         db.execute(
@@ -265,7 +274,7 @@ class CaseDetailsParser(ABC):
             numeric=False,
             money=False):
         if boolean_value:
-            return val and val.lower() != 'false'
+            return val and val.lower() != 'false' and val.lower() != 'no'
         if not val:
             return None
         if strip:
@@ -342,4 +351,46 @@ class CaseDetailsParser(ABC):
         if value_span:
             self.mark_for_deletion(value_span)
             return self.format_value(value_span.string, **format_args)
+        return None
+
+    def value_multi_column_table(self, base, prompt, ignore_missing=False, **format_args):
+        prompt_span = base\
+            .find('span',class_='Prompt',string=re.compile(prompt))
+        if not prompt_span:
+            if ignore_missing:
+                return None
+            raise ParserError('Unable to find column prompt %s' % prompt)
+        self.mark_for_deletion(prompt_span)
+        value_table = prompt_span\
+            .find_parent('td')\
+            .find_next_sibling('td')\
+            .find('table')
+        if value_table:
+            value_strings = list(value_table.stripped_strings)
+            if len(value_strings) > 1:
+                raise ParserError(f'Invalid table value {value_table}')
+            self.mark_for_deletion(value_table)
+            if value_strings:
+                return self.format_value(value_strings[0], **format_args)
+        return None
+    
+    def value_first_column_table(self, base, prompt, ignore_missing=False, **format_args):
+        prompt_span = base\
+            .find('span',class_='FirstColumnPrompt',string=re.compile(prompt))
+        if not prompt_span:
+            if ignore_missing:
+                return None
+            raise ParserError('Unable to find first column prompt %s' % prompt)
+        self.mark_for_deletion(prompt_span)
+        value_table = prompt_span\
+            .find_parent('td')\
+            .find_next_sibling('td')\
+            .find('table')
+        if value_table:
+            value_strings = list(value_table.stripped_strings)
+            if len(value_strings) > 1:
+                raise ParserError(f'Invalid table value {value_table}')
+            self.mark_for_deletion(value_table)
+            if value_strings:
+                return self.format_value(value_strings[0], **format_args)
         return None

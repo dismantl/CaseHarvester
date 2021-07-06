@@ -94,6 +94,8 @@ class Parser:
         install_mp_handler(logger)
 
     def parse_case(self, case_number, detail_loc=None):
+        if not detail_loc:
+            detail_loc = get_detail_loc(case_number)
         logger.debug(f'Worker {getpid()} parsing {case_number} of type {detail_loc}')
         try:
             parse_case(case_number, detail_loc)

@@ -23,3 +23,4 @@ class Case(TableBase):
     scrape_exempt = Column(Boolean, nullable=False, server_default='false')
     parse_exempt = Column(Boolean, nullable=False, server_default='false')
     active = Column(Boolean, nullable=False, server_default='true')
+    allow_unparsed_data = Column(Boolean, nullable=False, server_default='false')

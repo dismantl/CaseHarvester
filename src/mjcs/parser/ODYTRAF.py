@@ -24,6 +24,7 @@ class ODYTRAFParser(CaseDetailsParser):
         if len(self.soup.contents) != 1 or not self.soup.div:
             raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
+        self.allow_unparsed_data = self.allow_unparsed_data()
 
     def header(self, soup):
         header = soup.find('div',class_='Header')
@@ -104,6 +105,11 @@ class ODYTRAFParser(CaseDetailsParser):
             section_header = self.first_level_header(soup, 'Involved Parties Information')
         except ParserError:
             return
+        try:
+            separator = self.immediate_sibling(section_header,'hr')
+            section_header = separator
+        except ParserError:
+            pass
         self.consume_parties(db, section_header)
 
     def consume_parties(self, db, prev_obj):
@@ -258,6 +264,10 @@ class ODYTRAFParser(CaseDetailsParser):
 
             if not party or type(party) != ODYTRAFDefendant:  # Defendant section doesn't separate parties with <hr>
                 separator = self.immediate_sibling(prev_obj,'hr')
+                try:
+                    separator = self.immediate_sibling(separator,'hr')
+                except:
+                    pass
                 prev_obj = separator
 
     #########################################################

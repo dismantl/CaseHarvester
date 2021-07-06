@@ -87,12 +87,14 @@ class ODYCIVILInvolvedParty(ODYCIVILCaseTable, TableBase):
     odycivil = relationship('ODYCIVIL', backref='involved_parties')
 
     id = Column(Integer, primary_key=True)
-    party_type = Column(String, nullable=False)
-    name = Column(String, nullable=False)
+    party_type = Column(String, nullable=True)
+    name = Column(String, nullable=True)
     appearance_date = Column(Date)
     _appearance_date_str = Column('appearance_date_str', String)
     removal_date = Column(Date)
     _removal_date_str = Column('removal_date_str', String)
+    DOB = Column(Date, nullable=True)
+    _DOB_str = Column('DOB_str',String, nullable=True)
     address_1 = Column(String, nullable=True)
     address_2 = Column(String, nullable=True)
     city = Column(String, nullable=True)
@@ -116,6 +118,14 @@ class ODYCIVILInvolvedParty(ODYCIVILCaseTable, TableBase):
     def removal_date_str(self,val):
         self.removal_date = date_from_str(val)
         self._removal_date_str = val
+    
+    @hybrid_property
+    def DOB_str(self):
+        return self._DOB_str
+    @DOB_str.setter
+    def DOB_str(self,val):
+        self.DOB = date_from_str(val)
+        self._DOB_str = val
 
 class ODYCIVILAlias(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_aliases'
@@ -173,10 +183,13 @@ class ODYCIVILJudgment(ODYCIVILCaseTable, TableBase):
     judgment_event_type = Column(String)
     judgment_against = Column(String)
     judgment_in_favor_of = Column(String)
+    judgment_for = Column(String)
     judgment_ordered_date = Column(Date)
     _judgment_ordered_date_str = Column('judgment_ordered_date_str',String)
     judgment_entry_date = Column(Date)
     _judgment_entry_date_str = Column('judgment_entry_date_str',String)
+    judgment_expiration_date = Column(Date)
+    _judgment_expiration_date_str = Column('judgment_expiration_date_str',String)
     postjudgment_interest = Column(String)
     principal_amount = Column(Numeric)
     prejudgment_interest = Column(Numeric)
@@ -195,6 +208,19 @@ class ODYCIVILJudgment(ODYCIVILCaseTable, TableBase):
     property_description = Column(String)
     replivin_or_detinue = Column(String)
     r_d_amount = Column(Numeric)
+    party = Column(String)
+    possession = Column(Boolean)
+    premise_description = Column(String)
+    costs = Column(Boolean)
+    costs_ = Column(Numeric)
+    stay_upon_filing_of_bond = Column(Boolean)
+    stay_of_execution_until = Column(Date)
+    _stay_of_execution_until_str = Column('stay_of_execution_until_str',String)
+    stay_details = Column(String)
+    monetary_judgment = Column(Boolean)
+    judgment = Column(String)
+    appeal_bond_amount = Column(Numeric)
+    court_costs = Column(Numeric)
 
     @hybrid_property
     def judgment_ordered_date_str(self):
@@ -211,6 +237,22 @@ class ODYCIVILJudgment(ODYCIVILCaseTable, TableBase):
     def judgment_entry_date_str(self,val):
         self.judgment_entry_date = date_from_str(val)
         self._judgment_entry_date_str = val
+    
+    @hybrid_property
+    def stay_of_execution_until_str(self):
+        return self._stay_of_execution_until_str
+    @stay_of_execution_until_str.setter
+    def stay_of_execution_until_str(self,val):
+        self.stay_of_execution_until = date_from_str(val)
+        self._stay_of_execution_until_str = val
+    
+    @hybrid_property
+    def judgment_expiration_date_str(self):
+        return self._judgment_expiration_date_str
+    @judgment_expiration_date_str.setter
+    def judgment_expiration_date_str(self,val):
+        self.judgment_expiration_date = date_from_str(val)
+        self._judgment_expiration_date_str = val
 
 class ODYCIVILJudgmentStatus(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_judgment_statuses'
@@ -271,9 +313,13 @@ class ODYCIVILJudgmentComment(ODYCIVILCaseTable, TableBase):
     _renewed_date_ent_str = Column('renewed_date_end_str',String)
     amendcorrect = Column(String)
     defreason = Column(String)
+    filingfee = Column(Numeric)
     freetext = Column(String)
+    postjinterest = Column(Numeric)
+    otherfee = Column(Numeric)
     printdate = Column(Date)
     _printdate_str = Column('printdate_str',String)
+    totalcosts = Column(Numeric)
     totalinterest = Column(Numeric)
     totaljudg = Column(Numeric)
     totalprincipal = Column(String)
@@ -281,6 +327,7 @@ class ODYCIVILJudgmentComment(ODYCIVILCaseTable, TableBase):
     user = Column(String)
     usercdate = Column(Date)
     _usercdate_str = Column('usercdate_str',String)
+    judg_ccjs_ind = Column(String)
 
     @hybrid_property
     def usercdate_str(self):

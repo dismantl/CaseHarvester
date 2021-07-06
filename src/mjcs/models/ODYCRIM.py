@@ -171,11 +171,12 @@ class ODYCRIMCourtSchedule(ODYCRIMCaseTable, TableBase):
             pass
         self._time_str = val
 
-class ODYCRIMCharge(ODYCRIMCaseTable, TableBase):
+class ODYCRIMCharge(CaseTable, TableBase):
     __tablename__ = 'odycrim_charges'
     __table_args__ = (Index('ixh_odycrim_charges_case_number', 'case_number', postgresql_using='hash'),)
 
     id = Column(Integer, primary_key=True)
+    case_number = Column(String, nullable=False)
     charge_number = Column(Integer)
     possibly_expunged = Column(Boolean, nullable=False, server_default='false')
     cjis_code = Column(String)
@@ -200,6 +201,7 @@ class ODYCRIMCharge(ODYCRIMCaseTable, TableBase):
     jail_death = Column(Boolean, nullable=True)
     jail_start_date = Column(Date, nullable=True)
     _jail_start_date_str = Column('jail_start_date_str', String, nullable=True)
+    jail_cons_conc = Column(String)
     jail_years = Column(Integer, nullable=True)
     jail_months = Column(Integer, nullable=True)
     jail_days = Column(Integer, nullable=True)
@@ -299,6 +301,15 @@ class ODYCRIMRestitution(ODYCRIMCaseTable, TableBase):
     def restitution_entered_date_str(self,val):
         self.restitution_entered_date = date_from_str(val)
         self._restitution_entered_date_str = val
+
+class ODYCRIMSexOffenderRegistration(ODYCRIMCaseTable, TableBase):
+    __tablename__ = 'odycrim_sex_offender_registrations'
+    __table_args__ = (Index('ixh_odycrim_sex_offender_registrations_case_number', 'case_number', postgresql_using='hash'),)
+    odycrim = relationship('ODYCRIM', backref='sex_offender_registrations')
+
+    id = Column(Integer, primary_key=True)
+    type = Column(String)
+    notes = Column(String)
 
 class ODYCRIMWarrant(ODYCRIMCaseTable, TableBase):
     __tablename__ = 'odycrim_warrants'
