@@ -27,3 +27,9 @@ from .ODYCIVIL import (ODYCIVIL, ODYCIVILReferenceNumber, ODYCIVILCause,
                        ODYCIVILJudgmentStatus, ODYCIVILCourtSchedule, ODYCIVILWarrant,
                        ODYCIVILDocument, ODYCIVILService, ODYCIVILJudgmentComment,
                        ODYCIVILBondSetting, ODYCIVILBailBond, ODYCIVILDisposition)
+from .ODYCVCIT import (ODYCVCIT, ODYCVCITReferenceNumber, ODYCVCITDefendant,
+                      ODYCVCITInvolvedParty, ODYCVCITAlias, ODYCVCITAttorney,
+                      ODYCVCITCourtSchedule, ODYCVCITCharge, ODYCVCITProbation,
+                      ODYCVCITRestitution, ODYCVCITWarrant, ODYCVCITBailBond,
+                      ODYCVCITBondSetting, ODYCVCITDocument, ODYCVCITService,
+                      ODYCVCITSexOffenderRegistration)

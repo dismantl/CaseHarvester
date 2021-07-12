@@ -25,6 +25,7 @@ from .CC import CCParser
 from .ODYTRAF import ODYTRAFParser
 from .ODYCRIM import ODYCRIMParser
 from .ODYCIVIL import ODYCIVILParser
+from .ODYCVCIT import ODYCVCITParser
 
 parsers = [
     ('DSCR',DSCRParser),
@@ -33,7 +34,8 @@ parsers = [
     ('CC',CCParser),
     ('ODYTRAF',ODYTRAFParser),
     ('ODYCRIM',ODYCRIMParser),
-    ('ODYCIVIL',ODYCIVILParser)
+    ('ODYCIVIL',ODYCIVILParser),
+    ('ODYCVCIT',ODYCVCITParser)
 ]
 
 def load_failed_queue(ncases, detail_loc=None):
