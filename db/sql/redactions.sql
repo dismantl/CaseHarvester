@@ -89,4 +89,18 @@ CREATE OR REPLACE VIEW redacted.odytraf_defendants
     odytraf_defendants.case_number
    FROM odytraf_defendants;
 
+REVOKE SELECT ON TABLE public.odycivil_defendants FROM mjcs_ro_redacted;
+CREATE OR REPLACE VIEW redacted.odycivil_defendants
+ AS
+ SELECT odycivil_defendants.id,
+    odycivil_defendants.race,
+    odycivil_defendants.sex,
+    odycivil_defendants.height,
+    odycivil_defendants.weight,
+    odycivil_defendants.city,
+    odycivil_defendants.state,
+    odycivil_defendants.zip_code,
+    odycivil_defendants.case_number
+   FROM odycivil_defendants;
+
 COMMIT;
