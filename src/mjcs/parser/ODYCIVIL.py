@@ -455,6 +455,8 @@ class ODYCIVILParser(CaseDetailsParser):
                 j.judgment_type = 'Monetary'
                 j.judgment_event_type = self.value_first_column(t,'Judgment Event Type:')
                 j.postjudgment_interest = self.value_multi_column(t,'PostJudgment Interest:',ignore_missing=True)
+                if not j.postjudgment_interest:
+                    j.postjudgment_interest = self.value_multi_column(t,'Post-Judgment Interest:',ignore_missing=True)
                 j.principal_amount = self.value_multi_column(t,'Principal Amount:',money=True)
                 j.prejudgment_interest = self.value_multi_column(t,'PreJudgment Interest:',money=True,ignore_missing=True)
                 if not j.prejudgment_interest:
@@ -466,7 +468,9 @@ class ODYCIVILParser(CaseDetailsParser):
                 j.filing_fee = self.value_multi_column(t,'Filing Fee:',money=True,ignore_missing=True)
                 j.attorney_fee = self.value_multi_column(t,'Attorney Fee:',money=True,ignore_missing=True)
                 j.amount_of_judgment = self.value_multi_column(t,'Amount of Judgment:',money=True)
-                j.total_indexed_judgment = self.value_multi_column(t,'Total Indexed Judgment:',money=True)
+                j.total_indexed_judgment = self.value_multi_column(t,'Total Indexed Judgment:',money=True,ignore_missing=True)
+                if not j.total_indexed_judgment:
+                    j.total_indexed_judgment = self.value_multi_column(t,'Total Judgment Index:',money=True,ignore_missing=True)
                 j.comment = self.value_multi_column(t,'Comment:')
                 j.judgment_against = self.value_multi_column(t,'Judgment Against:')
                 j.judgment_in_favor_of = self.value_multi_column(t,'Judgment in Favor of:')
