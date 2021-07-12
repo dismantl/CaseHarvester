@@ -35,8 +35,8 @@ Parameters:
 Mappings:
   Environment:
     RDSDBInstanceClass:
-      prod: db.t2.small
-      dev: db.t2.micro
+      prod: db.t3.small
+      dev: db.t3.micro
     RDSAllocatedStorage:
       prod: 50 # GB
       dev: 20
@@ -143,7 +143,7 @@ Resources:
       DBInstanceIdentifier: !Sub mjcs-${EnvironmentType}
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       Engine: postgres
-      EngineVersion: 11.5
+      EngineVersion: 13.1
       AllowMajorVersionUpgrade: True
       MasterUsername: !Ref DatabaseMasterUsername
       MasterUserPassword: !Ref DatabaseMasterPassword
