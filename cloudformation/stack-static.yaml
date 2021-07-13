@@ -38,10 +38,10 @@ Mappings:
       prod: db.t3.small
       dev: db.t3.micro
     RDSAllocatedStorage:
-      prod: 50 # GB
+      prod: 225 # GB
       dev: 20
     RDSMaxAllocatedStorage:
-      prod: 100 # GB
+      prod: 250 # GB
       dev: 30
     RDSBackupRetentionPeriod:
       prod: 14 # days
