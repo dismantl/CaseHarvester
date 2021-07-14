@@ -290,7 +290,10 @@ class SearchNode:
     def __init__(self, range_start_date, range_end_date, search_string=None, parent=None, spider=None):
         # Slice search parameters
         self.range_start_date = range_start_date
-        self.range_end_date = range_end_date
+        if range_end_date:
+            self.range_end_date = range_end_date
+        else:
+            self.range_end_date = range_start_date
         self.search_string = search_string
 
         # Stateful attributes
@@ -688,6 +691,8 @@ class SearchNode:
 
     def __split(self):
         logger.debug(f'Splitting date range {self.id}')
+        if self.range_start_date == self.range_end_date:
+            return
         range1, range2 = split_date_range(self.range_start_date, self.range_end_date)
         self.spider.append_slices([
             {
