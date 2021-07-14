@@ -219,13 +219,7 @@ class Scraper:
                     db.execute(
                         Case.__table__.update()\
                             .where(Case.case_number == case_number)\
-                            .values(scrape_exempt=True, last_scrape=begin)
-                    )
-                else:
-                    db.execute(
-                        Case.__table__.update()\
-                            .where(Case.case_number == case_number)\
-                            .values(last_scrape = begin)
+                            .values(scrape_exempt=True)
                     )
         else:
             await self.__store_case_details(case_number, detail_loc, response.text, begin, duration)
