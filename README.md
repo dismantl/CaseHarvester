@@ -53,7 +53,7 @@ In order to find new case numbers, Case Harvester uses scheduled tasks to run th
 The scraper component runs daily to capture any updated case details in MJCS. Case numbers are chosen for rescraping based on the case's age (since filing date), with newer cases being rescraped more frequently than older cases. For example, cases less than 3 months old are rescraped every day while a 4-year-old case will be rescraped every 2 weeks. These settings can be tuned with the `RESCRAPE_COEFFICIENT`, `MAX_SCRAPE_AGE`, and `MAX_SCRAPE_AGE_INACTIVE` configuration variables. When updates to a case are found by the scraper, a new version of the case details HTML is saved in S3 and the database is updated to reflect the most recent case details.
 
 # Installation
-Case Harvester can be run or deployed from any workstation running Python 3, [GNU Make](https://www.gnu.org/software/make/), and [jq](https://stedolan.github.io/jq/). The required Python 3 modules are in `requirements.txt` and can be installed with `pip3 install -r requirements.txt`. Creating a Python virtual environment is recommended.
+Case Harvester can be run or deployed from any workstation running Python 3.8, [GNU Make](https://www.gnu.org/software/make/), and [jq](https://stedolan.github.io/jq/). The required Python modules are in `requirements.txt` and can be installed with `pip3 install -r requirements.txt`. Creating a Python virtual environment is recommended.
 
 Next, configure AWS CLI with `aws configure` so that it can deploy Case Harvester using your account. Here you'll use an Access Key ID and Secret Access Key either for your root AWS account, or an IAM user or role that has sufficient permissions.
 

@@ -28,7 +28,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: parser_lambda.lambda_handler
-      Runtime: python3.6
+      Runtime: python3.8
       Policies:
         - AWSLambda_FullAccess
         - S3ReadPolicy:
