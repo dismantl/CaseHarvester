@@ -119,4 +119,18 @@ CREATE OR REPLACE VIEW redacted.odycvcit_defendants
     odycvcit_defendants.case_number
    FROM odycvcit_defendants;
 
+REVOKE SELECT ON TABLE public.dstraf_defendants FROM mjcs_ro_redacted;
+CREATE OR REPLACE VIEW redacted.dstraf_defendants
+ AS
+ SELECT dstraf_defendants.id,
+    dstraf_defendants.race,
+    dstraf_defendants.sex,
+    dstraf_defendants.weight,
+    dstraf_defendants.city,
+    dstraf_defendants.state,
+    dstraf_defendants.zip_code,
+    dstraf_defendants.height,
+    dstraf_defendants.case_number
+   FROM dstraf_defendants;
+
 COMMIT;

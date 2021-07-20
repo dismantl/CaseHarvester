@@ -33,3 +33,5 @@ from .ODYCVCIT import (ODYCVCIT, ODYCVCITReferenceNumber, ODYCVCITDefendant,
                       ODYCVCITRestitution, ODYCVCITWarrant, ODYCVCITBailBond,
                       ODYCVCITBondSetting, ODYCVCITDocument, ODYCVCITService,
                       ODYCVCITSexOffenderRegistration)
+from .DSTRAF import (DSTRAF, DSTRAFCharge, DSTRAFDisposition, DSTRAFDefendant, 
+                      DSTRAFEvent, DSTRAFTrial, DSTRAFRelatedPerson)
