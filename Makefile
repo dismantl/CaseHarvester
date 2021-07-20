@@ -20,7 +20,7 @@ DOCKER_REPO_NAME=caseharvester
 	$(addprefix deploy_,static docker-repo spider scraper parser) \
 	$(addsuffix _production,$(addprefix deploy_,static docker-repo spider scraper parser)) \
 	test clean clean_all list_exports init init_production parser_notification \
-	parser_notification_production docker_image docker_image_production sync sync_prod docs
+	parser_notification_production docker_image docker_image_production sync docs
 
 define package_f
 $(eval component = $(1))
@@ -234,10 +234,7 @@ test:
 	pytest
 
 sync:
-	rsync -av . mjcs:mjcs
-
-sync_prod:
-	rsync -av . mjcs-prod:mjcs
+	rsync -av . earthseed:CaseHarvester
 
 docs:
 	rm -rf $(DOCS_DIR)
