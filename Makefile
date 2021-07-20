@@ -30,6 +30,7 @@ cp $(CODE_SRC)/$(component)/$(component)_lambda.py $(PACKAGE_DIR)/$(component)/
 cp -r $(CODE_SRC)/mjcs $(PACKAGE_DIR)/$(component)/
 find $(PACKAGE_DIR) -name *.pyc -delete
 find $(PACKAGE_DIR) -name __pycache__ -delete
+rm -rf include
 endef
 
 define deploy_stack_f
