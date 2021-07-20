@@ -26,6 +26,7 @@ from .ODYTRAF import ODYTRAFParser
 from .ODYCRIM import ODYCRIMParser
 from .ODYCIVIL import ODYCIVILParser
 from .ODYCVCIT import ODYCVCITParser
+from .DSTRAF import DSTRAFParser
 
 parsers = [
     ('DSCR',DSCRParser),
@@ -35,7 +36,8 @@ parsers = [
     ('ODYTRAF',ODYTRAFParser),
     ('ODYCRIM',ODYCRIMParser),
     ('ODYCIVIL',ODYCIVILParser),
-    ('ODYCVCIT',ODYCVCITParser)
+    ('ODYCVCIT',ODYCVCITParser),
+    ('DSTRAF',DSTRAFParser)
 ]
 
 def load_failed_queue(ncases, detail_loc=None):
@@ -47,7 +49,7 @@ def load_failed_queue(ncases, detail_loc=None):
             Case.parse_exempt != True, Case.detail_loc.in_([c for c,p in parsers]))
     with db_session() as db:
         logger.info('Generating batch queries')
-        batch_filters = cases_batch_filter(db, filter, limit=ncases if ncases != 'all' else None)
+        batch_filters = cases_batch_filter(db, filter)
     for batch_filter in batch_filters:
         with db_session() as db:
             logger.debug('Fetching batch of cases from database')
@@ -68,11 +70,12 @@ def load_failed_queue(ncases, detail_loc=None):
             ]
             send_to_queue(config.parser_failed_queue, messages)
 
-def parse_case(case_number, detail_loc=None):
+def parse_case(case_number, detail_loc=None, skip_check=False):
     # check if parse_exempt before scraping
-    with db_session() as db:
-        if db.query(Case.parse_exempt).filter(Case.case_number == case_number).scalar() == True:
-            return
+    if not skip_check:
+        with db_session() as db:
+            if db.query(Case.parse_exempt).filter(Case.case_number == case_number).scalar() == True:
+                return
     case_details = config.case_details_bucket.Object(case_number).get()
     case_html = case_details['Body'].read().decode('utf-8')
     if not detail_loc:
@@ -95,16 +98,59 @@ class Parser:
         from multiprocessing_logging import install_mp_handler
         install_mp_handler(logger)
 
-    def parse_case(self, case_number, detail_loc=None):
+    def parse_case(self, case_number, detail_loc=None, skip_check=False):
         if not detail_loc:
             detail_loc = get_detail_loc(case_number)
         logger.debug(f'Worker {getpid()} parsing {case_number} of type {detail_loc}')
-        try:
-            parse_case(case_number, detail_loc)
-        except BaseParserError as e:
-            logger.error(f'Error parsing case {case_number} ({config.MJCS_BASE_URL}/inquiryDetail.jis?caseId={case_number}&detailLoc={detail_loc}): {e}', exc_info=not self.ignore_errors)
-            if not self.ignore_errors:
-                raise
+        parse_case(case_number, detail_loc, skip_check)
+        logger.info(f'Successfully parsed case {case_number}')
+
+    def parse_unparsed(self, detail_loc=None):
+        from multiprocessing import Pool, set_start_method
+        logger.info('Parsing unparsed cases')
+        if self.parallel:
+            cpus = cpu_count()
+            set_start_method('fork')  # multiprocessing logging won't work with the spawn method
+            # start worker processes according to available CPU resources
+            with Pool() as worker_pool:
+                jobs = []
+                while True:
+                    cases = self.__fetch_unparsed_cases(detail_loc)
+                    if not cases or len(cases) == 0:
+                        logger.info('No more unparsed cases found')
+                        break
+                    for case_number, detail_loc in cases:    
+                        logger.debug(f'Dispatching {case_number} {detail_loc} to worker')
+                        job = worker_pool.apply_async(self.parse_case, (case_number, detail_loc, True))
+                        jobs.append((job, case_number, detail_loc))
+                    # Prune completed jobs from active list
+                    while len(jobs) > 0:
+                        for job, case_number, detail_loc in jobs:
+                            try:
+                                if job.ready():
+                                    try:
+                                        job.get()  # To re-raise exceptions from child process
+                                    except Exception as e:
+                                        logger.error(f'Error parsing case {case_number} ({config.MJCS_BASE_URL}/inquiryDetail.jis?caseId={case_number}&detailLoc={detail_loc}): {e}', exc_info=not self.ignore_errors)
+                                        if not self.ignore_errors:
+                                            raise
+                                    jobs.remove((job, case_number, detail_loc))
+                            except ValueError:
+                                # Job not finished, let it keep running
+                                pass
+        else:
+            while True:
+                cases = self.__fetch_unparsed_cases(detail_loc)
+                if not cases or len(cases) == 0:
+                    logger.info('No more unparsed cases found')
+                    break
+                for case_number, detail_loc in cases:
+                    try:
+                        self.parse_case(case_number, detail_loc)
+                    except Exception as e:
+                        logger.error(f'Error parsing case {case_number} ({config.MJCS_BASE_URL}/inquiryDetail.jis?caseId={case_number}&detailLoc={detail_loc}): {e}', exc_info=not self.ignore_errors)
+                        if not self.ignore_errors:
+                            raise
 
     def parse_failed_queue(self):
         from multiprocessing import Pool, set_start_method
@@ -122,6 +168,8 @@ class Parser:
                         logger.info('No items found in parser failed queue')
                         break
                     for case_number, detail_loc, receipt_handle in cases:    
+                        if not detail_loc:
+                            detail_loc = get_detail_loc(case_number)
                         logger.debug(f'Dispatching {case_number} {detail_loc} to worker')
                         def callback_wrapper(case_number, receipt_handle):
                             def callback(unused):
@@ -130,13 +178,23 @@ class Parser:
                             return callback
                         callback = callback_wrapper(case_number, receipt_handle)
                         job = worker_pool.apply_async(self.parse_case, (case_number, detail_loc), callback=callback, error_callback=callback)
-                        jobs.append(job)
+                        jobs.append((job, case_number, detail_loc))
                     # Prune completed jobs from active list
                     while len(jobs) > cpus:
-                        for job in jobs:
+                        for job, case_number, detail_loc in jobs:
                             try:
                                 if job.ready():
-                                    jobs.remove(job)
+                                    try:
+                                        job.get()  # To re-raise exceptions from child process
+                                    except NotImplementedError:
+                                        pass
+                                    except Exception as e:
+                                        if not detail_loc:
+                                            detail_loc = get_detail_loc(case_number)
+                                        logger.error(f'Error parsing case {case_number} ({config.MJCS_BASE_URL}/inquiryDetail.jis?caseId={case_number}&detailLoc={detail_loc}): {e}', exc_info=not self.ignore_errors)
+                                        if not self.ignore_errors:
+                                            raise
+                                    jobs.remove((job, case_number, detail_loc))
                             except ValueError:
                                 # Job not finished, let it keep running
                                 pass
@@ -151,8 +209,29 @@ class Parser:
                     logger.info('No items found in parser failed queue')
                     break
                 for case_number, detail_loc, receipt_handle in cases:
-                    self.parse_case(case_number, detail_loc)
-                    config.parser_failed_queue.delete_messages(Entries=[{'Id': 'unused', 'ReceiptHandle': receipt_handle}])
+                    try:
+                        self.parse_case(case_number, detail_loc)
+                    except NotImplementedError:
+                        pass
+                    except Exception as e:
+                        if not detail_loc:
+                            detail_loc = get_detail_loc(case_number)
+                        logger.error(f'Error parsing case {case_number} ({config.MJCS_BASE_URL}/inquiryDetail.jis?caseId={case_number}&detailLoc={detail_loc}): {e}', exc_info=not self.ignore_errors)
+                        if not self.ignore_errors:
+                            raise
+                    finally:
+                        config.parser_failed_queue.delete_messages(Entries=[{'Id': 'unused', 'ReceiptHandle': receipt_handle}])
+
+    def __fetch_unparsed_cases(self, detail_loc=None, ncases=10):
+        if detail_loc:
+            filter = and_(Case.last_parse == None, Case.last_scrape != None,
+                Case.parse_exempt != True, Case.detail_loc == detail_loc)
+        else:
+            filter = and_(Case.last_parse == None, Case.last_scrape != None,
+                Case.parse_exempt != True, Case.detail_loc.in_([c for c,p in parsers]))
+        with db_session() as db:
+            logger.debug('Fetching batch of cases from database')
+            return db.query(Case.case_number, Case.detail_loc).filter(filter).limit(ncases).all()
     
     def __fetch_cases_from_failed_queue(self):
         logger.debug('Requesting 10 items from parser failed queue')

@@ -246,6 +246,8 @@ def run_parser(args):
         parser.parse_case(args.case)
     elif args.load_failed_queue:
         load_failed_queue(args.load_failed_queue, args.type)
+    elif args.unparsed:
+        parser.parse_unparsed(args.type)
 
 def failed_queue_validator(string):
     try:
@@ -318,8 +320,8 @@ if __name__ == '__main__':
 
     parser_parser = subparsers.add_parser('parser', help=\
         "Parse unparsed details from cases downloaded from the Maryland Judiciary Case Search")
-    parser_parser.add_argument('--type', '-t', choices=['DSCR','DSK8','DSCIVIL','CC','ODYTRAF','ODYCRIM','ODYCIVIL','ODYCVCIT'],
-        help="Only parse cases of this type (detail_loc)")
+    parser_parser.add_argument('--type', '-t', choices=['ODYTRAF','ODYCRIM','ODYCIVIL','ODYCVCIT','DSCR','DSK8','DSCIVIL','CC','DSTRAF'],
+        help="Only parse cases of this type (requires --load-failed-queue or --unparsed)")
     parser_parser.add_argument('--ignore-errors', action='store_true', default=False,
         help="Ignore parsing errors")
     parser_parser.add_argument('--failed-queue', action='store_true',
@@ -332,6 +334,8 @@ if __name__ == '__main__':
     parser_parser.add_argument('--load-failed-queue', nargs='?', const='all', type=failed_queue_validator, metavar='NCASES',
         help="Load unparsed cases into the parser failed queue for later processing. \
             Optional argument limits the number of cases sent to the queue.")
+    parser_parser.add_argument('--unparsed', '-u', action='store_true',
+        help="Parse cases from the database that have not been successfully parsed (optionally specifying --type)")
     parser_parser.set_defaults(func=run_parser)
 
     if os.getenv('DEV_MODE'):
