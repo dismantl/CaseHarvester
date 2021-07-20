@@ -10,6 +10,11 @@ def lambda_handler(event, context):
                 print(f'Successfully parsed {case_number}')
             except NotImplementedError:
                 pass
+            except Exception as e:
+                from mjcs.util import get_detail_loc
+                detail_loc = get_detail_loc(case_number)
+                print(f'Error parsing case {case_number} (https://casesearch.courts.state.md.us/casesearch/inquiryDetail.jis?caseId={case_number}&detailLoc={detail_loc})')
+                raise e
         elif 'Sns' in record:
             msg = json.loads(record['Sns']['Message'])
             case_number = msg['case_number']
