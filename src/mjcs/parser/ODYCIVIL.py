@@ -103,7 +103,7 @@ class ODYCIVILParser(CaseDetailsParser):
             return
 
         prev_obj = section_header
-        prompt_re = re.compile(r'^([\w \'\-/]+)\s*:\s*$')
+        prompt_re = re.compile(r'^([\w \'\-/]+)\s*:?\s*$')
         empty_re = re.compile(r'^\s*:\s*$')
         while True:
             try:
@@ -477,6 +477,7 @@ class ODYCIVILParser(CaseDetailsParser):
                 j.judgment_ordered_date_str = self.value_multi_column(t,'Judgment Ordered Date:')
                 j.judgment_entry_date_str = self.value_multi_column(t,'Judgment Entry Date:')
                 j.judgment_expiration_date_str = self.value_multi_column(t,'Judgment Expiration Date:',ignore_missing=True)
+                j.interest_rate_details = self.value_multi_column(t,'Interest Rate Details:',ignore_missing=True)
             elif t.find('span',class_='Value',string='Property'):
                 judgment = t.find('span',class_='Value',string='Property')
                 if judgment:

@@ -268,7 +268,7 @@ class CCParser(CaseDetailsParser):
                 .find_parent('tr')
             o.mapr_amount = self.value_first_column(mapr_row,'MAPR Amt:',money=True)
             o.mapr_frequency = self.value_column(mapr_row,'Freq:')
-            o.medical_insurance_report_date = self.value_first_column(t1,'Medical Insurance Report Date:')
+            o.medical_insurance_report_date_str = self.value_first_column(t1,'Medical Insurance Report Date:')
             btr_row = t1\
                 .find('span',class_='FirstColumnPrompt',string='BTR Amt:')\
                 .find_parent('tr')

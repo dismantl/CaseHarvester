@@ -113,7 +113,7 @@ class DSCRParser(CaseDetailsParser):
                 disposition_table = disposition_header.find_parent('table')
                 charge.plea = self.value_first_column(disposition_table,'Plea:')
                 charge.disposition = self.value_first_column(disposition_table,'Disposition:')
-                charge.disposition_date = self.value_combined_first_column(disposition_table,'Disposition Date:')
+                charge.disposition_date_str = self.value_combined_first_column(disposition_table,'Disposition Date:')
 
                 # TODO see if fine row and suspendent amt fine row are always the same
                 fine_row = disposition_table\
@@ -302,7 +302,7 @@ class DSCRParser(CaseDetailsParser):
                 bail_event = DSCRBailEvent(case_number=self.case_number)
                 bail_event.event_name = event.event_name
                 bail_event.date_str = self.format_value(match.group('date'))
-                bail_event.date = datetime.strptime(match.group('date'), '%y%m%d').date()
+                bail_event.date_str = datetime.strptime(match.group('date'), '%y%m%d').date()
                 bail_event.bail_amount = self.format_value(match.group('amount'), money=True)
                 bail_event.code = self.format_value(match.group('code'))
                 bail_event.percentage_required = self.format_value(match.group('percent'), numeric=True)

@@ -79,7 +79,7 @@ class ODYTRAFParser(CaseDetailsParser):
             except ParserError:
                 break
             prev_obj = t
-            prompt_re = re.compile(r'^([\w \'\-/]+)\s*:\s*$')
+            prompt_re = re.compile(r'^([\w \'\-/]+)\s*:?\s*$')
             prompt_span = t.find('span',class_='FirstColumnPrompt',string=prompt_re)
             if not prompt_span:
                 break
@@ -264,10 +264,11 @@ class ODYTRAFParser(CaseDetailsParser):
 
             if not party or type(party) != ODYTRAFDefendant:  # Defendant section doesn't separate parties with <hr>
                 separator = self.immediate_sibling(prev_obj,'hr')
-                try:
-                    separator = self.immediate_sibling(separator,'hr')
-                except:
-                    pass
+                while True:
+                    try:
+                        separator = self.immediate_sibling(separator,'hr')
+                    except:
+                        break
                 prev_obj = separator
 
     #########################################################

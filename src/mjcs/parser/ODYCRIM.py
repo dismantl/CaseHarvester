@@ -85,7 +85,7 @@ class ODYCRIMParser(CaseDetailsParser):
             except ParserError:
                 break
             prev_obj = t
-            prompt_re = re.compile(r'^([\w \'\-/]+)\s*:\s*$')
+            prompt_re = re.compile(r'^([\w \'\-/]+)\s*:?\s*$')
             prompt_span = t.find('span',class_='FirstColumnPrompt',string=prompt_re)
             if not prompt_span:
                 break

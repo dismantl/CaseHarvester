@@ -221,6 +221,7 @@ class ODYCIVILJudgment(ODYCIVILCaseTable, TableBase):
     judgment = Column(String)
     appeal_bond_amount = Column(Numeric)
     court_costs = Column(Numeric)
+    interest_rate_details = Column(String)
 
     @hybrid_property
     def judgment_ordered_date_str(self):
@@ -287,6 +288,7 @@ class ODYCIVILJudgmentComment(ODYCIVILCaseTable, TableBase):
     pop_award_to = Column(String)
     damages_pop = Column(Numeric)
     value_of_prop = Column(Numeric)
+    val_of_prop_to = Column(String)
     damgs_val_of_prop = Column(Numeric)
     repl_detn_amnt = Column(Numeric)
     judg_type = Column(String)
