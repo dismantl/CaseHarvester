@@ -306,6 +306,10 @@ class ODYTRAFParser(CaseDetailsParser):
     #########################################################
     @consumer
     def charge_and_disposition(self, db, soup):
+        # Due to HB 1336, we need to compare current charges against existing ones in case of expungement
+        existing_charges = db.query(ODYTRAFCharge).filter(ODYTRAFCharge.case_number == self.case_number).all()
+        new_charges = []
+        
         try:
             section_header = self.first_level_header(soup,'Charge and Disposition Information')
         except ParserError:
@@ -318,119 +322,140 @@ class ODYTRAFParser(CaseDetailsParser):
                 break
             if not container.find('span',class_='Prompt',string='Charge No:'):
                 break
-            prev_obj = container
-            t1 = container.find('table')
-            charge = ODYTRAFCharge(case_number=self.case_number)
-            charge.charge_number = self.value_multi_column(t1,'Charge No:')
-            charge.statute_code = self.value_column(t1,'Statute Code:')
+            try:
+                separator = self.immediate_sibling(container, 'hr')
+            except ParserError:
+                prev_obj = container
+            else:
+                prev_obj = separator
+            new_charge = self.parse_charge(container)
+            new_charges.append(new_charge)
+        
+        new_charge_numbers = [c.charge_number for c in new_charges]
+        for charge in existing_charges:
+            if charge.charge_number not in new_charge_numbers:
+                charge.possibly_expunged = True
+
+        for new_charge in new_charges:
+            for existing_charge in existing_charges:
+                if existing_charge.charge_number == new_charge.charge_number:
+                    db.delete(existing_charge)
+            db.add(new_charge)
+    
+    def parse_charge(self, container):
+        t1 = container.find('table')
+        charge = ODYTRAFCharge(case_number=self.case_number)
+        charge.charge_number = int(self.value_multi_column(t1,'Charge No:'))
+        charge.statute_code = self.value_column(t1,'Statute Code:')
+        t2 = self.immediate_sibling(t1,'table')
+        charge.charge_description = self.value_multi_column(t2,'Charge Description:')
+        t3 = self.immediate_sibling(t2,'table')
+        t4 = t3.find('table')  # weird nested table shit
+        charge.speed_limit = self.value_multi_column(t4,'Speed Limit:',ignore_missing=True)
+        charge.recorded_speed = self.value_multi_column(t4,'Recorded Speed:',ignore_missing=True)
+        charge.location_stopped = self.value_multi_column(t4,'Location Stopped:',ignore_missing=True)
+        t5 = self.immediate_sibling(t4,'table')
+        charge.probable_cause_indicator = self.value_multi_column(t5,'Probable Cause Indicator:',boolean_value=True,ignore_missing=True)
+        charge.charge_contributed_to_accident = self.value_multi_column(t5,'Contributed to Accident:',boolean_value=True,ignore_missing=True)
+        charge.charge_personal_injury = self.value_multi_column(t5,'Personal Injury:',boolean_value=True,ignore_missing=True)
+        t6 = self.immediate_sibling(t5,'table')
+        charge.property_damage = self.value_multi_column(t6,'Property Damage:',boolean_value=True)
+        charge.seat_belts = self.value_multi_column(t6,'Seat Belts:',ignore_missing=True,boolean_value=True)
+        t7 = self.immediate_sibling(t6,'table')
+        charge.mandatory_court_appearance = self.value_multi_column(t7,'Mandatory Court Appearance:',boolean_value=True)
+        charge.fine_amount_owed = self.value_column(t7,'Fine Amount Owed:',money=True)
+        t8 = self.immediate_sibling(t7,'table')
+        charge.vehicle_tag = self.value_multi_column(t8,'Vehicle Tag:')
+        charge.state = self.value_multi_column(t8,'State:')
+        charge.vehicle_description = self.value_multi_column(t8,'Vehicle Description:')
+
+        # Disposition
+        try:
+            subsection_header = container.find('i',string='Disposition').find_parent('left')
+        except (ParserError, AttributeError):
+            pass
+        else:
+            self.mark_for_deletion(subsection_header)
+            t1 = self.immediate_sibling(subsection_header,'table')
+            charge.convicted_speed = self.value_multi_column(t1,'Convicted Speed:')
+            charge.disposition_contributed_to_accident = self.value_column(t1,'Contributed to Accident:',boolean_value=True)
+            charge.disposition_personal_injury = self.value_column(t1,'Personal Injury:',boolean_value=True)
             t2 = self.immediate_sibling(t1,'table')
-            charge.charge_description = self.value_multi_column(t2,'Charge Description:')
+            charge.plea = self.value_multi_column(t2,'Plea:')
+            charge.plea_date_str = self.value_column(t2,'Plea Date:')
             t3 = self.immediate_sibling(t2,'table')
-            t4 = t3.find('table')  # weird nested table shit
-            charge.speed_limit = self.value_multi_column(t4,'Speed Limit:',ignore_missing=True)
-            charge.recorded_speed = self.value_multi_column(t4,'Recorded Speed:',ignore_missing=True)
-            charge.location_stopped = self.value_multi_column(t4,'Location Stopped:',ignore_missing=True)
-            t5 = self.immediate_sibling(t4,'table')
-            charge.probable_cause_indicator = self.value_multi_column(t5,'Probable Cause Indicator:',boolean_value=True,ignore_missing=True)
-            charge.charge_contributed_to_accident = self.value_multi_column(t5,'Contributed to Accident:',boolean_value=True,ignore_missing=True)
-            charge.charge_personal_injury = self.value_multi_column(t5,'Personal Injury:',boolean_value=True,ignore_missing=True)
-            t6 = self.immediate_sibling(t5,'table')
-            charge.property_damage = self.value_multi_column(t6,'Property Damage:',boolean_value=True)
-            charge.seat_belts = self.value_multi_column(t6,'Seat Belts:',ignore_missing=True,boolean_value=True)
-            t7 = self.immediate_sibling(t6,'table')
-            charge.mandatory_court_appearance = self.value_multi_column(t7,'Mandatory Court Appearance:',boolean_value=True)
-            charge.fine_amount_owed = self.value_column(t7,'Fine Amount Owed:',money=True)
-            t8 = self.immediate_sibling(t7,'table')
-            charge.vehicle_tag = self.value_multi_column(t8,'Vehicle Tag:')
-            charge.state = self.value_multi_column(t8,'State:')
-            charge.vehicle_description = self.value_multi_column(t8,'Vehicle Description:')
+            charge.disposition = self.value_multi_column(t3,'Disposition:')
+            charge.disposition_date_str = self.value_column(t3,'Disposition Date:')
 
-            # Disposition
+        # Converted Disposition
+        try:
+            subsection_header = container.find('i',string='Converted Disposition:').find_parent('left')
+        except (ParserError, AttributeError):
+            pass
+        else:
+            self.mark_for_deletion(subsection_header)
+            t = self.immediate_sibling(subsection_header,'table')
+            self.mark_for_deletion(t)
+            charge.converted_disposition = '\n'.join(t.stripped_strings)
+
+        # Probation
+        try:
+            subsection_header = container.find('i',string='Probation:').find_parent('left')
+        except (ParserError, AttributeError):
+            pass
+        else:
+            self.mark_for_deletion(subsection_header)
+            t = self.immediate_sibling(subsection_header,'table')
+            charge.probation_start_date_str = self.value_multi_column(t,'Start Date:')
+            supervised_row = self.row_label(t,'Supervised')
+            charge.probation_supervised_years = self.value_column(supervised_row,'Yrs:')
+            charge.probation_supervised_months = self.value_column(supervised_row,'Mos:')
+            charge.probation_supervised_days = self.value_column(supervised_row,'Days:')
+            charge.probation_supervised_hours = self.value_column(supervised_row,'Hours:')
+            unsupervised_row = self.row_label(t,'UnSupervised')
+            charge.probation_unsupervised_years = self.value_column(unsupervised_row,'Yrs:')
+            charge.probation_unsupervised_months = self.value_column(unsupervised_row,'Mos:')
+            charge.probation_unsupervised_days = self.value_column(unsupervised_row,'Days:')
+            charge.probation_unsupervised_hours = self.value_column(unsupervised_row,'Hours:')
+
+        # Jail
+        try:
+            subsection_header = container.find('i',string='Jail').find_parent('left')
+        except (ParserError, AttributeError):
+            pass
+        else:
+            self.mark_for_deletion(subsection_header)
+            t = self.immediate_sibling(subsection_header,'table')
+            charge.jail_life_death = self.value_multi_column(t,'Life/Death:')
+            charge.jail_start_date_str = self.value_multi_column(t,'Start Date:')
+            jail_row = self.row_label(t,'Jail Term:')
+            charge.jail_years = self.value_column(jail_row,'Yrs:')
+            charge.jail_months = self.value_column(jail_row,'Mos:')
+            charge.jail_days = self.value_column(jail_row,'Days:')
+            charge.jail_hours = self.value_column(jail_row,'Hours:')
             try:
-                subsection_header = container.find('i',string='Disposition').find_parent('left')
-            except (ParserError, AttributeError):
+                suspended_row = self.row_label(t,'Suspended Term:')
+            except ParserError:
                 pass
             else:
-                self.mark_for_deletion(subsection_header)
-                t1 = self.immediate_sibling(subsection_header,'table')
-                charge.convicted_speed = self.value_multi_column(t1,'Convicted Speed:')
-                charge.disposition_contributed_to_accident = self.value_column(t1,'Contributed to Accident:',boolean_value=True)
-                charge.disposition_personal_injury = self.value_column(t1,'Personal Injury:',boolean_value=True)
-                t2 = self.immediate_sibling(t1,'table')
-                charge.plea = self.value_multi_column(t2,'Plea:')
-                charge.plea_date_str = self.value_column(t2,'Plea Date:')
-                t3 = self.immediate_sibling(t2,'table')
-                charge.disposition = self.value_multi_column(t3,'Disposition:')
-                charge.disposition_date_str = self.value_column(t3,'Disposition Date:')
-
-            # Converted Disposition
-            try:
-                subsection_header = container.find('i',string='Converted Disposition:').find_parent('left')
-            except (ParserError, AttributeError):
-                pass
-            else:
-                self.mark_for_deletion(subsection_header)
-                t = self.immediate_sibling(subsection_header,'table')
-                self.mark_for_deletion(t)
-                charge.converted_disposition = '\n'.join(t.stripped_strings)
-
-            # Probation
-            try:
-                subsection_header = container.find('i',string='Probation:').find_parent('left')
-            except (ParserError, AttributeError):
-                pass
-            else:
-                self.mark_for_deletion(subsection_header)
-                t = self.immediate_sibling(subsection_header,'table')
-                charge.probation_start_date_str = self.value_multi_column(t,'Start Date:')
-                supervised_row = self.row_label(t,'Supervised')
-                charge.probation_supervised_years = self.value_column(supervised_row,'Yrs:')
-                charge.probation_supervised_months = self.value_column(supervised_row,'Mos:')
-                charge.probation_supervised_days = self.value_column(supervised_row,'Days:')
-                charge.probation_supervised_hours = self.value_column(supervised_row,'Hours:')
-                unsupervised_row = self.row_label(t,'UnSupervised')
-                charge.probation_unsupervised_years = self.value_column(unsupervised_row,'Yrs:')
-                charge.probation_unsupervised_months = self.value_column(unsupervised_row,'Mos:')
-                charge.probation_unsupervised_days = self.value_column(unsupervised_row,'Days:')
-                charge.probation_unsupervised_hours = self.value_column(unsupervised_row,'Hours:')
-
-            # Jail
-            try:
-                subsection_header = container.find('i',string='Jail').find_parent('left')
-            except (ParserError, AttributeError):
-                pass
-            else:
-                self.mark_for_deletion(subsection_header)
-                t = self.immediate_sibling(subsection_header,'table')
-                charge.jail_life_death = self.value_multi_column(t,'Life/Death:')
-                charge.jail_start_date_str = self.value_multi_column(t,'Start Date:')
-                jail_row = self.row_label(t,'Jail Term:')
-                charge.jail_years = self.value_column(jail_row,'Yrs:')
-                charge.jail_months = self.value_column(jail_row,'Mos:')
-                charge.jail_days = self.value_column(jail_row,'Days:')
-                charge.jail_hours = self.value_column(jail_row,'Hours:')
                 try:
-                    suspended_row = self.row_label(t,'Suspended Term:')
+                    charge.jail_suspended_years = self.value_column(suspended_row,'Yrs:')
+                    charge.jail_suspended_months = self.value_column(suspended_row,'Mos:')
+                    charge.jail_suspended_days = self.value_column(suspended_row,'Days:')
+                    charge.jail_suspended_hours = self.value_column(suspended_row,'Hours:')
                 except ParserError:
-                    pass
-                else:
-                    try:
-                        charge.jail_suspended_years = self.value_column(suspended_row,'Yrs:')
-                        charge.jail_suspended_months = self.value_column(suspended_row,'Mos:')
-                        charge.jail_suspended_days = self.value_column(suspended_row,'Days:')
-                        charge.jail_suspended_hours = self.value_column(suspended_row,'Hours:')
-                    except ParserError:
-                        charge.jail_suspended_term = self.value_multi_column(suspended_row,'Suspended Term:')
-                try:
-                    suspend_all_but_row = self.row_label(t,'Suspend All But:')
-                except ParserError:
-                    pass
-                else:
-                    charge.jail_suspend_all_but_years = self.value_column(suspend_all_but_row,'Yrs:')
-                    charge.jail_suspend_all_but_months = self.value_column(suspend_all_but_row,'Mos:')
-                    charge.jail_suspend_all_but_days = self.value_column(suspend_all_but_row,'Days:')
-                    charge.jail_suspend_all_but_hours = self.value_column(suspend_all_but_row,'Hours:')
-            db.add(charge)
+                    charge.jail_suspended_term = self.value_multi_column(suspended_row,'Suspended Term:')
+            try:
+                suspend_all_but_row = self.row_label(t,'Suspend All But:')
+            except ParserError:
+                pass
+            else:
+                charge.jail_suspend_all_but_years = self.value_column(suspend_all_but_row,'Yrs:')
+                charge.jail_suspend_all_but_months = self.value_column(suspend_all_but_row,'Mos:')
+                charge.jail_suspend_all_but_days = self.value_column(suspend_all_but_row,'Days:')
+                charge.jail_suspend_all_but_hours = self.value_column(suspend_all_but_row,'Hours:')
+
+        return charge
 
     #########################################################
     # WARRANTS INFORMATION

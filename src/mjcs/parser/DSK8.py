@@ -111,6 +111,10 @@ class DSK8Parser(CaseDetailsParser):
     #########################################################
     @consumer
     def charge_and_disposition(self, db, soup):
+        # Due to HB 1336, we need to compare current charges against existing ones in case of expungement
+        existing_charges = db.query(DSK8Charge).filter(DSK8Charge.case_number == self.case_number).all()
+        new_charges = []
+
         try:
             section_header = self.second_level_header(soup,'Charge and Disposition Information')
         except ParserError:
@@ -125,54 +129,68 @@ class DSK8Parser(CaseDetailsParser):
                 prev_obj = separator
             except ParserError:
                 break
+            new_charge = self.parse_charge(section)
+            new_charges.append(new_charge)
+        
+        new_charge_numbers = [c.charge_number for c in new_charges]
+        for charge in existing_charges:
+            if charge.charge_number not in new_charge_numbers:
+                charge.possibly_expunged = True
 
-            charge = DSK8Charge(case_number=self.case_number)
-            charge.charge_number = self.value_first_column(section,'Charge No:')
-            charge.cjis_traffic_code = self.value_first_column(section,'CJIS/Traffic Code:',ignore_missing=True)
-            charge.arrest_citation_number = self.value_multi_column(section,'Arrest/Citation No:',ignore_missing=True)
-            charge.description = self.value_first_column(section,'Description:')
-            charge.plea = self.value_first_column(section,'Plea:',ignore_missing=True)
-            charge.plea_date_str = self.value_combined_first_column(section,'Plea Date:',ignore_missing=True)
-            charge.disposition = self.value_first_column(section,'Disposition:',ignore_missing=True)
-            charge.disposition_date_str = self.value_first_column(section,'Disposition Date:',ignore_missing=True)
-            charge.verdict = self.value_first_column(section,'Verdict:',ignore_missing=True)
-            charge.verdict_date_str = self.value_column(section,'Verdict Date:',ignore_missing=True)
-            charge.sentence_starts_str = self.value_first_column(section,'Sentence Starts:',ignore_missing=True)
-            charge.sentence_date_str = self.value_first_column(section,'Sentence Date:',ignore_missing=True)
-            charge.sentence_term = self.value_first_column(section,'Sentence Term:',ignore_missing=True)
-            charge.court_costs = self.value_combined_first_column(section,'Court Costs:',ignore_missing=True,money=True)
-            charge.fine = self.value_column(section,'Fine:',ignore_missing=True,money=True)
+        for new_charge in new_charges:
+            for existing_charge in existing_charges:
+                if existing_charge.charge_number == new_charge.charge_number:
+                    db.delete(existing_charge)
+            db.add(new_charge)
 
-            try:
-                sentence_table = self.row_first_label(section,'Sentence Time:')
-            except ParserError:
-                pass
-            else:
-                charge.sentence_years = self.value_column(sentence_table,'Yrs:')
-                charge.sentence_months = self.value_column(sentence_table,'Mos:')
-                charge.sentence_days = self.value_column(sentence_table,'Days:')
-                charge.confinement = self.value_column(sentence_table,'Confinement') # has space between label and :
+    def parse_charge(self, container):
+        charge = DSK8Charge(case_number=self.case_number)
+        charge.charge_number = int(self.value_first_column(container,'Charge No:'))
+        charge.cjis_traffic_code = self.value_first_column(container,'CJIS/Traffic Code:',ignore_missing=True)
+        charge.arrest_citation_number = self.value_multi_column(container,'Arrest/Citation No:',ignore_missing=True)
+        charge.description = self.value_first_column(container,'Description:')
+        charge.plea = self.value_first_column(container,'Plea:',ignore_missing=True)
+        charge.plea_date_str = self.value_combined_first_column(container,'Plea Date:',ignore_missing=True)
+        charge.disposition = self.value_first_column(container,'Disposition:',ignore_missing=True)
+        charge.disposition_date_str = self.value_first_column(container,'Disposition Date:',ignore_missing=True)
+        charge.verdict = self.value_first_column(container,'Verdict:',ignore_missing=True)
+        charge.verdict_date_str = self.value_column(container,'Verdict Date:',ignore_missing=True)
+        charge.sentence_starts_str = self.value_first_column(container,'Sentence Starts:',ignore_missing=True)
+        charge.sentence_date_str = self.value_first_column(container,'Sentence Date:',ignore_missing=True)
+        charge.sentence_term = self.value_first_column(container,'Sentence Term:',ignore_missing=True)
+        charge.court_costs = self.value_combined_first_column(container,'Court Costs:',ignore_missing=True,money=True)
+        charge.fine = self.value_column(container,'Fine:',ignore_missing=True,money=True)
 
-            try:
-                suspended_table = self.row_first_label(section,'Suspended Time:')
-            except ParserError:
-                pass
-            else:
-                charge.suspended_years = self.value_column(suspended_table,'Yrs:')
-                charge.suspended_months = self.value_column(suspended_table,'Mos:')
-                charge.suspended_days = self.value_column(suspended_table,'Days:')
+        try:
+            sentence_table = self.row_first_label(container,'Sentence Time:')
+        except ParserError:
+            pass
+        else:
+            charge.sentence_years = self.value_column(sentence_table,'Yrs:')
+            charge.sentence_months = self.value_column(sentence_table,'Mos:')
+            charge.sentence_days = self.value_column(sentence_table,'Days:')
+            charge.confinement = self.value_column(sentence_table,'Confinement') # has space between label and :
 
-            try:
-                probation_table = self.row_first_label(section,'Probation Time:')
-            except ParserError:
-                pass
-            else:
-                charge.probation_years = self.value_column(probation_table,'Yrs:')
-                charge.probation_months = self.value_column(probation_table,'Mos:')
-                charge.probation_days = self.value_column(probation_table,'Days:')
-                charge.probation_type = self.value_column(probation_table,'Type:')
+        try:
+            suspended_table = self.row_first_label(container,'Suspended Time:')
+        except ParserError:
+            pass
+        else:
+            charge.suspended_years = self.value_column(suspended_table,'Yrs:')
+            charge.suspended_months = self.value_column(suspended_table,'Mos:')
+            charge.suspended_days = self.value_column(suspended_table,'Days:')
 
-            db.add(charge)
+        try:
+            probation_table = self.row_first_label(container,'Probation Time:')
+        except ParserError:
+            pass
+        else:
+            charge.probation_years = self.value_column(probation_table,'Yrs:')
+            charge.probation_months = self.value_column(probation_table,'Mos:')
+            charge.probation_days = self.value_column(probation_table,'Days:')
+            charge.probation_type = self.value_column(probation_table,'Type:')
+
+        return charge
 
     #########################################################
     # SCHEDULE INFORMATION

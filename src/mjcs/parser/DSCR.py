@@ -72,6 +72,10 @@ class DSCRParser(CaseDetailsParser):
     #########################################################
     @consumer
     def charge_and_disposition(self, db, soup):
+        # Due to HB 1336, we need to compare current charges against existing ones in case of expungement
+        existing_charges = db.query(DSCRCharge).filter(DSCRCharge.case_number == self.case_number).all()
+        new_charges = []
+        
         try:
             section_header = self.first_level_header(soup,'Charge and Disposition Information')
         except ParserError:
@@ -86,65 +90,80 @@ class DSCRParser(CaseDetailsParser):
                 prev_obj = separator
             except ParserError:
                 break
+            new_charge = self.parse_charge(charge_section)
+            new_charges.append(new_charge)
+        
+        new_charge_numbers = [c.charge_number for c in new_charges]
+        for charge in existing_charges:
+            if charge.charge_number not in new_charge_numbers:
+                charge.possibly_expunged = True
 
-            charge = DSCRCharge(case_number=self.case_number)
-            charge_table_1 = self.table_first_columm_prompt(charge_section,'Charge No:')
-            charge.charge_number = self.value_first_column(charge_table_1,'Charge No:')
-            charge.charge_description = self.value_column(charge_table_1,'Description:')
+        for new_charge in new_charges:
+            for existing_charge in existing_charges:
+                if existing_charge.charge_number == new_charge.charge_number:
+                    db.delete(existing_charge)
+            db.add(new_charge)
 
-            charge_table_2 = self.table_next_first_column_prompt(charge_table_1,'Statute:')
-            charge.statute = self.value_first_column(charge_table_2,'Statute:')
-            charge.statute_description = self.value_column(charge_table_2,'Description:') # TODO see if this is always same as charge_description
-            charge.amended_date_str = self.value_first_column(charge_table_2,'Amended Date:')
-            charge.cjis_code = self.value_column(charge_table_2,'CJIS Code:')
-            charge.mo_pll = self.value_column(charge_table_2,'MO/PLL:')
-            charge.probable_cause = self.value_column(charge_table_2,'Probable Cause:',boolean_value=True)
+    def parse_charge(self, container):
+        charge = DSCRCharge(case_number=self.case_number)
+        charge_table_1 = self.table_first_columm_prompt(container,'Charge No:')
+        charge.charge_number = int(self.value_first_column(charge_table_1,'Charge No:'))
+        charge.charge_description = self.value_column(charge_table_1,'Description:')
 
-            charge_table_3 = self.table_next_first_column_prompt(charge_table_2,'Incident Date From:')
-            charge.incident_date_from_str = self.value_first_column(charge_table_3,'Incident Date From:')
-            charge.incident_date_to_str = self.value_multi_column(charge_table_3,'To:')
-            charge.victim_age = self.value_multi_column(charge_table_3,'Victim Age:')
+        charge_table_2 = self.table_next_first_column_prompt(charge_table_1,'Statute:')
+        charge.statute = self.value_first_column(charge_table_2,'Statute:')
+        charge.statute_description = self.value_column(charge_table_2,'Description:') # TODO see if this is always same as charge_description
+        charge.amended_date_str = self.value_first_column(charge_table_2,'Amended Date:')
+        charge.cjis_code = self.value_column(charge_table_2,'CJIS Code:')
+        charge.mo_pll = self.value_column(charge_table_2,'MO/PLL:')
+        charge.probable_cause = self.value_column(charge_table_2,'Probable Cause:',boolean_value=True)
 
-            try:
-                disposition_header = self.third_level_header(charge_section,'Disposition')
-            except ParserError:
-                pass
-            else:
-                disposition_table = disposition_header.find_parent('table')
-                charge.plea = self.value_first_column(disposition_table,'Plea:')
-                charge.disposition = self.value_first_column(disposition_table,'Disposition:')
-                charge.disposition_date_str = self.value_combined_first_column(disposition_table,'Disposition Date:')
+        charge_table_3 = self.table_next_first_column_prompt(charge_table_2,'Incident Date From:')
+        charge.incident_date_from_str = self.value_first_column(charge_table_3,'Incident Date From:')
+        charge.incident_date_to_str = self.value_multi_column(charge_table_3,'To:')
+        charge.victim_age = self.value_multi_column(charge_table_3,'Victim Age:')
 
-                # TODO see if fine row and suspendent amt fine row are always the same
-                fine_row = disposition_table\
-                    .find('span',class_='FirstColumnPrompt',string='Disposition Date:')\
-                    .find_parent('tr')\
-                    .find_next_sibling('tr')
-                charge.fine = self.value_column(fine_row,'Fine:',money=True)
-                charge.court_costs = self.value_column(fine_row,'Court Costs:',money=True)
-                charge.cicf = self.value_column(fine_row,'CICF:',money=True)
+        try:
+            disposition_header = self.third_level_header(container,'Disposition')
+        except ParserError:
+            pass
+        else:
+            disposition_table = disposition_header.find_parent('table')
+            charge.plea = self.value_first_column(disposition_table,'Plea:')
+            charge.disposition = self.value_first_column(disposition_table,'Disposition:')
+            charge.disposition_date_str = self.value_combined_first_column(disposition_table,'Disposition Date:')
 
-                suspended_fine_row = self.row_first_label(disposition_table,'Amt Suspended:')
-                charge.suspended_fine = self.value_column(suspended_fine_row,'Fine:',money=True)
-                charge.suspended_court_costs = self.value_column(suspended_fine_row,'Court Costs:',money=True)
-                charge.suspended_cicf = self.value_column(suspended_fine_row,'CICF:',money=True)
+            # TODO see if fine row and suspendent amt fine row are always the same
+            fine_row = disposition_table\
+                .find('span',class_='FirstColumnPrompt',string='Disposition Date:')\
+                .find_parent('tr')\
+                .find_next_sibling('tr')
+            charge.fine = self.value_column(fine_row,'Fine:',money=True)
+            charge.court_costs = self.value_column(fine_row,'Court Costs:',money=True)
+            charge.cicf = self.value_column(fine_row,'CICF:',money=True)
 
-                charge.pbj_end_date_str = self.value_first_column(disposition_table,'PBJ EndDate:')
-                charge.probation_end_date_str = self.value_column(disposition_table,'Probation End Date:')
-                charge.restitution_amount = self.value_column(disposition_table,'Restitution Amount:',money=True)
+            suspended_fine_row = self.row_first_label(disposition_table,'Amt Suspended:')
+            charge.suspended_fine = self.value_column(suspended_fine_row,'Fine:',money=True)
+            charge.suspended_court_costs = self.value_column(suspended_fine_row,'Court Costs:',money=True)
+            charge.suspended_cicf = self.value_column(suspended_fine_row,'CICF:',money=True)
 
-                jail_term_row = self.row_first_label(disposition_table,'Jail Term:')
-                charge.jail_term_years = self.value_column(jail_term_row,'Yrs:')
-                charge.jail_term_months = self.value_column(jail_term_row,'Mos:')
-                charge.jail_term_days = self.value_column(jail_term_row,'Days:')
+            charge.pbj_end_date_str = self.value_first_column(disposition_table,'PBJ EndDate:')
+            charge.probation_end_date_str = self.value_column(disposition_table,'Probation End Date:')
+            charge.restitution_amount = self.value_column(disposition_table,'Restitution Amount:',money=True)
 
-                suspended_term_row = self.row_first_label(disposition_table,'Suspended Term:')
-                charge.suspended_term_years = self.value_column(suspended_term_row,'Yrs:')
-                charge.suspended_term_months = self.value_column(suspended_term_row,'Mos:')
-                charge.suspended_term_days = self.value_column(suspended_term_row,'Days:')
+            jail_term_row = self.row_first_label(disposition_table,'Jail Term:')
+            charge.jail_term_years = self.value_column(jail_term_row,'Yrs:')
+            charge.jail_term_months = self.value_column(jail_term_row,'Mos:')
+            charge.jail_term_days = self.value_column(jail_term_row,'Days:')
 
-                charge.credit_time_served = self.value_first_column(disposition_table,'Credit Time Served:')
-            db.add(charge)
+            suspended_term_row = self.row_first_label(disposition_table,'Suspended Term:')
+            charge.suspended_term_years = self.value_column(suspended_term_row,'Yrs:')
+            charge.suspended_term_months = self.value_column(suspended_term_row,'Mos:')
+            charge.suspended_term_days = self.value_column(suspended_term_row,'Days:')
+
+            charge.credit_time_served = self.value_first_column(disposition_table,'Credit Time Served:')
+        
+        return charge
 
     #########################################################
     # DEFENDENT INFORMATION

@@ -325,86 +325,8 @@ class ODYCRIMParser(CaseDetailsParser):
             if not container.find('span',class_='Prompt',string='Charge No:'):
                 break
             prev_obj = container
-            t1 = container.find('table')
-            charge = ODYCRIMCharge(case_number=self.case_number)
-            charge.charge_number = self.value_multi_column(t1,'Charge No:')
-            charge.cjis_code = self.value_column(t1,'CJIS Code:')
-            charge.statute_code = self.value_column(t1,'Statute Code:')
-            t2 = self.immediate_sibling(t1,'table')
-            charge.charge_description = self.value_multi_column(t2,'Charge Description:')
-            charge.charge_class = self.value_column(t2,'Charge Class:')
-            t3 = self.immediate_sibling(t2,'table')
-            probable_cause = self.value_multi_column(t3,'Probable Cause:')
-            self.probable_cause = True if probable_cause == 'YES' else False
-            t4 = self.immediate_sibling(t3,'table')
-            charge.offense_date_from_str = self.value_multi_column(t4,'Offense Date From:')
-            charge.offense_date_to_str = self.value_column(t4,'To:')
-            charge.agency_name = self.value_multi_column(t4,'Agency Name:')
-            charge.officer_id = self.value_column(t4,'Officer ID:')
-
-            # Disposition
-            try:
-                subsection_header = container.find('i',string='Disposition').find_parent('left')
-            except (ParserError, AttributeError):
-                pass
-            else:
-                self.mark_for_deletion(subsection_header)
-                t1 = self.immediate_sibling(subsection_header,'table')
-                charge.plea = self.value_multi_column(t1,'Plea:',ignore_missing=True)
-                charge.plea_date_str = self.value_column(t1,'Plea Date:',ignore_missing=True)
-                charge.disposition = self.value_multi_column(t1,'Disposition:',ignore_missing=True)
-                charge.disposition_date_str = self.value_column(t1,'Disposition Date:',ignore_missing=True)
-
-            # Converted Disposition
-            try:
-                subsection_header = container.find('i',string='Converted Disposition:').find_parent('left')
-            except (ParserError, AttributeError):
-                pass
-            else:
-                self.mark_for_deletion(subsection_header)
-                t = self.immediate_sibling(subsection_header,'table')
-                self.mark_for_deletion(t)
-                charge.converted_disposition = '\n'.join(t.stripped_strings)
-
-            # Jail
-            try:
-                subsection_header = container.find('i',string='Jail').find_parent('left')
-            except (ParserError, AttributeError):
-                pass
-            else:
-                self.mark_for_deletion(subsection_header)
-                t = self.immediate_sibling(subsection_header,'table')
-                charge.jail_life = self.value_multi_column(t,'Life:',boolean_value=True)
-                charge.jail_death = self.value_multi_column(t,'Death:',boolean_value=True)
-                charge.jail_start_date_str = self.value_multi_column(t,'Start Date:')
-                charge.jail_cons_conc = self.value_multi_column(t,'Cons/Conc:',ignore_missing=True)
-                jail_row = self.row_label(t,'Jail Term:')
-                charge.jail_years = self.value_column(jail_row,'Yrs:')
-                charge.jail_months = self.value_column(jail_row,'Mos:')
-                charge.jail_days = self.value_column(jail_row,'Days:')
-                charge.jail_hours = self.value_column(jail_row,'Hours:')
-                try:
-                    suspended_row = self.row_label(t,'Suspended Term:')
-                except ParserError:
-                    pass
-                else:
-                    try:
-                        charge.jail_suspended_years = self.value_column(suspended_row,'Yrs:')
-                        charge.jail_suspended_months = self.value_column(suspended_row,'Mos:')
-                        charge.jail_suspended_days = self.value_column(suspended_row,'Days:')
-                        charge.jail_suspended_hours = self.value_column(suspended_row,'Hours:')
-                    except ParserError:
-                        charge.jail_suspended_term = self.value_multi_column(suspended_row,'Suspended Term:')
-                try:
-                    suspend_all_but_row = self.row_label(t,'Suspend All But:')
-                except ParserError:
-                    pass
-                else:
-                    charge.jail_suspend_all_but_years = self.value_column(suspend_all_but_row,'Yrs:')
-                    charge.jail_suspend_all_but_months = self.value_column(suspend_all_but_row,'Mos:')
-                    charge.jail_suspend_all_but_days = self.value_column(suspend_all_but_row,'Days:')
-                    charge.jail_suspend_all_but_hours = self.value_column(suspend_all_but_row,'Hours:')
-            new_charges.append(charge)
+            new_charge = self.parse_charge(container)
+            new_charges.append(new_charge)
 
         new_charge_numbers = [c.charge_number for c in new_charges]
         for charge in existing_charges:
@@ -416,6 +338,89 @@ class ODYCRIMParser(CaseDetailsParser):
                 if existing_charge.charge_number == new_charge.charge_number:
                     db.delete(existing_charge)
             db.add(new_charge)
+
+    def parse_charge(self, container):
+        t1 = container.find('table')
+        charge = ODYCRIMCharge(case_number=self.case_number)
+        charge.charge_number = int(self.value_multi_column(t1,'Charge No:'))
+        charge.cjis_code = self.value_column(t1,'CJIS Code:')
+        charge.statute_code = self.value_column(t1,'Statute Code:')
+        t2 = self.immediate_sibling(t1,'table')
+        charge.charge_description = self.value_multi_column(t2,'Charge Description:')
+        charge.charge_class = self.value_column(t2,'Charge Class:')
+        t3 = self.immediate_sibling(t2,'table')
+        probable_cause = self.value_multi_column(t3,'Probable Cause:')
+        self.probable_cause = True if probable_cause == 'YES' else False
+        t4 = self.immediate_sibling(t3,'table')
+        charge.offense_date_from_str = self.value_multi_column(t4,'Offense Date From:')
+        charge.offense_date_to_str = self.value_column(t4,'To:')
+        charge.agency_name = self.value_multi_column(t4,'Agency Name:')
+        charge.officer_id = self.value_column(t4,'Officer ID:')
+
+        # Disposition
+        try:
+            subsection_header = container.find('i',string='Disposition').find_parent('left')
+        except (ParserError, AttributeError):
+            pass
+        else:
+            self.mark_for_deletion(subsection_header)
+            t = self.immediate_sibling(subsection_header,'table')
+            charge.plea = self.value_multi_column(t,'Plea:',ignore_missing=True)
+            charge.plea_date_str = self.value_column(t,'Plea Date:',ignore_missing=True)
+            charge.disposition = self.value_multi_column(t,'Disposition:',ignore_missing=True)
+            charge.disposition_date_str = self.value_column(t,'Disposition Date:',ignore_missing=True)
+
+        # Converted Disposition
+        try:
+            subsection_header = container.find('i',string='Converted Disposition:').find_parent('left')
+        except (ParserError, AttributeError):
+            pass
+        else:
+            self.mark_for_deletion(subsection_header)
+            t = self.immediate_sibling(subsection_header,'table')
+            self.mark_for_deletion(t)
+            charge.converted_disposition = '\n'.join(t.stripped_strings)
+
+        # Jail
+        try:
+            subsection_header = container.find('i',string='Jail').find_parent('left')
+        except (ParserError, AttributeError):
+            pass
+        else:
+            self.mark_for_deletion(subsection_header)
+            t = self.immediate_sibling(subsection_header,'table')
+            charge.jail_life = self.value_multi_column(t,'Life:',boolean_value=True)
+            charge.jail_death = self.value_multi_column(t,'Death:',boolean_value=True)
+            charge.jail_start_date_str = self.value_multi_column(t,'Start Date:')
+            charge.jail_cons_conc = self.value_multi_column(t,'Cons/Conc:',ignore_missing=True)
+            jail_row = self.row_label(t,'Jail Term:')
+            charge.jail_years = self.value_column(jail_row,'Yrs:')
+            charge.jail_months = self.value_column(jail_row,'Mos:')
+            charge.jail_days = self.value_column(jail_row,'Days:')
+            charge.jail_hours = self.value_column(jail_row,'Hours:')
+            try:
+                suspended_row = self.row_label(t,'Suspended Term:')
+            except ParserError:
+                pass
+            else:
+                try:
+                    charge.jail_suspended_years = self.value_column(suspended_row,'Yrs:')
+                    charge.jail_suspended_months = self.value_column(suspended_row,'Mos:')
+                    charge.jail_suspended_days = self.value_column(suspended_row,'Days:')
+                    charge.jail_suspended_hours = self.value_column(suspended_row,'Hours:')
+                except ParserError:
+                    charge.jail_suspended_term = self.value_multi_column(suspended_row,'Suspended Term:')
+            try:
+                suspend_all_but_row = self.row_label(t,'Suspend All But:')
+            except ParserError:
+                pass
+            else:
+                charge.jail_suspend_all_but_years = self.value_column(suspend_all_but_row,'Yrs:')
+                charge.jail_suspend_all_but_months = self.value_column(suspend_all_but_row,'Mos:')
+                charge.jail_suspend_all_but_days = self.value_column(suspend_all_but_row,'Days:')
+                charge.jail_suspend_all_but_hours = self.value_column(suspend_all_but_row,'Hours:')
+        
+        return charge
 
     #########################################################
     # PROBATION

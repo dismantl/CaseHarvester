@@ -36,13 +36,14 @@ class DSCRCaseTable(CaseTable):
     def case_number(self):
         return Column(String, ForeignKey('dscr.case_number', ondelete='CASCADE'))
 
-class DSCRCharge(DSCRCaseTable, TableBase):
+class DSCRCharge(CaseTable, TableBase):
     __tablename__ = 'dscr_charges'
     __table_args__ = (Index('ixh_dscr_charges_case_number', 'case_number', postgresql_using='hash'),)
-    dscr = relationship('DSCR', backref='charges')
 
     id = Column(Integer, primary_key=True)
+    case_number = Column(String, nullable=False)
     charge_number = Column(Integer)
+    possibly_expunged = Column(Boolean, nullable=False, server_default='false')
     charge_description = Column(String, nullable=True)
     statute = Column(String, nullable=True)
     statute_description = Column(String, nullable=True)
