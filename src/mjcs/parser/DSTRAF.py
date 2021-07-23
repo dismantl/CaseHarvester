@@ -38,7 +38,7 @@ class DSTRAFParser(CaseDetailsParser):
         case.location_code = self.value_multi_column(case_table,'Location Code:',ignore_missing=True)
         case.agency_name = self.value_combined_first_column(case_table,'AgencyName:',ignore_missing=True)
         case.officer_name = self.value_combined_first_column(case_table,'Officer Name:',ignore_missing=True)
-        case.officer_id = self.value_combined_first_column(case_table,'Officer ID:')
+        case.officer_id = self.value_combined_first_column(case_table,'Officer ID:',ignore_missing=True)
         db.add(case)
 
     # #########################################################
@@ -118,6 +118,7 @@ class DSTRAFParser(CaseDetailsParser):
         d.contributed_to_accident = self.value_first_column(section,'Contributed To Accident:')
         d.alcohol_restriction = self.value_multi_column(section,'Alcohol Restriction:',ignore_missing=True)
         d.personal_injury = self.value_multi_column(section,'Personal Injury\?:')
+        d.subsequent_offense = self.value_multi_column(section,'Subsequent Offense:',ignore_missing=True)
         d.alcohol_education = self.value_first_column(section,'Alcohol Education:',ignore_missing=True)
         d.driver_improvement = self.value_multi_column(section,'Driver Improvement:',ignore_missing=True)
         d.sentence_date_str = self.value_first_column(section,'Sentence Date:')

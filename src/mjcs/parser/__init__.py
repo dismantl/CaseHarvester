@@ -199,7 +199,7 @@ class Parser:
                                 # Job not finished, let it keep running
                                 pass
                 logger.info('Wait for remaining jobs to complete before exiting')
-                for job in jobs:
+                for job,_,_ in jobs:
                     job.wait(timeout=60)
         else:
             while True:

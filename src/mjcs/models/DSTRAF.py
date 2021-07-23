@@ -92,6 +92,7 @@ class DSTRAFDisposition(DSTRAFCaseTable, TableBase):
     contributed_to_accident = Column(String)
     alcohol_restriction = Column(String)
     personal_injury = Column(String)
+    subsequent_offense = Column(String)
     alcohol_education = Column(String)
     driver_improvement = Column(String)
     sentence_date = Column(Date)

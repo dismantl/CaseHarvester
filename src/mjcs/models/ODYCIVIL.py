@@ -330,6 +330,7 @@ class ODYCIVILJudgmentComment(ODYCIVILCaseTable, TableBase):
     usercdate = Column(Date)
     _usercdate_str = Column('usercdate_str',String)
     judg_ccjs_ind = Column(String)
+    servicefee = Column(Numeric)
 
     @hybrid_property
     def usercdate_str(self):
