@@ -222,6 +222,7 @@ class ODYCIVILJudgment(ODYCIVILCaseTable, TableBase):
     appeal_bond_amount = Column(Numeric)
     court_costs = Column(Numeric)
     interest_rate_details = Column(String)
+    trial_judgment_against_plaintiff = Column(String)
 
     @hybrid_property
     def judgment_ordered_date_str(self):
