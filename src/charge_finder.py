@@ -13,6 +13,7 @@ import re
 import logging
 import argparse
 import os
+from multiprocessing import Pool, set_start_method
 
 logger = logging.getLogger('mjcs')
 parsers = {
@@ -60,6 +61,31 @@ def check_case(case_number, charge_cls, parser_cls):
                     raise Exception(f'Failed to find missing charge numbers for case {case_number}')
         db.execute(text(f"UPDATE cases SET checked_expunged_charges = TRUE WHERE case_number = '{case_number}'"))
 
+def get_cases(detail_loc):
+    with db_session() as db:
+        logger.info(f'Querying for {detail_loc}')
+        query = db.execute(text(f"""
+            SELECT
+                case_number 
+            FROM
+                scrape_versions 
+                JOIN
+                    cases USING (case_number) 
+            WHERE
+                detail_loc = '{detail_loc}'
+                AND checked_expunged_charges = FALSE
+            GROUP BY
+                case_number 
+            HAVING
+                COUNT(*) >= 2
+            LIMIT
+                {config.CASE_BATCH_SIZE}
+        """))
+    logger.info('Query complete')
+    if query.rowcount == 0:
+        logger.info(f'Finished {detail_loc}')
+    return query.all()
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="Check ODYCRIM, ODYTRAF, and ODYCVCIT cases for expunged charges",
@@ -69,6 +95,8 @@ if __name__ == '__main__':
         choices=['production','prod','development','dev'],
         help="Environment to run in (e.g. production, development)")
     parser.add_argument('--case', '-c', help="Check specific case number")
+    parser.add_argument('--parallel', '-p', action='store_true', default=False,
+        help=f"Search for expunged charges in parallel with {os.cpu_count()} worker processes")
     parser.add_argument('--verbose', '-v', action='store_true',
         help="Print debug information")
     args = parser.parse_args()
@@ -79,32 +107,40 @@ if __name__ == '__main__':
     if args.case:
         detail_loc = get_detail_loc(args.case)
         check_case(args.case, parsers[detail_loc][0], parsers[detail_loc][1])
+    elif args.parallel:
+        cpus = os.cpu_count()
+        set_start_method('fork')  # multiprocessing logging won't work with the spawn method
+        # start worker processes according to available CPU resources
+        with Pool() as worker_pool:
+            jobs = []
+            for detail_loc, (charge_cls, parser_cls) in parsers.items():
+                while True:
+                    cases = get_cases(detail_loc)
+                    if not cases or len(cases) == 0:
+                        logger.info('No more cases')
+                        break
+                    for case_number, in cases:    
+                        logger.debug(f'Dispatching {case_number} {detail_loc} to worker')
+                        job = worker_pool.apply_async(check_case, (case_number, charge_cls, parser_cls))
+                        jobs.append((job, case_number))
+                    # Prune completed jobs from active list
+                    while len(jobs) > config.CASE_BATCH_SIZE:
+                        for job, case_number in jobs:
+                            try:
+                                if job.ready():
+                                    job.get()  # To re-raise exceptions from child process
+                                    jobs.remove((job, case_number))
+                                    logger.debug(f'Finished checking charges for {case_number} {detail_loc}')
+                            except ValueError:
+                                # Job not finished, let it keep running
+                                pass
     else:
         for detail_loc, (charge_cls, parser_cls) in parsers.items():
             while True:
-                with db_session() as db:
-                    logger.info(f'Querying for {detail_loc}')
-                    query = db.execute(text(f"""
-                        SELECT
-                            case_number 
-                        FROM
-                            scrape_versions 
-                            JOIN
-                                cases USING (case_number) 
-                        WHERE
-                            detail_loc = '{detail_loc}'
-                            AND checked_expunged_charges = FALSE
-                        GROUP BY
-                            case_number 
-                        HAVING
-                            COUNT(*) >= 2
-                        LIMIT
-                            {config.CASE_BATCH_SIZE}
-                    """))
-                logger.info('Query complete')
-                if query.rowcount == 0:
+                cases = get_cases(detail_loc)
+                if len(cases) == 0:
                     logger.info(f'Finished {detail_loc}')
                     break
-                for case_number, in query:
+                for case_number, in cases:
                     check_case(case_number, charge_cls, parser_cls)
                     
