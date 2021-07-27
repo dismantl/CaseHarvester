@@ -178,7 +178,7 @@ class ODYCVCITCharge(CaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     case_number = Column(String, nullable=False)
     charge_number = Column(Integer)
-    possibly_expunged = Column(Boolean, nullable=False, server_default='false')
+    expunged = Column(Boolean, nullable=False, server_default='false')
     cjis_code = Column(String)
     statute_code = Column(String, nullable=True)
     charge_description = Column(String, nullable=True)

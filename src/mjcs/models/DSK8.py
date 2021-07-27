@@ -60,7 +60,7 @@ class DSK8Charge(DSK8CaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     case_number = Column(String, nullable=False)
     charge_number = Column(Integer)
-    possibly_expunged = Column(Boolean, nullable=False, server_default='false')
+    expunged = Column(Boolean, nullable=False, server_default='false')
     cjis_traffic_code = Column(String, nullable=True)
     arrest_citation_number = Column(String, nullable=True)
     description = Column(String)
