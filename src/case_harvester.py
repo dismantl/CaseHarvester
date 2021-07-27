@@ -6,7 +6,6 @@ from mjcs.scraper import Scraper
 from mjcs.parser import Parser, load_failed_queue
 import boto3
 from datetime import datetime, timedelta
-import sys
 import os
 import json
 import argparse

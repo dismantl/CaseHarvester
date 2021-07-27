@@ -1,7 +1,7 @@
-from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time
+from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.ext.declarative import declared_attr, declarative_base
+from sqlalchemy.ext.declarative import declared_attr
 import re
 from datetime import datetime
 

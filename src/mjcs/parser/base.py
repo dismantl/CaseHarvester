@@ -4,10 +4,9 @@ from ..util import db_session
 from ..models import Case
 from . import BaseParserError
 import re
-from sqlalchemy.sql import select
+from sqlalchemy.sql import select, text
 from datetime import datetime
 import inspect
-import sys
 
 class ParserError(BaseParserError):
     def __init__(self, message, content=None):
@@ -40,7 +39,7 @@ class CaseDetailsParser(ABC):
     def allow_unparsed_data(self):
         with db_session() as db:
             return db.execute(
-                select([Case.allow_unparsed_data])\
+                select(Case.allow_unparsed_data)\
                 .where(Case.case_number == self.case_number)
             ).scalar()
 
@@ -99,11 +98,11 @@ class CaseDetailsParser(ABC):
 
     def delete_previous(self, db):
         # Disable foreign key on delete cascade triggers for performance
-        db.execute('SET session_replication_role = replica')
+        db.execute(text('SET session_replication_role = replica'))
         for _, cls in inspect.getmembers(inspect.getmodule(self), lambda obj: hasattr(obj, '__tablename__')):
             db.execute(cls.__table__.delete()\
                 .where(cls.case_number == self.case_number))
-        db.execute('SET session_replication_role = DEFAULT')
+        db.execute(text('SET session_replication_role = DEFAULT'))
 
     def immediate_previous_sibling(self, next_sibling, *args, **kwargs):
         obj_prev = next_sibling.find_previous_sibling(True)

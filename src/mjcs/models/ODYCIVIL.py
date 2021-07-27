@@ -1,4 +1,4 @@
-from .common import TableBase, CaseTable, Trial, Event, date_from_str, Defendant, DefendantAlias, RelatedPerson
+from .common import TableBase, CaseTable, date_from_str, Defendant
 from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property

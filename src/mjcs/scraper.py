@@ -4,12 +4,10 @@ from .util import db_session, get_detail_loc, send_to_queue, cases_batch_filter,
 from .models import ScrapeVersion, Scrape, Case
 from hashlib import sha256
 import logging
-import boto3
 import botocore
 import re
 import json
 import trio
-import asks
 from datetime import datetime, timedelta
 from sqlalchemy import and_, or_, text
 

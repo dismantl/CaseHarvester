@@ -3,7 +3,6 @@ import sqlalchemy
 import logging
 import math
 import json
-import getpass
 from decimal import Decimal
 from datetime import timedelta, datetime
 from sqlalchemy import and_, func, select

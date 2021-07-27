@@ -1,10 +1,10 @@
 asks == 2.3.7
 anyio == 1.4.0
 trio == 0.13.0
-sqlalchemy >= 1.2.6
+sqlalchemy >= 1.4.22
 psycopg2 >= 2.7.4
 boto3 >= 1.9.216
-beautifulsoup4 == 4.6.0
+beautifulsoup4 == 4.9.0
 lxml >= 4.2.1
 alembic >= 0.9.9
 pytest >= 3.5.0

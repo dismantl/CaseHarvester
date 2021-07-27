@@ -1,5 +1,5 @@
 from .common import TableBase, CaseTable, date_from_str, Defendant, DefendantAlias, RelatedPerson, Trial, Event
-from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger, Index
+from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr

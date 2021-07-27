@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-from mjcs.models.ODYCRIM import ODYCRIM
 from mjcs.parser.ODYCRIM import ODYCRIMParser
 from mjcs.parser.ODYCVCIT import ODYCVCITParser
 from mjcs.parser.ODYTRAF import ODYTRAFParser
-from mjcs.util import db_session, get_detail_loc
-from mjcs.models import ODYCRIMCharge, ODYTRAFCharge, ODYCVCITCharge, Scrape
+from mjcs.util import db_session, get_detail_loc, send_to_queue, NoItemsInQueue
+from mjcs.models import ODYCRIMCharge, ODYTRAFCharge, ODYCVCITCharge, Scrape, Case
 from mjcs.config import config
 from sqlalchemy.sql import text
-from sqlalchemy.exc import MultipleResultsFound
 from bs4 import BeautifulSoup, SoupStrainer
 import re
 import logging
 import argparse
 import os
 from multiprocessing import Pool, set_start_method
+import json
 
 logger = logging.getLogger('mjcs')
 parsers = {
@@ -23,7 +22,7 @@ parsers = {
 }
 
 def check_case(case_number, charge_cls, parser_cls):
-    logger.debug(f'Processing {case_number}')
+    logger.info(f'Processing {case_number}')
     with db_session() as db:
         versions = db.query(Scrape).filter_by(case_number=case_number).filter(Scrape.s3_version_id != None).order_by(Scrape.timestamp.desc()).offset(1)
         for version in versions:
@@ -43,7 +42,7 @@ def check_case(case_number, charge_cls, parser_cls):
                 charge_numbers.append(
                     int(re.sub('[ \t]+','',charge_number))
                 )
-            logger.info(f'Found charge numbers: {", ".join([str(_) for _ in charge_numbers])}')
+            logger.debug(f'Found charge numbers: {", ".join([str(_) for _ in charge_numbers])}')
             existing_charge_numbers = [_ for _, in db.query(charge_cls.charge_number).filter_by(case_number=case_number).all()]
             missing_charge_numbers = list(set(charge_numbers) - set(existing_charge_numbers))
             if missing_charge_numbers:
@@ -59,14 +58,13 @@ def check_case(case_number, charge_cls, parser_cls):
                         db.add(new_charge)
                 if found != len(missing_charge_numbers):
                     raise Exception(f'Failed to find missing charge numbers for case {case_number}')
-        db.execute(text(f"UPDATE cases SET checked_expunged_charges = TRUE WHERE case_number = '{case_number}'"))
 
-def get_cases(detail_loc):
-    with db_session() as db:
-        logger.info(f'Querying for {detail_loc}')
-        query = db.execute(text(f"""
+def get_cases(detail_loc=None, limit=None):
+    if detail_loc:
+        query_text = f"""
             SELECT
-                case_number 
+                case_number,
+                detail_loc
             FROM
                 scrape_versions 
                 JOIN
@@ -74,17 +72,129 @@ def get_cases(detail_loc):
             WHERE
                 detail_loc = '{detail_loc}'
                 AND checked_expunged_charges = FALSE
+                AND parse_exempt = FALSE
+                AND last_parse IS NOT NULL
             GROUP BY
-                case_number 
+                case_number,
+                detail_loc
             HAVING
                 COUNT(*) >= 2
-            LIMIT
-                {config.CASE_BATCH_SIZE}
-        """))
-    logger.info('Query complete')
-    if query.rowcount == 0:
-        logger.info(f'Finished {detail_loc}')
-    return query.all()
+        """
+    else:
+        locs = "', '".join([k for k,v in parsers.items()])
+        query_text = f"""
+            SELECT
+                case_number,
+                detail_loc
+            FROM
+                scrape_versions 
+                JOIN
+                    cases USING (case_number) 
+            WHERE
+                detail_loc IN ('{locs}')
+                AND checked_expunged_charges = FALSE
+                AND parse_exempt = FALSE
+                AND last_parse IS NOT NULL
+            GROUP BY
+                case_number,
+                detail_loc
+            HAVING
+                COUNT(*) >= 2
+        """
+    if limit:
+        query_text += f' LIMIT {limit}'
+    logger.debug(f'Querying for cases')
+    with db_session() as db:
+        query = db.execute(text(query_text))
+    logger.debug('Query complete')
+    return query
+
+def load_queue(ncases, detail_loc=None):
+    logger.debug('Loading cases into parser queue')
+    if ncases == 'all':
+        while True:
+            logger.debug('Fetching batch of cases')
+            query = get_cases(detail_loc, config.CASE_BATCH_SIZE)
+            if query.rowcount == 0:
+                logger.debug('Finished loading cases into parser queue')
+                return
+            messages = []
+            case_list = []
+            for case_number, loc in query:
+                messages.append(
+                    json.dumps({
+                        'Records': [
+                            {
+                                'manual': {
+                                    'case_number': case_number,
+                                    'detail_loc': loc
+                                }
+                            }
+                        ]
+                    })
+                )
+                case_list.append(case_number)
+            send_to_queue(config.parser_queue, messages)
+            logger.info(f'Submitted {query.rowcount} to parser queue')
+            case_list = "', '".join(case_list)
+            with db_session() as db:
+                db.execute(text(f"""
+                    UPDATE cases SET checked_expunged_charges = TRUE WHERE case_number in ('{case_list}')
+                """))
+            logger.debug(f'Updated checked_expunged_charges for {query.rowcount} cases')
+    else:
+        query = get_cases(detail_loc, ncases)
+        if query.rowcount == 0:
+            logger.debug('Finished loading cases into parser queue')
+            return
+        messages = []
+        case_list = []
+        for case_number, loc in query:
+            messages.append(
+                json.dumps({
+                    'Records': [
+                        {
+                            'manual': {
+                                'case_number': case_number,
+                                'detail_loc': loc
+                            }
+                        }
+                    ]
+                })
+            )
+            case_list.append(case_number)
+        send_to_queue(config.parser_queue, messages)
+        case_list = "', '".join(case_list)
+        with db_session() as db:
+            db.execute(text(f"""
+                UPDATE cases SET checked_expunged_charges = TRUE WHERE case_number in ('{case_list}')
+            """))
+
+def parser_queue_validator(string):
+    try:
+        if string == 'all':
+            return string
+        elif int(string) > 0:
+            return int(string)
+    except ValueError:
+        raise argparse.ArgumentTypeError('Value must be a positive integer')
+
+def fetch_cases_from_queue():
+    logger.debug('Requesting 10 items from parser queue')
+    queue_items = config.parser_queue.receive_messages(
+        WaitTimeSeconds = config.QUEUE_WAIT,
+        MaxNumberOfMessages = 10
+    )
+    if not queue_items:
+        raise NoItemsInQueue
+    cases = []
+    for item in queue_items:
+        record = json.loads(item.body)['Records'][0]
+        if 'manual' in record:
+            case_number = record['manual']['case_number']
+            detail_loc = record['manual']['detail_loc']
+        cases.append((case_number, detail_loc, item.receipt_handle))
+    return cases
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -94,6 +204,9 @@ if __name__ == '__main__':
     parser.add_argument('--environment', '--env', default='development',
         choices=['production','prod','development','dev'],
         help="Environment to run in (e.g. production, development)")
+    parser.add_argument('--load-queue', nargs='?', const='all', type=parser_queue_validator, metavar='NCASES',
+        help="Load cases to check into the parser queue for later processing. \
+            Optional argument limits the number of cases sent to the queue.")
     parser.add_argument('--case', '-c', help="Check specific case number")
     parser.add_argument('--parallel', '-p', action='store_true', default=False,
         help=f"Search for expunged charges in parallel with {os.cpu_count()} worker processes")
@@ -107,40 +220,54 @@ if __name__ == '__main__':
     if args.case:
         detail_loc = get_detail_loc(args.case)
         check_case(args.case, parsers[detail_loc][0], parsers[detail_loc][1])
+    elif args.load_queue:
+        load_queue(args.load_queue)
     elif args.parallel:
         cpus = os.cpu_count()
         set_start_method('fork')  # multiprocessing logging won't work with the spawn method
         # start worker processes according to available CPU resources
         with Pool() as worker_pool:
             jobs = []
-            for detail_loc, (charge_cls, parser_cls) in parsers.items():
-                while True:
-                    cases = get_cases(detail_loc)
-                    if not cases or len(cases) == 0:
-                        logger.info('No more cases')
-                        break
-                    for case_number, in cases:    
-                        logger.debug(f'Dispatching {case_number} {detail_loc} to worker')
-                        job = worker_pool.apply_async(check_case, (case_number, charge_cls, parser_cls))
-                        jobs.append((job, case_number))
-                    # Prune completed jobs from active list
-                    while len(jobs) > config.CASE_BATCH_SIZE:
-                        for job, case_number in jobs:
-                            try:
-                                if job.ready():
-                                    job.get()  # To re-raise exceptions from child process
-                                    jobs.remove((job, case_number))
-                                    logger.debug(f'Finished checking charges for {case_number} {detail_loc}')
-                            except ValueError:
-                                # Job not finished, let it keep running
-                                pass
-    else:
-        for detail_loc, (charge_cls, parser_cls) in parsers.items():
+            # for detail_loc, (charge_cls, parser_cls) in parsers.items():
             while True:
-                cases = get_cases(detail_loc)
-                if len(cases) == 0:
-                    logger.info(f'Finished {detail_loc}')
+                try:
+                    cases = fetch_cases_from_queue()
+                except NoItemsInQueue:
+                    logger.info('No items found in parser queue')
                     break
-                for case_number, in cases:
-                    check_case(case_number, charge_cls, parser_cls)
-                    
+                for case_number, detail_loc, receipt_handle in cases:  
+                    if not detail_loc:
+                        detail_loc = get_detail_loc(case_number)  
+                    logger.debug(f'Dispatching {case_number} {detail_loc} to worker')
+                    def callback_wrapper(case_number, receipt_handle):
+                        def callback(unused):
+                            logger.debug(f'Deleting {case_number} from parser queue')
+                            config.parser_queue.delete_messages(Entries=[{'Id': 'unused', 'ReceiptHandle': receipt_handle}])
+                        return callback
+                    callback = callback_wrapper(case_number, receipt_handle)
+                    job = worker_pool.apply_async(check_case, (case_number, parsers[detail_loc][0], parsers[detail_loc][1]), callback=callback, error_callback=callback)
+                    jobs.append((job, case_number, detail_loc))
+                # Prune completed jobs from active list
+                while len(jobs) > cpus:
+                    for job, case_number, detail_loc in jobs:
+                        try:
+                            if job.ready():
+                                job.get()  # To re-raise exceptions from child process
+                                jobs.remove((job, case_number, detail_loc))
+                                logger.debug(f'Finished checking charges for {case_number} {detail_loc}')
+                        except ValueError:
+                            # Job not finished, let it keep running
+                            pass
+            logger.info('Wait for remaining jobs to complete before exiting')
+            for job,_,_ in jobs:
+                job.wait(timeout=60)
+    else:
+        while True:
+            try:
+                cases = fetch_cases_from_queue()
+            except NoItemsInQueue:
+                logger.info('No items found in parser queue')
+                break
+            for case_number, detail_loc, receipt_handle in cases:
+                check_case(case_number, parsers[detail_loc][0], parsers[detail_loc][1])
+                config.parser_queue.delete_messages(Entries=[{'Id': 'unused', 'ReceiptHandle': receipt_handle}])

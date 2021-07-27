@@ -1,13 +1,10 @@
 from ..config import config
-from ..util import (fetch_from_queue, NoItemsInQueue, db_session, cases_batch_filter, 
+from ..util import (NoItemsInQueue, db_session, cases_batch_filter, 
     get_detail_loc, send_to_queue)
 from ..models import Case
 from sqlalchemy import and_
 import json
-import time
-import concurrent.futures
 import logging
-import queue
 from os import getpid, cpu_count
 from contextlib import contextmanager
 from time import sleep

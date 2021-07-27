@@ -1,6 +1,5 @@
 from ..models import DSTRAF, DSTRAFCharge, DSTRAFDisposition, DSTRAFDefendant, DSTRAFEvent, DSTRAFTrial, DSTRAFRelatedPerson
 from .base import CaseDetailsParser, consumer, ParserError
-from datetime import datetime
 import re
 
 # Note that consumers may not be called in order

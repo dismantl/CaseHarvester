@@ -12,7 +12,6 @@ class AsyncSessionPool:
         
         assert isinstance(concurrency, int) and concurrency > 0
         self.concurrency = concurrency
-        asks.init('trio')
         self.send_channel, self.receive_channel = trio.open_memory_channel(max_buffer_size=self.concurrency)
         for _ in range(self.concurrency):
             self.send_channel.send_nowait(AsyncSession())
