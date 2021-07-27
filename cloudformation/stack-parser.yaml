@@ -83,6 +83,13 @@ Resources:
       VisibilityTimeout: 30
       QueueName: !Sub mjcs_parser_failed_queue_${EnvironmentType}
 
+  ParserQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      VisibilityTimeout: 30
+      QueueName: !Sub mjcs_parser_queue_${EnvironmentType}
+
 Outputs:
   ParserArn:
     Description: ARN of Parser lambda function
@@ -99,3 +106,8 @@ Outputs:
     Value: !GetAtt ParserFailedQueue.QueueName
     Export:
       Name: !Sub ${AWS::StackName}-ParserFailedQueueName
+  ParserQueueName:
+    Description: General purpose queue for parsing programs
+    Value: !GetAtt ParserQueue.QueueName
+    Export:
+      Name: !Sub ${AWS::StackName}-ParserQueueName
