@@ -2,7 +2,7 @@ from ..config import config
 from ..util import (NoItemsInQueue, db_session, cases_batch_filter, 
     get_detail_loc, send_to_queue)
 from ..models import Case
-from sqlalchemy import and_
+from sqlalchemy import and_, distinct
 import json
 import logging
 from os import getpid, cpu_count
@@ -36,36 +36,6 @@ parsers = [
     ('ODYCVCIT',ODYCVCITParser),
     ('DSTRAF',DSTRAFParser)
 ]
-
-def load_failed_queue(ncases, detail_loc=None):
-    if detail_loc:
-        filter = and_(Case.last_parse == None, Case.last_scrape != None,
-            Case.parse_exempt != True, Case.detail_loc == detail_loc)
-    else:
-        filter = and_(Case.last_parse == None, Case.last_scrape != None,
-            Case.parse_exempt != True, Case.detail_loc.in_([c for c,p in parsers]))
-    with db_session() as db:
-        logger.info('Generating batch queries')
-        batch_filters = cases_batch_filter(db, filter)
-    for batch_filter in batch_filters:
-        with db_session() as db:
-            logger.debug('Fetching batch of cases from database')
-            query = db.query(Case.case_number, Case.detail_loc).filter(batch_filter)
-            if ncases != 'all':
-                query = query.limit(ncases)
-            messages = [
-                json.dumps({
-                    'Records': [
-                        {
-                            'manual': {
-                                'case_number': case_number,
-                                'detail_loc': detail_loc
-                            }
-                        }
-                    ]
-                }) for case_number, detail_loc in query
-            ]
-            send_to_queue(config.parser_failed_queue, messages)
 
 def parse_case(case_number, detail_loc=None, skip_check=False):
     # check if parse_exempt before scraping
@@ -103,55 +73,30 @@ class Parser:
         logger.info(f'Successfully parsed case {case_number}')
 
     def parse_unparsed(self, detail_loc=None):
-        from multiprocessing import Pool, set_start_method
-        logger.info('Parsing unparsed cases')
-        if self.parallel:
-            cpus = cpu_count()
-            set_start_method('fork')  # multiprocessing logging won't work with the spawn method
-            # start worker processes according to available CPU resources
-            with Pool() as worker_pool:
-                jobs = []
-                while True:
-                    cases = self.__fetch_unparsed_cases(detail_loc)
-                    if not cases or len(cases) == 0:
-                        logger.info('No more unparsed cases found')
-                        break
-                    for case_number, detail_loc in cases:    
-                        logger.debug(f'Dispatching {case_number} {detail_loc} to worker')
-                        job = worker_pool.apply_async(self.parse_case, (case_number, detail_loc, True))
-                        jobs.append((job, case_number, detail_loc))
-                    # Prune completed jobs from active list
-                    while len(jobs) > 0:
-                        for job, case_number, detail_loc in jobs:
-                            try:
-                                if job.ready():
-                                    try:
-                                        job.get()  # To re-raise exceptions from child process
-                                    except Exception as e:
-                                        logger.error(f'Error parsing case {case_number} ({config.MJCS_BASE_URL}/inquiryDetail.jis?caseId={case_number}&detailLoc={detail_loc}): {e}', exc_info=not self.ignore_errors)
-                                        if not self.ignore_errors:
-                                            raise
-                                    jobs.remove((job, case_number, detail_loc))
-                            except ValueError:
-                                # Job not finished, let it keep running
-                                pass
+        if detail_loc:
+            filter = and_(Case.last_parse == None, Case.last_scrape != None,
+                Case.parse_exempt == False, Case.detail_loc == detail_loc)
         else:
-            while True:
-                cases = self.__fetch_unparsed_cases(detail_loc)
-                if not cases or len(cases) == 0:
-                    logger.info('No more unparsed cases found')
-                    break
-                for case_number, detail_loc in cases:
-                    try:
-                        self.parse_case(case_number, detail_loc)
-                    except Exception as e:
-                        logger.error(f'Error parsing case {case_number} ({config.MJCS_BASE_URL}/inquiryDetail.jis?caseId={case_number}&detailLoc={detail_loc}): {e}', exc_info=not self.ignore_errors)
-                        if not self.ignore_errors:
-                            raise
+            filter = and_(Case.last_parse == None, Case.last_scrape != None,
+                Case.parse_exempt == False, Case.detail_loc.in_([c for c,p in parsers]))
+        with db_session() as db:
+            self.load_into_queue(db.query(Case.case_number, Case.detail_loc).distinct().filter(filter), config.parser_queue)
+        return self.parse_from_queue(config.parser_queue)
 
-    def parse_failed_queue(self):
+    def reparse(self, detail_loc=None):
+        if detail_loc:
+            filter = and_(Case.last_scrape != None,
+                Case.parse_exempt == False, Case.detail_loc == detail_loc)
+        else:
+            filter = and_(Case.last_scrape != None,
+                Case.parse_exempt == False, Case.detail_loc.in_([c for c,p in parsers]))
+        with db_session() as db:
+            self.load_into_queue(db.query(Case.case_number, Case.detail_loc).distinct().filter(filter), config.parser_queue)
+        return self.parse_from_queue(config.parser_queue)
+
+    def parse_from_queue(self, queue):
         from multiprocessing import Pool, set_start_method
-        logger.info('Parsing cases from failed queue')
+        logger.info('Parsing cases from queue')
         if self.parallel:
             cpus = cpu_count()
             set_start_method('fork')  # multiprocessing logging won't work with the spawn method
@@ -160,18 +105,18 @@ class Parser:
                 jobs = []
                 while True:
                     try:
-                        cases = self.__fetch_cases_from_failed_queue()
+                        cases = self.__fetch_cases_from_queue(queue)
                     except NoItemsInQueue:
-                        logger.info('No items found in parser failed queue')
+                        logger.info('No items found in queue')
                         break
                     for case_number, detail_loc, receipt_handle in cases:    
                         if not detail_loc:
                             detail_loc = get_detail_loc(case_number)
                         logger.debug(f'Dispatching {case_number} {detail_loc} to worker')
                         def callback_wrapper(case_number, receipt_handle):
-                            def callback(unused):
-                                logger.debug(f'Deleting {case_number} from parser failed queue')
-                                config.parser_failed_queue.delete_messages(Entries=[{'Id': 'unused', 'ReceiptHandle': receipt_handle}])
+                            def callback(_):
+                                logger.debug(f'Deleting {case_number} from queue')
+                                queue.delete_messages(Entries=[{'Id': 'unused', 'ReceiptHandle': receipt_handle}])
                             return callback
                         callback = callback_wrapper(case_number, receipt_handle)
                         job = worker_pool.apply_async(self.parse_case, (case_number, detail_loc), callback=callback, error_callback=callback)
@@ -201,9 +146,9 @@ class Parser:
         else:
             while True:
                 try:
-                    cases = self.__fetch_cases_from_failed_queue()
+                    cases = self.__fetch_cases_from_queue(queue)
                 except NoItemsInQueue:
-                    logger.info('No items found in parser failed queue')
+                    logger.info('No items found in queue')
                     break
                 for case_number, detail_loc, receipt_handle in cases:
                     try:
@@ -217,22 +162,26 @@ class Parser:
                         if not self.ignore_errors:
                             raise
                     finally:
-                        config.parser_failed_queue.delete_messages(Entries=[{'Id': 'unused', 'ReceiptHandle': receipt_handle}])
-
-    def __fetch_unparsed_cases(self, detail_loc=None, ncases=10):
-        if detail_loc:
-            filter = and_(Case.last_parse == None, Case.last_scrape != None,
-                Case.parse_exempt != True, Case.detail_loc == detail_loc)
-        else:
-            filter = and_(Case.last_parse == None, Case.last_scrape != None,
-                Case.parse_exempt != True, Case.detail_loc.in_([c for c,p in parsers]))
-        with db_session() as db:
-            logger.debug('Fetching batch of cases from database')
-            return db.query(Case.case_number, Case.detail_loc).filter(filter).limit(ncases).all()
+                        queue.delete_messages(Entries=[{'Id': 'unused', 'ReceiptHandle': receipt_handle}])
     
-    def __fetch_cases_from_failed_queue(self):
-        logger.debug('Requesting 10 items from parser failed queue')
-        queue_items = config.parser_failed_queue.receive_messages(
+    def load_into_queue(self, query, queue):
+        messages = [
+            json.dumps({
+                'Records': [
+                    {
+                        'manual': {
+                            'case_number': case_number,
+                            'detail_loc': detail_loc
+                        }
+                    }
+                ]
+            }) for case_number, detail_loc in query
+        ]
+        send_to_queue(queue, messages)
+
+    def __fetch_cases_from_queue(self, queue):
+        logger.debug('Requesting 10 items from queue')
+        queue_items = queue.receive_messages(
             WaitTimeSeconds = config.QUEUE_WAIT,
             MaxNumberOfMessages = 10
         )

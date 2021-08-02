@@ -235,7 +235,7 @@ test:
 	pytest
 
 sync:
-	rsync -av . earthseed:CaseHarvester
+	rsync -av . earthseed.acab.enterprises:CaseHarvester
 
 docs:
 	rm -rf $(DOCS_DIR)

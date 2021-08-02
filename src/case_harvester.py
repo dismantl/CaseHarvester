@@ -3,7 +3,7 @@ from mjcs.config import config
 from mjcs.models.common import TableBase
 from mjcs.spider import Spider
 from mjcs.scraper import Scraper
-from mjcs.parser import Parser, load_failed_queue
+from mjcs.parser import Parser
 import boto3
 from datetime import datetime, timedelta
 import os
@@ -239,22 +239,16 @@ def run_parser(args):
     parser = Parser(args.ignore_errors, args.parallel)
 
     if args.failed_queue:
-        parser.parse_failed_queue()
+        parser.parse_from_queue(config.parser_failed_queue)
+    elif args.queue:
+        parser.parse_from_queue(config.parser_queue)
     elif args.case:
         parser.parse_case(args.case)
-    elif args.load_failed_queue:
-        load_failed_queue(args.load_failed_queue, args.type)
     elif args.unparsed:
         parser.parse_unparsed(args.type)
-
-def failed_queue_validator(string):
-    try:
-        if string == 'all':
-            return string
-        elif int(string) > 0:
-            return int(string)
-    except ValueError:
-        raise argparse.ArgumentTypeError('Value must be a positive integer')
+    elif args.reparse:
+        parser.reparse(args.type)
+    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -322,6 +316,8 @@ if __name__ == '__main__':
         help="Only parse cases of this type (requires --load-failed-queue or --unparsed)")
     parser_parser.add_argument('--ignore-errors', action='store_true', default=False,
         help="Ignore parsing errors")
+    parser_parser.add_argument('--queue', action='store_true',
+        help="Parse cases in the general parser queue")
     parser_parser.add_argument('--failed-queue', action='store_true',
         help="Parse cases in the parser failed queue")
     parser_parser.add_argument('--parallel', '-p', action='store_true', default=False,
@@ -329,11 +325,11 @@ if __name__ == '__main__':
     parser_parser.add_argument('--case', '-c', help="Parse a specific case number")
     parser_parser.add_argument('--verbose', '-v', action='store_true',
         help="Print debug information")
-    parser_parser.add_argument('--load-failed-queue', nargs='?', const='all', type=failed_queue_validator, metavar='NCASES',
-        help="Load unparsed cases into the parser failed queue for later processing. \
-            Optional argument limits the number of cases sent to the queue.")
     parser_parser.add_argument('--unparsed', '-u', action='store_true',
-        help="Parse cases from the database that have not been successfully parsed (optionally specifying --type)")
+        help="Parse cases from the database that have not been successfully parsed (optionally \
+            specifying --type), first loading them into the parser queue")
+    parser_parser.add_argument('--reparse', '-r', action='store_true',
+        help="Reparse all or a specific type (using --type) of case, first loading them into the parser queue")
     parser_parser.set_defaults(func=run_parser)
 
     if os.getenv('DEV_MODE'):
