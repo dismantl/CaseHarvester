@@ -5,6 +5,9 @@ class Case(TableBase):
     __tablename__ = 'cases'
     __table_args__ = (
         Index('ixh_cases_case_number', 'case_number', postgresql_using='hash'),
+        Index('ixh_cases_detail_loc', 'detail_loc', postgresql_using='hash'),
+        Index('ixh_cases_scrape_exempt', 'scrape_exempt', postgresql_using='hash'),
+        Index('ixh_cases_parse_exempt', 'parse_exempt', postgresql_using='hash'),
     )
 
     case_number = Column(String, primary_key=True)
@@ -16,10 +19,10 @@ class Case(TableBase):
     status = Column(String, nullable=True)
     caption = Column(String, nullable=True)
     loc = Column(Integer)
-    detail_loc = Column(String)
+    detail_loc = Column(String, index=True)
     url = Column(String)
-    last_scrape = Column(DateTime, nullable=True)
-    last_parse = Column(DateTime, nullable=True)
+    last_scrape = Column(DateTime, nullable=True, index=True)
+    last_parse = Column(DateTime, nullable=True, index=True)
     scrape_exempt = Column(Boolean, nullable=False, server_default='false')
     parse_exempt = Column(Boolean, nullable=False, server_default='false')
     active = Column(Boolean, nullable=False, server_default='true')
