@@ -1,10 +1,10 @@
 from ..models import (DSK8, DSK8Charge, DSK8BailAndBond, DSK8Bondsman,
                      DSK8Defendant, DSK8DefendantAlias, DSK8RelatedPerson,
                      DSK8Event, DSK8Trial)
-from .base import CaseDetailsParser, consumer, ParserError
+from .base import CaseDetailsParser, consumer, ParserError, ChargeFinder
 import re
 
-class DSK8Parser(CaseDetailsParser):
+class DSK8Parser(CaseDetailsParser, ChargeFinder):
     inactive_statuses = [
         'INACTIVE',
         'CLOSED'
@@ -111,10 +111,6 @@ class DSK8Parser(CaseDetailsParser):
     #########################################################
     @consumer
     def charge_and_disposition(self, db, soup):
-        # Due to HB 1336, we need to compare current charges against existing ones in case of expungement
-        existing_charges = db.query(DSK8Charge).filter(DSK8Charge.case_number == self.case_number).all()
-        new_charges = []
-
         try:
             section_header = self.second_level_header(soup,'Charge and Disposition Information')
         except ParserError:
@@ -122,6 +118,7 @@ class DSK8Parser(CaseDetailsParser):
         info_charge_statement = self.info_charge_statement(section_header)
 
         prev_obj = info_charge_statement
+        new_charges = []
         while True:
             try:
                 section = self.immediate_sibling(prev_obj,'div',class_='AltBodyWindow1')
@@ -132,16 +129,10 @@ class DSK8Parser(CaseDetailsParser):
             new_charge = self.parse_charge(section)
             new_charges.append(new_charge)
         
-        new_charge_numbers = [c.charge_number for c in new_charges]
-        for charge in existing_charges:
-            if charge.charge_number not in new_charge_numbers:
-                charge.possibly_expunged = True
-
         for new_charge in new_charges:
-            for existing_charge in existing_charges:
-                if existing_charge.charge_number == new_charge.charge_number:
-                    db.delete(existing_charge)
             db.add(new_charge)
+        new_charge_numbers = [c.charge_number for c in new_charges]
+        self.find_charges(db, new_charge_numbers)
 
     def parse_charge(self, container):
         charge = DSK8Charge(case_number=self.case_number)

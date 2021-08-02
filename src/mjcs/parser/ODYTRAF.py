@@ -2,12 +2,12 @@ from ..models import (ODYTRAF, ODYTRAFReferenceNumber, ODYTRAFDefendant,
                      ODYTRAFInvolvedParty, ODYTRAFAttorney, ODYTRAFCourtSchedule,
                      ODYTRAFCharge, ODYTRAFWarrant, ODYTRAFBailBond,
                      ODYTRAFBondSetting, ODYTRAFDocument, ODYTRAFAlias, ODYTRAFService)
-from .base import CaseDetailsParser, consumer, ParserError
+from .base import CaseDetailsParser, consumer, ParserError, ChargeFinder
 import re
 from bs4 import BeautifulSoup, SoupStrainer
 
 # Note that consumers may not be called in order
-class ODYTRAFParser(CaseDetailsParser):
+class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
     inactive_statuses = [
         'Citation Voided',
         'Inactive / Incompetency',
@@ -306,15 +306,13 @@ class ODYTRAFParser(CaseDetailsParser):
     #########################################################
     @consumer
     def charge_and_disposition(self, db, soup):
-        # Due to HB 1336, we need to compare current charges against existing ones in case of expungement
-        existing_charges = db.query(ODYTRAFCharge).filter(ODYTRAFCharge.case_number == self.case_number).all()
-        new_charges = []
-        
         try:
             section_header = self.first_level_header(soup,'Charge and Disposition Information')
         except ParserError:
             return
+        
         prev_obj = section_header
+        new_charges = []
         while True:
             try:
                 container = self.immediate_sibling(prev_obj,'div',class_='AltBodyWindow1')
@@ -331,16 +329,10 @@ class ODYTRAFParser(CaseDetailsParser):
             new_charge = self.parse_charge(container)
             new_charges.append(new_charge)
         
-        new_charge_numbers = [c.charge_number for c in new_charges]
-        for charge in existing_charges:
-            if charge.charge_number not in new_charge_numbers:
-                charge.possibly_expunged = True
-
         for new_charge in new_charges:
-            for existing_charge in existing_charges:
-                if existing_charge.charge_number == new_charge.charge_number:
-                    db.delete(existing_charge)
             db.add(new_charge)
+        new_charge_numbers = [c.charge_number for c in new_charges]
+        self.find_charges(db, new_charge_numbers)
     
     def parse_charge(self, container):
         t1 = container.find('table')

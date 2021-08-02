@@ -1,10 +1,10 @@
 from ..models import DSCR, DSCRCharge, DSCRDefendant, DSCRDefendantAlias, DSCRRelatedPerson, DSCREvent, DSCRTrial, DSCRBailEvent
-from .base import CaseDetailsParser, consumer, ParserError
+from .base import CaseDetailsParser, consumer, ParserError, ChargeFinder
 from datetime import datetime
 import re
 
 # Note that consumers may not be called in order
-class DSCRParser(CaseDetailsParser):
+class DSCRParser(CaseDetailsParser, ChargeFinder):
     inactive_statuses = [
         'INACTIVE DUE TO INCOMPETENCY',
         'CLOSED'
@@ -72,10 +72,6 @@ class DSCRParser(CaseDetailsParser):
     #########################################################
     @consumer
     def charge_and_disposition(self, db, soup):
-        # Due to HB 1336, we need to compare current charges against existing ones in case of expungement
-        existing_charges = db.query(DSCRCharge).filter(DSCRCharge.case_number == self.case_number).all()
-        new_charges = []
-        
         try:
             section_header = self.first_level_header(soup,'Charge and Disposition Information')
         except ParserError:
@@ -83,6 +79,7 @@ class DSCRParser(CaseDetailsParser):
         info_charge_statement = self.info_charge_statement(section_header)
 
         prev_obj = info_charge_statement
+        new_charges = []
         while True:
             try:
                 charge_section = self.immediate_sibling(prev_obj,'div',class_='AltBodyWindow1')
@@ -92,17 +89,11 @@ class DSCRParser(CaseDetailsParser):
                 break
             new_charge = self.parse_charge(charge_section)
             new_charges.append(new_charge)
-        
-        new_charge_numbers = [c.charge_number for c in new_charges]
-        for charge in existing_charges:
-            if charge.charge_number not in new_charge_numbers:
-                charge.possibly_expunged = True
 
         for new_charge in new_charges:
-            for existing_charge in existing_charges:
-                if existing_charge.charge_number == new_charge.charge_number:
-                    db.delete(existing_charge)
             db.add(new_charge)
+        new_charge_numbers = [c.charge_number for c in new_charges]
+        self.find_charges(db, new_charge_numbers)
 
     def parse_charge(self, container):
         charge = DSCRCharge(case_number=self.case_number)

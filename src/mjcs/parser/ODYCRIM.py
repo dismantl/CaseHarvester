@@ -4,13 +4,13 @@ from ..models import (ODYCRIM, ODYCRIMReferenceNumber, ODYCRIMDefendant,
                      ODYCRIMRestitution, ODYCRIMWarrant, ODYCRIMBailBond,
                      ODYCRIMBondSetting, ODYCRIMDocument, ODYCRIMService,
                      ODYCRIMSexOffenderRegistration)
-from .base import CaseDetailsParser, consumer, ParserError
+from .base import CaseDetailsParser, consumer, ParserError, ChargeFinder
 import re
 from bs4 import BeautifulSoup, SoupStrainer
 import inspect
 
 # Note that consumers may not be called in order
-class ODYCRIMParser(CaseDetailsParser):
+class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
     inactive_statuses = [
         'Citation Voided',
         'Inactive / Incompetency',
@@ -27,15 +27,6 @@ class ODYCRIMParser(CaseDetailsParser):
             raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
         self.allow_unparsed_data = self.allow_unparsed_data()
-
-    def delete_previous(self, db):
-        # We don't want to delete charges entries since we compare current parsed charges to existing charges in case of expungement (HB 1336)
-        db.execute('SET session_replication_role = replica')
-        for _, cls in inspect.getmembers(inspect.getmodule(self), lambda obj: hasattr(obj, '__tablename__')):
-            if cls != ODYCRIMCharge:
-                db.execute(cls.__table__.delete()\
-                    .where(cls.case_number == self.case_number))
-        db.execute('SET session_replication_role = DEFAULT')
 
     def header(self, soup):
         header = soup.find('div',class_='Header')
@@ -85,7 +76,7 @@ class ODYCRIMParser(CaseDetailsParser):
             except ParserError:
                 break
             prev_obj = t
-            prompt_re = re.compile(r'^([\w \'\-/]+)\s*:?\s*$')
+            prompt_re = re.compile(r'^([\w \'\-/#]+)\s*:?\s*$')
             prompt_span = t.find('span',class_='FirstColumnPrompt',string=prompt_re)
             if not prompt_span:
                 break
@@ -304,16 +295,13 @@ class ODYCRIMParser(CaseDetailsParser):
     #########################################################
     @consumer
     def charge_and_disposition(self, db, soup):
-        # Due to HB 1336, we need to compare current charges against existing ones in case of expungement
-        existing_charges = db.query(ODYCRIMCharge).filter(ODYCRIMCharge.case_number == self.case_number).all()
-        new_charges = []
-
         try:
             section_header = self.first_level_header(soup,'Charge and Disposition Information')
         except ParserError:
             return
 
         prev_obj = section_header
+        new_charges = []
         while True:
             try:
                 container = self.immediate_sibling(prev_obj,'div',class_='AltBodyWindow1')
@@ -325,16 +313,10 @@ class ODYCRIMParser(CaseDetailsParser):
             new_charge = self.parse_charge(container)
             new_charges.append(new_charge)
 
-        new_charge_numbers = [c.charge_number for c in new_charges]
-        for charge in existing_charges:
-            if charge.charge_number not in new_charge_numbers:
-                charge.possibly_expunged = True
-
         for new_charge in new_charges:
-            for existing_charge in existing_charges:
-                if existing_charge.charge_number == new_charge.charge_number:
-                    db.delete(existing_charge)
             db.add(new_charge)
+        new_charge_numbers = [c.charge_number for c in new_charges]
+        self.find_charges(db, new_charge_numbers)
 
     def parse_charge(self, container):
         t1 = container.find('table')

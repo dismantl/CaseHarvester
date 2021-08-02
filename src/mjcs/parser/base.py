@@ -1,12 +1,16 @@
 from abc import ABC, abstractmethod
 from bs4 import BeautifulSoup, SoupStrainer
 from ..util import db_session
-from ..models import Case
+from ..models import Case, Scrape
+from ..config import config
 from . import BaseParserError
 import re
 from sqlalchemy.sql import select, text
 from datetime import datetime
 import inspect
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ParserError(BaseParserError):
     def __init__(self, message, content=None):
@@ -72,7 +76,9 @@ class CaseDetailsParser(ABC):
             obj.decompose()
         if list(self.soup.stripped_strings) and not self.allow_unparsed_data:
             raise UnparsedDataError("Data remaining in DOM after parsing:",list(self.soup.stripped_strings))
-        # update last_parse in DB
+        self.update_last_parse(db)
+
+    def update_last_parse(self, db):
         db.execute(
             Case.__table__.update()\
                 .where(Case.case_number == self.case_number)\
@@ -80,7 +86,7 @@ class CaseDetailsParser(ABC):
         )
 
     def is_active(self):
-        if self.case_status and self.case_status not in self.inactive_statuses:
+        if not hasattr(self,'case_status') or self.case_status not in self.inactive_statuses:
             return True
         return False
 
@@ -393,3 +399,51 @@ class CaseDetailsParser(ABC):
             if value_strings:
                 return self.format_value(value_strings[0], **format_args)
         return None
+
+class ChargeFinder(ABC):
+    @abstractmethod
+    def parse_charge(self, container):
+        raise NotImplementedError
+
+    def find_charges(self, db, latest_version_charge_numbers):
+        logger.debug(f'Finding old charges for {self.case_number}')
+        versions = db.query(Scrape).filter_by(case_number=self.case_number).filter(Scrape.s3_version_id != None).order_by(Scrape.timestamp.desc()).offset(1).all()
+        
+        expunged_charge_numbers = []
+        for version in versions:
+            logger.debug(f'Fetching version {version.s3_version_id}')
+            html = config.s3.ObjectVersion(
+                config.CASE_DETAILS_BUCKET,
+                self.case_number,
+                version.s3_version_id
+            ).get()['Body'].read()
+            strainer = SoupStrainer('div',class_='BodyWindow')
+            soup = BeautifulSoup(html,'html.parser',parse_only=strainer)
+            
+            charge_numbers, charge_spans = self.extract_charge_numbers(soup)
+            logger.debug(f'Found charge numbers: {", ".join([str(_) for _ in charge_numbers])}')
+
+            missing_charge_numbers = list(set(charge_numbers) - set(latest_version_charge_numbers))
+            if missing_charge_numbers:
+                logger.debug(f'Found expunged charge number(s) {", ".join([str(_) for _ in missing_charge_numbers])} for case {self.case_number}')
+                for span in charge_spans:
+                    charge_number = span.find_parent('td').find_next_sibling('td').find('span',class_='Value').string
+                    charge_number = int(re.sub('[ \t]+','',charge_number))
+                    if charge_number in missing_charge_numbers and charge_number not in expunged_charge_numbers:
+                        expunged_charge_numbers.append(charge_number)
+                        new_charge = self.parse_charge(span.find_parent('div',class_='AltBodyWindow1'))
+                        new_charge.expunged = True
+                        db.add(new_charge)
+    
+    def extract_charge_numbers(self, soup):
+        charge_numbers = []
+        charge_spans = soup.find_all('span',class_='Prompt',string='Charge No:')
+        if not charge_spans:
+            charge_spans = soup.find_all('span',class_='FirstColumnPrompt',string='Charge No:')
+        for span in charge_spans:
+            charge_number = span.find_parent('td').find_next_sibling('td').find('span',class_='Value').string
+            if charge_number:
+                charge_numbers.append(
+                    int(re.sub('[ \t]+','',charge_number))
+                )
+        return charge_numbers, charge_spans
