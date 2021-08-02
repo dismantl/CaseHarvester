@@ -32,7 +32,7 @@ class ODYCIVIL(CaseTable, TableBase):
 class ODYCIVILCaseTable(CaseTable):
     @declared_attr
     def case_number(self):
-        return Column(String, ForeignKey('odycivil.case_number', ondelete='CASCADE'))
+        return Column(String, ForeignKey('odycivil.case_number', ondelete='CASCADE'), nullable=False)
 
 class ODYCIVILReferenceNumber(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_reference_numbers'

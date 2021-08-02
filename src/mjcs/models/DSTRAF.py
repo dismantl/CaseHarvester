@@ -49,7 +49,7 @@ class DSTRAF(CaseTable, TableBase):
 class DSTRAFCaseTable(CaseTable):
     @declared_attr
     def case_number(self):
-        return Column(String, ForeignKey('dstraf.case_number', ondelete='CASCADE'))
+        return Column(String, ForeignKey('dstraf.case_number', ondelete='CASCADE'), nullable=False)
 
 class DSTRAFCharge(DSTRAFCaseTable, TableBase):
     __tablename__ = 'dstraf_charges'

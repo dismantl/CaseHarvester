@@ -32,7 +32,7 @@ class DSCIVIL(CaseTable, TableBase):
 class DSCIVILCaseTable(CaseTable):
     @declared_attr
     def case_number(self):
-        return Column(String, ForeignKey('dscivil.case_number', ondelete='CASCADE'))
+        return Column(String, ForeignKey('dscivil.case_number', ondelete='CASCADE'), nullable=False)
 
 class DSCIVILComplaint(DSCIVILCaseTable, TableBase):
     __tablename__ = 'dscivil_complaints'

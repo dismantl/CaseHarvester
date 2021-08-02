@@ -51,14 +51,14 @@ class DSK8(CaseTable, TableBase):
 class DSK8CaseTable(CaseTable):
     @declared_attr
     def case_number(self):
-        return Column(String, ForeignKey('dsk8.case_number', ondelete='CASCADE'))
+        return Column(String, ForeignKey('dsk8.case_number', ondelete='CASCADE'), nullable=False)
 
 class DSK8Charge(DSK8CaseTable, TableBase):
     __tablename__ = 'dsk8_charges'
     __table_args__ = (Index('ixh_dsk8_charges_case_number', 'case_number', postgresql_using='hash'),)
+    dsk8 = relationship('DSK8', backref='charges')
 
     id = Column(Integer, primary_key=True)
-    case_number = Column(String, nullable=False)
     charge_number = Column(Integer)
     expunged = Column(Boolean, nullable=False, server_default='false')
     cjis_traffic_code = Column(String, nullable=True)

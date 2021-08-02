@@ -41,7 +41,7 @@ class CC(CaseTable, TableBase):
 class CCCaseTable(CaseTable):
     @declared_attr
     def case_number(self):
-        return Column(String, ForeignKey('cc.case_number', ondelete='CASCADE'))
+        return Column(String, ForeignKey('cc.case_number', ondelete='CASCADE'), nullable=False)
 
 class CCDistrictCaseNumber(CCCaseTable, TableBase):
     __tablename__ = 'cc_district_case_numbers'

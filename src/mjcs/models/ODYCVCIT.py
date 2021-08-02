@@ -33,7 +33,7 @@ class ODYCVCIT(CaseTable, TableBase):
 class ODYCVCITCaseTable(CaseTable):
     @declared_attr
     def case_number(self):
-        return Column(String, ForeignKey('odycvcit.case_number', ondelete='CASCADE'))
+        return Column(String, ForeignKey('odycvcit.case_number', ondelete='CASCADE'), nullable=False)
 
 class ODYCVCITReferenceNumber(ODYCVCITCaseTable, TableBase):
     __tablename__ = 'odycvcit_reference_numbers'
@@ -171,12 +171,12 @@ class ODYCVCITCourtSchedule(ODYCVCITCaseTable, TableBase):
             pass
         self._time_str = val
 
-class ODYCVCITCharge(CaseTable, TableBase):
+class ODYCVCITCharge(ODYCVCITCaseTable, TableBase):
     __tablename__ = 'odycvcit_charges'
     __table_args__ = (Index('ixh_odycvcit_charges_case_number', 'case_number', postgresql_using='hash'),)
+    odycvcit = relationship('ODYCVCIT', backref='charges')
 
     id = Column(Integer, primary_key=True)
-    case_number = Column(String, nullable=False)
     charge_number = Column(Integer)
     expunged = Column(Boolean, nullable=False, server_default='false')
     cjis_code = Column(String)

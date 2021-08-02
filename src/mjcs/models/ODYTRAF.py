@@ -60,7 +60,7 @@ class ODYTRAF(CaseTable, TableBase):
 class ODYTRAFCaseTable(CaseTable):
     @declared_attr
     def case_number(self):
-        return Column(String, ForeignKey('odytraf.case_number', ondelete='CASCADE'))
+        return Column(String, ForeignKey('odytraf.case_number', ondelete='CASCADE'), nullable=False)
 
 class ODYTRAFReferenceNumber(ODYTRAFCaseTable, TableBase):
     __tablename__ = 'odytraf_reference_numbers'
@@ -196,12 +196,12 @@ class ODYTRAFCourtSchedule(ODYTRAFCaseTable, TableBase):
             pass
         self._time_str = val
 
-class ODYTRAFCharge(CaseTable, TableBase):
+class ODYTRAFCharge(ODYTRAFCaseTable, TableBase):
     __tablename__ = 'odytraf_charges'
     __table_args__ = (Index('ixh_odytraf_charges_case_number', 'case_number', postgresql_using='hash'),)
+    odytraf = relationship('ODYTRAF', backref='charges')
 
     id = Column(Integer, primary_key=True)
-    case_number = Column(String, nullable=False)
     charge_number = Column(Integer)
     expunged = Column(Boolean, nullable=False, server_default='false')
     charge_description = Column(String, nullable=True)
