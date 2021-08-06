@@ -12,11 +12,8 @@ import inspect
 # Note that consumers may not be called in order
 class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
     inactive_statuses = [
-        'Citation Voided',
-        'Inactive / Incompetency',
-        'Closed / Inactive',
         'Closed',
-        'Completed'
+        'Closed / Inactive'
     ]
 
     def __init__(self, case_number, html):

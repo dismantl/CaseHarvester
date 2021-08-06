@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 # Note that consumers may not be called in order
 class ODYCIVILParser(CaseDetailsParser):
     inactive_statuses = [
-        # TODO
+        'Closed / Inactive',
+        'Closed',
+        'Completed'
     ]
 
     def __init__(self, case_number, html):

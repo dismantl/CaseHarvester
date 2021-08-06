@@ -73,6 +73,7 @@ class Parser:
         logger.info(f'Successfully parsed case {case_number}')
 
     def parse_unparsed(self, detail_loc=None):
+        logger.info(f'Loading unparsed cases of type {detail_loc if detail_loc else "ANY"} into parser queue')
         if detail_loc:
             filter = and_(Case.last_parse == None, Case.last_scrape != None,
                 Case.parse_exempt == False, Case.detail_loc == detail_loc)
@@ -84,6 +85,7 @@ class Parser:
         return self.parse_from_queue(config.parser_queue)
 
     def reparse(self, detail_loc=None):
+        logger.info(f'Loading all cases of type {detail_loc if detail_loc else "ANY"} into parser queue')
         if detail_loc:
             filter = and_(Case.last_scrape != None,
                 Case.parse_exempt == False, Case.detail_loc == detail_loc)
@@ -178,6 +180,7 @@ class Parser:
             }) for case_number, detail_loc in query
         ]
         send_to_queue(queue, messages)
+        logger.debug(f'Sent {len(messages)} messages to queue')
 
     def __fetch_cases_from_queue(self, queue):
         logger.debug('Requesting 10 items from queue')

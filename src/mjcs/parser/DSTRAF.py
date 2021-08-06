@@ -5,7 +5,9 @@ import re
 # Note that consumers may not be called in order
 class DSTRAFParser(CaseDetailsParser):
     inactive_statuses = [
-        # TODO
+        'INACTIVE CASE',
+        'INACTIVE DUE TO INCOMPETENCY',
+        'CLOSED CASE'
     ]
 
     def header(self, soup):
@@ -32,7 +34,7 @@ class DSTRAFParser(CaseDetailsParser):
         self.case_status = case.case_status
         case.violation_date_str = self.value_first_column(case_table,'Violation Date:',ignore_missing=True)
         case.violation_time_str = self.value_multi_column(case_table,'Violation Time:',ignore_missing=True)
-        case.violation_county = self.value_first_column(case_table,'Violation County:')
+        case.violation_county = self.value_first_column(case_table,'Violation County:',ignore_missing=True)
         case.district_code = self.value_first_column(case_table,'District Code:',ignore_missing=True)
         case.location_code = self.value_multi_column(case_table,'Location Code:',ignore_missing=True)
         case.agency_name = self.value_combined_first_column(case_table,'AgencyName:',ignore_missing=True)
