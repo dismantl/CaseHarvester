@@ -6,8 +6,6 @@ class Case(TableBase):
     __table_args__ = (
         Index('ixh_cases_case_number', 'case_number', postgresql_using='hash'),
         Index('ixh_cases_detail_loc', 'detail_loc', postgresql_using='hash'),
-        Index('ixh_cases_scrape_exempt', 'scrape_exempt', postgresql_using='hash'),
-        Index('ixh_cases_parse_exempt', 'parse_exempt', postgresql_using='hash'),
     )
 
     case_number = Column(String, primary_key=True)
