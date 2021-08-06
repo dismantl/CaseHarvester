@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time
+from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, UniqueConstraint
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
@@ -14,6 +14,16 @@ def date_from_str(date_str):
         except:
             return None
     return None
+
+class ColumnMetadata(TableBase):
+    __tablename__ = 'column_metadata'
+    __table_args__ = (UniqueConstraint('table', 'column_name', name='column_metadata_column_name_width_pixels_key'),)
+
+    id = Column(Integer, primary_key=True)
+    table = Column(String, nullable=False)
+    column_name = Column(String, nullable=False)
+    description = Column(String)
+    width_pixels = Column(Integer)
 
 class CaseTable:
     @declared_attr

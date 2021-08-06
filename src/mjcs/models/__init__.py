@@ -1,3 +1,4 @@
+from .common import ColumnMetadata
 from .case import Case
 from .scraper import Scrape, ScrapeVersion
 from .DSCR import (DSCR, DSCRCharge, DSCRDefendant, DSCRDefendantAlias,
