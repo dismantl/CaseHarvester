@@ -380,8 +380,8 @@ class ODYCVCITBondSetting(ODYCVCITCaseTable, TableBase):
         self._bail_date_str = val
 
 class ODYCVCITDocument(ODYCVCITCaseTable, TableBase):
-    __tablename__ = 'ODYCVCIT_documents'
-    __table_args__ = (Index('ixh_ODYCVCIT_documents_case_number', 'case_number', postgresql_using='hash'),)
+    __tablename__ = 'odycvcit_documents'
+    __table_args__ = (Index('ixh_odycvcit_documents_case_number', 'case_number', postgresql_using='hash'),)
     ODYCVCIT = relationship('ODYCVCIT', backref='documents')
 
     id = Column(Integer, primary_key=True)
