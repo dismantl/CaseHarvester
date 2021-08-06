@@ -32,20 +32,25 @@ Parameters:
     Type: AWS::EC2::AvailabilityZone::Name
     Default: us-east-1b
 
+Conditions:
+  CreateProdResources: !Equals 
+    - !Ref EnvironmentType
+    - prod
+
 Mappings:
   Environment:
     RDSDBInstanceClass:
-      prod: db.t3.small
+      prod: db.t3.large
       dev: db.t3.micro
     RDSAllocatedStorage:
-      prod: 225 # GB
+      prod: 249 # GB
       dev: 20
     RDSMaxAllocatedStorage:
-      prod: 250 # GB
+      prod: 300 # GB
       dev: 30
     RDSBackupRetentionPeriod:
       prod: 14 # days
-      dev: 5
+      dev: 0
     BucketName:
       prod: mjcs-case-details
       dev: mjcs-case-details-dev    
@@ -132,9 +137,46 @@ Resources:
           ToPort: 5432
           IpProtocol: tcp
 
+  DatabaseCluster:
+    Type: AWS::RDS::DBCluster
+    Condition: CreateProdResources
+    Properties:
+      BackupRetentionPeriod: !FindInMap [Environment, RDSBackupRetentionPeriod, prod]
+      DBClusterIdentifier: mjcs-cluster
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      DeletionProtection: True
+      EnableCloudwatchLogsExports: 
+        - postgresql
+      Engine: aurora-postgresql
+      EngineVersion: "12.6"
+      MasterUsername: !Ref DatabaseMasterUsername
+      MasterUserPassword: !Ref DatabaseMasterPassword
+      PreferredBackupWindow: 07:00-07:30
+      PreferredMaintenanceWindow: sat:08:00-sat:08:30
+      VpcSecurityGroupIds:
+        - !GetAtt VPC.DefaultSecurityGroup
+        - !GetAtt DatabaseSecurityGroup.GroupId
+      Port: 5432
+
+  ProdDatabase:
+    Type: AWS::RDS::DBInstance
+    Condition: CreateProdResources
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      DBInstanceClass: !FindInMap [Environment, RDSDBInstanceClass, prod]
+      DBInstanceIdentifier: !Sub mjcs
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      Engine: aurora-postgresql
+      AllowMajorVersionUpgrade: True
+      PubliclyAccessible: True
+      PreferredMaintenanceWindow: sat:08:00-sat:08:30
+      DBClusterIdentifier: !Ref DatabaseCluster
+
   Database:
     Type: AWS::RDS::DBInstance
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       MaxAllocatedStorage: !FindInMap [Environment, RDSMaxAllocatedStorage, !Ref EnvironmentType]
       AllocatedStorage: !FindInMap [Environment, RDSAllocatedStorage, !Ref EnvironmentType]
@@ -143,11 +185,11 @@ Resources:
       DBInstanceIdentifier: !Sub mjcs-${EnvironmentType}
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       Engine: postgres
-      EngineVersion: 13.1
+      EngineVersion: "13.1"
       AllowMajorVersionUpgrade: True
       MasterUsername: !Ref DatabaseMasterUsername
       MasterUserPassword: !Ref DatabaseMasterPassword
-      Port: 5432 # default
+      Port: "5432"
       PubliclyAccessible: True
       StorageType: gp2
       PreferredBackupWindow: 07:00-07:30
@@ -159,6 +201,7 @@ Resources:
   CaseDetailsBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       AccessControl: Private
       BucketName: !FindInMap [Environment, BucketName, !Ref EnvironmentType]
