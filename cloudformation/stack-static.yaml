@@ -31,11 +31,15 @@ Parameters:
   VPCPublicSubnet2AZ:
     Type: AWS::EC2::AvailabilityZone::Name
     Default: us-east-1b
+  DBSnapshotName: 
+    Description: The name of a DB cluster snapshot (optional)
+    Default: ""
+    Type: String
 
 Conditions:
-  CreateProdResources: !Equals 
-    - !Ref EnvironmentType
-    - prod
+  CreateProdResources: !Equals [!Ref EnvironmentType, prod]
+  CreateDevResources: !Equals [!Ref EnvironmentType, dev]
+  UseDBSnapshot: !Not [!Equals [!Ref DBSnapshotName, ""]]
 
 Mappings:
   Environment:
@@ -141,22 +145,23 @@ Resources:
     Type: AWS::RDS::DBCluster
     Condition: CreateProdResources
     Properties:
-      BackupRetentionPeriod: !FindInMap [Environment, RDSBackupRetentionPeriod, prod]
-      DBClusterIdentifier: mjcs-cluster
+      BackupRetentionPeriod: !If [UseDBSnapshot, !Ref "AWS::NoValue", !FindInMap [Environment, RDSBackupRetentionPeriod, prod]]
+      DBClusterIdentifier: mjcs-prod
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       DeletionProtection: True
       EnableCloudwatchLogsExports: 
         - postgresql
       Engine: aurora-postgresql
       EngineVersion: "12.6"
-      MasterUsername: !Ref DatabaseMasterUsername
-      MasterUserPassword: !Ref DatabaseMasterPassword
-      PreferredBackupWindow: 07:00-07:30
-      PreferredMaintenanceWindow: sat:08:00-sat:08:30
+      MasterUsername: !If [UseDBSnapshot, !Ref "AWS::NoValue", !Ref DatabaseMasterUsername]
+      MasterUserPassword: !If [UseDBSnapshot, !Ref "AWS::NoValue", !Ref DatabaseMasterPassword]
+      PreferredBackupWindow: !If [UseDBSnapshot, !Ref "AWS::NoValue", 07:00-07:30]
+      PreferredMaintenanceWindow: !If [UseDBSnapshot, !Ref "AWS::NoValue", sat:08:00-sat:08:30]
       VpcSecurityGroupIds:
         - !GetAtt VPC.DefaultSecurityGroup
         - !GetAtt DatabaseSecurityGroup.GroupId
       Port: 5432
+      SnapshotIdentifier: !If [UseDBSnapshot, !Ref DBSnapshotName, !Ref "AWS::NoValue"]
 
   ProdDatabase:
     Type: AWS::RDS::DBInstance
@@ -165,7 +170,7 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       DBInstanceClass: !FindInMap [Environment, RDSDBInstanceClass, prod]
-      DBInstanceIdentifier: !Sub mjcs
+      DBInstanceIdentifier: !Sub mjcs-aurora
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       Engine: aurora-postgresql
       AllowMajorVersionUpgrade: True
@@ -175,6 +180,7 @@ Resources:
 
   Database:
     Type: AWS::RDS::DBInstance
+    Condition: CreateDevResources
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
@@ -185,7 +191,7 @@ Resources:
       DBInstanceIdentifier: !Sub mjcs-${EnvironmentType}
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       Engine: postgres
-      EngineVersion: "13.1"
+      EngineVersion: "12.6"
       AllowMajorVersionUpgrade: True
       MasterUsername: !Ref DatabaseMasterUsername
       MasterUserPassword: !Ref DatabaseMasterPassword
@@ -247,8 +253,15 @@ Resources:
                 Resource: "*"
 
 Outputs:
+  ProdDatabaseHostname:
+    Description: Endpoint hostname for the database
+    Condition: CreateProdResources
+    Value: !GetAtt ProdDatabase.Endpoint.Address
+    Export:
+      Name: !Sub ${AWS::StackName}-DatabaseHostname
   DatabaseHostname:
     Description: Endpoint hostname for the database
+    Condition: CreateDevResources
     Value: !GetAtt Database.Endpoint.Address
     Export:
       Name: !Sub ${AWS::StackName}-DatabaseHostname
