@@ -12,3 +12,4 @@ __pycache__
 env/development.env
 env/production.env
 secrets.json
+.vscode
