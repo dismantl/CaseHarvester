@@ -44,7 +44,7 @@ Conditions:
 Mappings:
   Environment:
     RDSDBInstanceClass:
-      prod: db.t3.large
+      prod: db.r6g.large
       dev: db.t3.micro
     RDSAllocatedStorage:
       prod: 249 # GB
