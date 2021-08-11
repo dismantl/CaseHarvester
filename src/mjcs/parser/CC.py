@@ -342,7 +342,7 @@ class CCParser(CaseDetailsParser):
             for value in t2.find_all('span',class_='Value'):
                 if value.string:
                     self.mark_for_deletion(value)
-                    j_in_favor = CCJudgmentAgainst(case_number=self.case_number)
+                    j_in_favor = CCJudgmentInFavor(case_number=self.case_number)
                     j_in_favor.judgment_id = j.id
                     j_in_favor.name = self.format_value(value.string).rstrip(',')
                     db.add(j_in_favor)
