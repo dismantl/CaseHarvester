@@ -14,6 +14,9 @@ Parameters:
   StaticStackName:
     Description: Name of the static stack, for getting database and S3 bucket details
     Type: String
+  DockerRepoStackName:
+    Description: Name of the docker repo stack, for getting repository name
+    Type: String
   EnvironmentType:
     Description: The environment type (prod or dev)
     Type: String
@@ -22,6 +25,13 @@ Parameters:
       - prod
       - dev
     ConstraintDescription: must be a prod or dev
+  AWSRegion:
+    Description: AWS Region
+    Type: String
+    Default: us-east-1
+
+Conditions:
+  CreateProdResources: !Equals [!Ref EnvironmentType, prod]
 
 Resources:
   Parser:
@@ -37,9 +47,9 @@ Resources:
         - AmazonSQSFullAccess
         - VPCAccessPolicy: {}
       CodeUri: ../pkg/parser
-      MemorySize: 128
-      Timeout: 60
-      ReservedConcurrentExecutions: 100  # So don't overload DB with connections
+      MemorySize: 300
+      Timeout: 900
+      ReservedConcurrentExecutions: !If [CreateProdResources, 900, !Ref "AWS::NoValue"]
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt ParserFailedQueue.Arn
@@ -61,6 +71,12 @@ Resources:
           Type: SNS
           Properties:
             Topic: !Ref ParserTrigger
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            BatchSize: !If [CreateProdResources, 500, 200]
+            MaximumBatchingWindowInSeconds: 300
+            Queue: !GetAtt ParserQueue.Arn
 
   ParserTrigger:
     Type: AWS::SNS::Topic
@@ -86,9 +102,12 @@ Resources:
   ParserQueue:
     Type: AWS::SQS::Queue
     Properties:
-      MessageRetentionPeriod: 1209600
-      VisibilityTimeout: 30
+      MessageRetentionPeriod: 1209600  # 14 days
+      VisibilityTimeout: 5400  # 6x lambda timeout (1.5 hr)
       QueueName: !Sub mjcs_parser_queue_${EnvironmentType}
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ParserFailedQueue.Arn
+        maxReceiveCount: 5
 
 Outputs:
   ParserArn:

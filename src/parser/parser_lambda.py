@@ -1,4 +1,4 @@
-from mjcs.parser import parse_case
+from mjcs.parser import parse_case, Parser
 import json
 
 def lambda_handler(event, context):
@@ -24,3 +24,13 @@ def lambda_handler(event, context):
                 print(f'Successfully parsed {detail_loc} {case_number}')
             except NotImplementedError:
                 pass
+        elif record.get('eventSource') == 'aws:sqs':
+            subrecords = json.loads(record['body'])['Records']
+            for subrecord in subrecords:
+                case_number = subrecord['manual']['case_number']
+                detail_loc = subrecord['manual']['detail_loc']
+                try:
+                    parse_case(case_number, detail_loc)
+                    print(f'Successfully parsed {detail_loc} {case_number}')
+                except:  # Ignore all parsing errors so entire batch doesn't fail
+                    pass
