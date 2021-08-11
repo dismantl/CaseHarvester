@@ -1,5 +1,5 @@
-from .common import TableBase, CaseTable, date_from_str, Defendant
-from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, Index
+from .common import TableBase, MetaColumn as Column, CaseTable, date_from_str, Defendant
+from sqlalchemy import Date, Numeric, Integer, String, Boolean, ForeignKey, Time, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
@@ -7,15 +7,16 @@ from datetime import datetime
 
 class ODYCVCIT(CaseTable, TableBase):
     __tablename__ = 'odycvcit'
+    is_root = True
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String)
-    location = Column(String)
+    court_system = Column(String, enum=True)
+    location = Column(String, enum=True)
     case_title = Column(String)
-    case_type = Column(String, nullable=True)
+    case_type = Column(String, nullable=True, enum=True)
     filing_date = Column(Date, nullable=True)
     _filing_date_str = Column('filing_date_str',String, nullable=True)
-    case_status = Column(String, nullable=True)
+    case_status = Column(String, nullable=True, enum=True)
     tracking_numbers = Column(String, nullable=True)
 
     case = relationship('Case', backref=backref('odycvcit', uselist=False))
@@ -42,7 +43,7 @@ class ODYCVCITReferenceNumber(ODYCVCITCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     ref_num = Column(String, nullable=False)
-    ref_num_type = Column(String, nullable=False)
+    ref_num_type = Column(String, nullable=False, enum=True)
 
 class ODYCVCITDefendant(ODYCVCITCaseTable, Defendant, TableBase):
     __tablename__ = 'odycvcit_defendants'
@@ -61,13 +62,13 @@ class ODYCVCITInvolvedParty(ODYCVCITCaseTable, TableBase):
     odycvcit = relationship('ODYCVCIT', backref='involved_parties')
 
     id = Column(Integer, primary_key=True)
-    party_type = Column(String, nullable=False)
+    party_type = Column(String, nullable=False, enum=True)
     name = Column(String, nullable=False)
     appearance_date = Column(Date)
     _appearance_date_str = Column('appearance_date_str', String)
     removal_date = Column(Date)
     _removal_date_str = Column('removal_date_str', String)
-    agency_name = Column(String, nullable=True)
+    agency_name = Column(String, nullable=True, enum=True)
     address_1 = Column(String, nullable=True)
     address_2 = Column(String, nullable=True)
     city = Column(String, nullable=True)
@@ -98,7 +99,7 @@ class ODYCVCITAlias(ODYCVCITCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     alias = Column(String, nullable=False)
-    alias_type = Column(String, nullable=False)
+    alias_type = Column(String, nullable=False, enum=True)
     defendant_id = Column(Integer, ForeignKey('odycvcit_defendants.id'),nullable=True)
     party_id = Column(Integer, ForeignKey('odycvcit_involved_parties.id'),nullable=True)
 
@@ -143,14 +144,14 @@ class ODYCVCITCourtSchedule(ODYCVCITCaseTable, TableBase):
     odycvcit = relationship('ODYCVCIT', backref='court_schedules')
 
     id = Column(Integer, primary_key=True)
-    event_type = Column(String, nullable=False)
+    event_type = Column(String, nullable=False, enum=True)
     date = Column(Date, nullable=True)
     _date_str = Column('date_str', String, nullable=True)
     time = Column(Time, nullable=True)
     _time_str = Column('time_str', String, nullable=True)
-    location = Column(String, nullable=True)
+    location = Column(String, nullable=True, enum=True)
     room = Column(String, nullable=True)
-    result = Column(String,nullable=True)
+    result = Column(String,nullable=True, enum=True)
 
     @hybrid_property
     def date_str(self):
@@ -182,18 +183,18 @@ class ODYCVCITCharge(ODYCVCITCaseTable, TableBase):
     cjis_code = Column(String)
     statute_code = Column(String, nullable=True)
     charge_description = Column(String, nullable=True)
-    charge_class = Column(String)
+    charge_class = Column(String, enum=True)
     probable_cause = Column(Boolean)
     offense_date_from = Column(Date, nullable=True)
     _offense_date_from_str = Column('offense_date_from_str', String, nullable=True)
     offense_date_to = Column(Date, nullable=True)
     _offense_date_to_str = Column('offense_date_to_str', String, nullable=True)
-    agency_name = Column(String)
+    agency_name = Column(String, enum=True)
     officer_id = Column(String)
-    plea = Column(String, nullable=True)
+    plea = Column(String, nullable=True, enum=True)
     plea_date = Column(Date, nullable=True)
     _plea_date_str = Column('plea_date_str', String, nullable=True)
-    disposition = Column(String, nullable=True)
+    disposition = Column(String, nullable=True, enum=True)
     disposition_date = Column(Date, nullable=True)
     _disposition_date_str = Column('disposition_date_str', String, nullable=True)
     converted_disposition = Column(String, nullable=True)
@@ -248,14 +249,6 @@ class ODYCVCITCharge(ODYCVCITCaseTable, TableBase):
         self.offense_date_to = date_from_str(val)
         self._offense_date_to_str = val
 
-    # @hybrid_property
-    # def jail_start_date_str(self):
-    #     return self._jail_start_date_str
-    # @jail_start_date_str.setter
-    # def jail_start_date_str(self,val):
-    #     self.jail_start_date = date_from_str(val)
-    #     self._jail_start_date_str = val
-
 class ODYCVCITProbation(ODYCVCITCaseTable, TableBase):
     __tablename__ = 'odycvcit_probation'
     __table_args__ = (Index('ixh_odycvcit_probation_case_number', 'case_number', postgresql_using='hash'),)
@@ -308,7 +301,7 @@ class ODYCVCITSexOffenderRegistration(ODYCVCITCaseTable, TableBase):
     odycvcit = relationship('ODYCVCIT', backref='sex_offender_registrations')
 
     id = Column(Integer, primary_key=True)
-    type = Column(String)
+    type = Column(String, enum=True)
     notes = Column(String)
 
 class ODYCVCITWarrant(ODYCVCITCaseTable, TableBase):
@@ -317,10 +310,10 @@ class ODYCVCITWarrant(ODYCVCITCaseTable, TableBase):
     odycvcit = relationship('ODYCVCIT', backref='warrants')
 
     id = Column(Integer, primary_key=True)
-    warrant_type = Column(String)
+    warrant_type = Column(String, enum=True)
     issue_date = Column(Date, nullable=True)
     _issue_date_str = Column('issue_date_str', String, nullable=True)
-    last_status = Column(String)
+    last_status = Column(String, enum=True)
     status_date = Column(Date, nullable=True)
     _status_date_str = Column('status_date_str', String, nullable=True)
 
@@ -346,11 +339,11 @@ class ODYCVCITBailBond(ODYCVCITCaseTable, TableBase):
     odycvcit = relationship('ODYCVCIT', backref='bail_bonds')
 
     id = Column(Integer, primary_key=True)
-    bond_type = Column(String)
+    bond_type = Column(String, enum=True)
     bond_amount_posted = Column(String)
     bond_status_date = Column(Date, nullable=True)
     _bond_status_date_str = Column('bond_status_date_str', String, nullable=True)
-    bond_status = Column(String)
+    bond_status = Column(String, enum=True)
 
     @hybrid_property
     def bond_status_date_str(self):
@@ -368,7 +361,7 @@ class ODYCVCITBondSetting(ODYCVCITCaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     bail_date = Column(Date, nullable=True)
     _bail_date_str = Column('bail_date_str', String, nullable=True)
-    bail_setting_type = Column(String)
+    bail_setting_type = Column(String, enum=True)
     bail_amount = Column(Numeric)
 
     @hybrid_property
@@ -388,7 +381,7 @@ class ODYCVCITDocument(ODYCVCITCaseTable, TableBase):
     file_date = Column(Date,nullable=True)
     _file_date_str = Column('file_date_str',String,nullable=True)
     filed_by = Column(String,nullable=True)
-    document_name = Column(String,nullable=False)
+    document_name = Column(String,nullable=False, enum=True)
 
     @hybrid_property
     def file_date_str(self):
@@ -404,10 +397,10 @@ class ODYCVCITService(ODYCVCITCaseTable, TableBase):
     odycvcit = relationship('ODYCVCIT', backref='services')
 
     id = Column(Integer, primary_key=True)
-    service_type = Column(String, nullable=False)
+    service_type = Column(String, nullable=False, enum=True)
     issued_date = Column(Date,nullable=True)
     _issued_date_str = Column('issued_date_str',String,nullable=True)
-    service_status = Column(String,nullable=True)
+    service_status = Column(String,nullable=True, enum=True)
 
     @hybrid_property
     def issued_date_str(self):

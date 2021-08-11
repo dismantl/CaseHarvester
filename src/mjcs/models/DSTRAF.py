@@ -1,5 +1,5 @@
-from .common import TableBase, CaseTable, Trial, Event, date_from_str, Defendant, RelatedPerson
-from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, Index
+from .common import TableBase, MetaColumn as Column, CaseTable, Trial, Event, date_from_str, Defendant, RelatedPerson
+from sqlalchemy import Date, Numeric, Integer, String, Boolean, ForeignKey, Time, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
@@ -7,9 +7,10 @@ from datetime import datetime
 
 class DSTRAF(CaseTable, TableBase):
     __tablename__ = 'dstraf'
+    is_root = True
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String)
+    court_system = Column(String, enum=True)
     citation_number = Column(String)
     district_code = Column(Integer)
     location_code = Column(Integer)
@@ -17,11 +18,11 @@ class DSTRAF(CaseTable, TableBase):
     _violation_date_str = Column('violation_date_str',String)
     violation_time = Column(Time)
     _violation_time_str = Column('violation_time_str', String)
-    violation_county = Column(String)
-    agency_name = Column(String)
+    violation_county = Column(String, enum=True)
+    agency_name = Column(String, enum=True)
     officer_id = Column(String)
     officer_name = Column(String)
-    case_status = Column(String)
+    case_status = Column(String, enum=True)
 
     case = relationship('Case', backref=backref('dstraf', uselist=False))
 
@@ -58,7 +59,7 @@ class DSTRAFCharge(DSTRAFCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     charge = Column(String)
-    article = Column(String)
+    article = Column(String, enum=True)
     sec = Column(Integer)
     sub_sec = Column(String)
     para = Column(String)
@@ -83,8 +84,8 @@ class DSTRAFDisposition(DSTRAFCaseTable, TableBase):
     dstraf = relationship('DSTRAF', backref='dispositions')
 
     id = Column(Integer, primary_key=True)
-    plea = Column(String)
-    disposition = Column(String)
+    plea = Column(String, enum=True)
+    disposition = Column(String, enum=True)
     disposition_date = Column(Date)
     _disposition_date_str = Column('disposition_date_str',String)
     speed_limit = Column(Integer)
@@ -105,7 +106,7 @@ class DSTRAFDisposition(DSTRAFCaseTable, TableBase):
     suspended_days = Column(Integer)
     sentence_starts = Column(Date)
     _sentence_starts_str = Column('sentence_starts_str',String)
-    probation_type = Column(String)
+    probation_type = Column(String, enum=True)
     fine = Column(Numeric)
     court_costs = Column(Numeric)
     cicf = Column(Numeric)
@@ -150,11 +151,6 @@ class DSTRAFDefendant(DSTRAFCaseTable, Defendant, TableBase):
     __table_args__ = (Index('ixh_dstraf_defendants_case_number', 'case_number', postgresql_using='hash'),)
     dstraf = relationship('DSTRAF', backref='defendants')
 
-# class DSTRAFDefendantAlias(DSTRAFCaseTable, DefendantAlias, TableBase):
-#     __tablename__ = 'dstraf_defendant_aliases'
-#     __table_args__ = (Index('ixh_dstraf_defendant_aliases_case_number', 'case_number', postgresql_using='hash'),)
-#     dstraf = relationship('DSTRAF', backref='defendant_aliases')
-
 class DSTRAFRelatedPerson(DSTRAFCaseTable, RelatedPerson, TableBase):
     __tablename__ = 'dstraf_related_persons'
     __table_args__ = (Index('ixh_dstraf_related_persons_case_number', 'case_number', postgresql_using='hash'),)
@@ -169,26 +165,3 @@ class DSTRAFTrial(DSTRAFCaseTable, Trial, TableBase):
     __tablename__ = 'dstraf_trials'
     __table_args__ = (Index('ixh_dstraf_trials_case_number', 'case_number', postgresql_using='hash'),)
     dstraf = relationship('DSTRAF', backref='trials')
-
-# class DSTRAFBailEvent(DSTRAFCaseTable, TableBase):
-#     __tablename__ = 'dstraf_bail_events'
-#     __table_args__ = (Index('ixh_dstraf_bail_events_case_number', 'case_number', postgresql_using='hash'),)
-#     dstraf = relationship('DSTRAF', backref='bail_events')
-
-#     id = Column(Integer, primary_key=True)
-#     event_name = Column(String)
-#     date = Column(Date)
-#     _date_str = Column('date_str',String)
-#     bail_amount = Column(Numeric)
-#     code = Column(String)
-#     percentage_required = Column(Numeric)
-#     type_of_bond = Column(String)
-#     judge_id = Column(String)
-
-#     @hybrid_property
-#     def date_str(self):
-#         return self._date_str
-#     @date_str.setter
-#     def date_str(self,val):
-#         self.date = date_from_str(val)
-#         self._date_str = val

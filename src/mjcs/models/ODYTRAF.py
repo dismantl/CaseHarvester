@@ -1,5 +1,5 @@
-from .common import TableBase, CaseTable, date_from_str, Defendant
-from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, Index
+from .common import TableBase, MetaColumn as Column, CaseTable, date_from_str, Defendant
+from sqlalchemy import Date, Numeric, Integer, String, Boolean, ForeignKey, Time, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
@@ -7,24 +7,25 @@ from datetime import datetime
 
 class ODYTRAF(CaseTable, TableBase):
     __tablename__ = 'odytraf'
+    is_root = True
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String)
-    location = Column(String)
+    court_system = Column(String, enum=True)
+    location = Column(String, enum=True)
     citation_number = Column(String)
     case_title = Column(String)
-    case_type = Column(String, nullable=True)
+    case_type = Column(String, nullable=True, enum=True)
     filing_date = Column(Date, nullable=True)
     _filing_date_str = Column('filing_date_str',String, nullable=True)
     violation_date = Column(Date, nullable=True)
     _violation_date_str = Column('violation_date_str',String, nullable=True)
     violation_time = Column(Time, nullable=True)
     _violation_time_str = Column('violation_time_str', String, nullable=True)
-    violation_county = Column(String)
-    agency_name = Column(String)
+    violation_county = Column(String, enum=True)
+    agency_name = Column(String, enum=True)
     officer_id = Column(String)
     officer_name = Column(String)
-    case_status = Column(String, nullable=True)
+    case_status = Column(String, nullable=True, enum=True)
 
     case = relationship('Case', backref=backref('odytraf', uselist=False))
 
@@ -69,7 +70,7 @@ class ODYTRAFReferenceNumber(ODYTRAFCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     ref_num = Column(String, nullable=False)
-    ref_num_type = Column(String, nullable=False)
+    ref_num_type = Column(String, nullable=False, enum=True)
 
 class ODYTRAFDefendant(ODYTRAFCaseTable, Defendant, TableBase):
     __tablename__ = 'odytraf_defendants'
@@ -86,13 +87,13 @@ class ODYTRAFInvolvedParty(ODYTRAFCaseTable, TableBase):
     odytraf = relationship('ODYTRAF', backref='involved_parties')
 
     id = Column(Integer, primary_key=True)
-    party_type = Column(String, nullable=False)
+    party_type = Column(String, nullable=False, enum=True)
     name = Column(String, nullable=False)
     appearance_date = Column(Date)
     _appearance_date_str = Column('appearance_date_str', String)
     removal_date = Column(Date)
     _removal_date_str = Column('removal_date_str', String)
-    agency_name = Column(String, nullable=True)
+    agency_name = Column(String, nullable=True, enum=True)
     address_1 = Column(String, nullable=True)
     address_2 = Column(String, nullable=True)
     city = Column(String, nullable=True)
@@ -123,7 +124,7 @@ class ODYTRAFAlias(ODYTRAFCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     alias = Column(String, nullable=False)
-    alias_type = Column(String, nullable=False)
+    alias_type = Column(String, nullable=False, enum=True)
     defendant_id = Column(Integer, ForeignKey('odytraf_defendants.id'),nullable=True)
     party_id = Column(Integer, ForeignKey('odytraf_involved_parties.id'),nullable=True)
 
@@ -168,14 +169,14 @@ class ODYTRAFCourtSchedule(ODYTRAFCaseTable, TableBase):
     odytraf = relationship('ODYTRAF', backref='court_schedules')
 
     id = Column(Integer, primary_key=True)
-    event_type = Column(String, nullable=False)
+    event_type = Column(String, nullable=False, enum=True)
     date = Column(Date, nullable=True)
     _date_str = Column('date_str', String, nullable=True)
     time = Column(Time, nullable=True)
     _time_str = Column('time_str', String, nullable=True)
-    location = Column(String, nullable=True)
+    location = Column(String, nullable=True, enum=True)
     room = Column(String, nullable=True)
-    result = Column(String,nullable=True)
+    result = Column(String,nullable=True, enum=True)
 
     @hybrid_property
     def date_str(self):
@@ -222,10 +223,10 @@ class ODYTRAFCharge(ODYTRAFCaseTable, TableBase):
     convicted_speed = Column(Integer)
     disposition_contributed_to_accident = Column(Boolean)
     disposition_personal_injury = Column(Boolean)
-    plea = Column(String)
+    plea = Column(String, enum=True)
     plea_date = Column(Date, nullable=True)
     _plea_date_str = Column('plea_date_str', String, nullable=True)
-    disposition = Column(String)
+    disposition = Column(String, enum=True)
     disposition_date = Column(Date, nullable=True)
     _disposition_date_str = Column('disposition_date_str', String, nullable=True)
     converted_disposition = Column(String, nullable=True)
@@ -294,10 +295,10 @@ class ODYTRAFWarrant(ODYTRAFCaseTable, TableBase):
     odytraf = relationship('ODYTRAF', backref='warrants')
 
     id = Column(Integer, primary_key=True)
-    warrant_type = Column(String)
+    warrant_type = Column(String, enum=True)
     issue_date = Column(Date, nullable=True)
     _issue_date_str = Column('issue_date_str', String, nullable=True)
-    last_status = Column(String)
+    last_status = Column(String, enum=True)
     status_date = Column(Date, nullable=True)
     _status_date_str = Column('status_date_str', String, nullable=True)
 
@@ -323,11 +324,11 @@ class ODYTRAFBailBond(ODYTRAFCaseTable, TableBase):
     odytraf = relationship('ODYTRAF', backref='bail_bonds')
 
     id = Column(Integer, primary_key=True)
-    bond_type = Column(String)
+    bond_type = Column(String, enum=True)
     bond_amount_set = Column(String)
     bond_status_date = Column(Date, nullable=True)
     _bond_status_date_str = Column('bond_status_date_str', String, nullable=True)
-    bond_status = Column(String)
+    bond_status = Column(String, enum=True)
 
     @hybrid_property
     def bond_status_date_str(self):
@@ -345,7 +346,7 @@ class ODYTRAFBondSetting(ODYTRAFCaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     bail_date = Column(Date, nullable=True)
     _bail_date_str = Column('bail_date_str', String, nullable=True)
-    bail_setting_type = Column(String)
+    bail_setting_type = Column(String, enum=True)
     bail_amount = Column(Numeric)
 
     @hybrid_property
@@ -366,7 +367,7 @@ class ODYTRAFDocument(ODYTRAFCaseTable, TableBase):
     file_date = Column(Date,nullable=True)
     _file_date_str = Column('file_date_str',String,nullable=True)
     filed_by = Column(String,nullable=True)
-    document_name = Column(String,nullable=True)
+    document_name = Column(String,nullable=True, enum=True)
     comment = Column(String,nullable=True)
 
     @hybrid_property
@@ -383,11 +384,11 @@ class ODYTRAFService(ODYTRAFCaseTable, TableBase):
     odytraf = relationship('ODYTRAF', backref='services')
 
     id = Column(Integer, primary_key=True)
-    service_type = Column(String, nullable=False)
+    service_type = Column(String, nullable=False, enum=True)
     requested_by = Column(String, nullable=True)
     issued_date = Column(Date,nullable=True)
     _issued_date_str = Column('issued_date_str',String,nullable=True)
-    service_status = Column(String,nullable=True)
+    service_status = Column(String,nullable=True, enum=True)
 
     @hybrid_property
     def issued_date_str(self):

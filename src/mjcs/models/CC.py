@@ -1,20 +1,21 @@
-from .common import TableBase, CaseTable, date_from_str
-from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, Text, Index
+from .common import TableBase, CaseTable, date_from_str, MetaColumn as Column
+from sqlalchemy import Date, Numeric, Integer, String, Boolean, ForeignKey, Time, Text, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
 
 class CC(CaseTable, TableBase):
     __tablename__ = 'cc'
+    is_root = True
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String)
+    court_system = Column(String, enum=True)
     title = Column(String)
-    case_type = Column(String,nullable=True)
+    case_type = Column(String,nullable=True, enum=True)
     filing_date = Column(Date,nullable=True)
     _filing_date_str = Column('filing_date_str',String,nullable=True)
-    case_status = Column(String,nullable=True)
-    case_disposition = Column(String,nullable=True)
+    case_status = Column(String,nullable=True, enum=True)
+    case_disposition = Column(String,nullable=True, enum=True)
     disposition_date = Column(Date,nullable=True)
     _disposition_date_str = Column('disposition_date_str',String,nullable=True)
 
@@ -53,7 +54,7 @@ class CCDistrictCaseNumber(CCCaseTable, TableBase):
 
 class Party:
     id = Column(Integer, primary_key=True)
-    party_type = Column(String)
+    party_type = Column(String, enum=True)
     party_number = Column(Integer,nullable=True)
     name = Column(String,nullable=True)
     business_org_name = Column(String,nullable=True)
@@ -150,14 +151,14 @@ class CCCourtSchedule(CCCaseTable, TableBase):
     cc = relationship('CC', backref='court_schedules')
 
     id = Column(Integer, primary_key=True)
-    event_type = Column(String)
+    event_type = Column(String, enum=True)
     notice_date = Column(Date,nullable=True)
     _notice_date_str = Column('notice_date_str',String)
     event_date = Column(Date,nullable=True)
     _event_date_str = Column('event_date_str',String)
     event_time = Column(Time, nullable=True)
     _event_time_str = Column('event_time_str', String)
-    result = Column(String)
+    result = Column(String, enum=True)
     result_date = Column(Date,nullable=True)
     _result_date_str = Column('result_date_str',String)
 
@@ -212,7 +213,7 @@ class CCDocument(CCCaseTable, TableBase):
     entered_date = Column(Date,nullable=True)
     _entered_date_str = Column('entered_date_str',String,nullable=True)
     decision = Column(String,nullable=True)
-    party_type = Column(String,nullable=True) # TODO could eventually map this and party_number to case parties
+    party_type = Column(String,nullable=True, enum=True) # TODO could eventually map this and party_number to case parties
     party_number = Column(Integer,nullable=True)
     document_name = Column(String,nullable=True)
     text = Column(Text,nullable=True)
@@ -223,7 +224,7 @@ class CCJudgment(CCCaseTable, TableBase):
     cc = relationship('CC', backref='judgments')
 
     id = Column(Integer, primary_key=True)
-    judgment_type = Column(String)
+    judgment_type = Column(String, enum=True)
     entered_date = Column(Date,nullable=True)
     _entered_date_str = Column('entered_date_str',String)
     amount = Column(Numeric)
@@ -264,7 +265,7 @@ class CCJudgmentModification(CCCaseTable, TableBase):
     amount_other = Column(String,nullable=True)
     status_date = Column(Date,nullable=True)
     _status_date_str = Column('status_date_str',String)
-    status = Column(String)
+    status = Column(String, enum=True)
     comments = Column(String,nullable=True)
 
     @hybrid_property
@@ -313,22 +314,22 @@ class CCSupportOrder(CCCaseTable, TableBase):
     effective_date = Column(Date,nullable=True)
     _effective_date_str = Column('effective_date_str',String)
     effective_date_text = Column(String,nullable=True) # TODO confirm data type
-    status = Column(String)
+    status = Column(String, enum=True)
     date = Column(Date,nullable=True)
     _date_str = Column('date_str',String)
     reason = Column(String,nullable=True)
     support_amount = Column(Numeric)
-    support_frequency = Column(String,nullable=True)
+    support_frequency = Column(String,nullable=True, enum=True)
     support_to = Column(String,nullable=True)
     arrears_amount = Column(Numeric)
-    arrears_frequency = Column(String,nullable=True)
+    arrears_frequency = Column(String,nullable=True, enum=True)
     arrears_to = Column(String,nullable=True)
     mapr_amount = Column(Numeric)
-    mapr_frequency = Column(String,nullable=True)
+    mapr_frequency = Column(String,nullable=True, enum=True)
     medical_insurance_report_date = Column(Date,nullable=True)
     _medical_insurance_report_date_str = Column('medical_insurance_report_date_str',String,nullable=True)
     btr_amount = Column(Numeric)
-    btr_frequency = Column(String,nullable=True)
+    btr_frequency = Column(String,nullable=True, enum=True)
     lien = Column(String)
     provisions = Column(String,nullable=True) # TODO confirm data type
 

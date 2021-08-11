@@ -1,5 +1,5 @@
-from .common import TableBase, CaseTable, date_from_str, Defendant
-from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger, Index
+from .common import TableBase, MetaColumn as Column, CaseTable, date_from_str, Defendant
+from sqlalchemy import Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
@@ -7,15 +7,16 @@ from datetime import datetime
 
 class ODYCIVIL(CaseTable, TableBase):
     __tablename__ = 'odycivil'
+    is_root = True
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String)
-    location = Column(String)
+    court_system = Column(String, enum=True)
+    location = Column(String, enum=True)
     case_title = Column(String)
-    case_type = Column(String, nullable=True)
+    case_type = Column(String, nullable=True, enum=True)
     filing_date = Column(Date, nullable=True)
     _filing_date_str = Column('filing_date_str',String, nullable=True)
-    case_status = Column(String, nullable=True)
+    case_status = Column(String, nullable=True, enum=True)
 
     case = relationship('Case', backref=backref('odycivil', uselist=False))
 
@@ -41,7 +42,7 @@ class ODYCIVILReferenceNumber(ODYCIVILCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     ref_num = Column(String, nullable=False)
-    ref_num_type = Column(String, nullable=False)
+    ref_num_type = Column(String, nullable=False, enum=True)
 
 class ODYCIVILCause(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_causes'
@@ -52,8 +53,8 @@ class ODYCIVILCause(ODYCIVILCaseTable, TableBase):
     file_date = Column(Date)
     _file_date_str = Column('file_date_str', String)
     cause_description = Column(String)
-    filed_by = Column(String)
-    filed_against = Column(String)
+    filed_by = Column(String, enum=True)
+    filed_against = Column(String, enum=True)
 
     @hybrid_property
     def file_date_str(self):
@@ -68,7 +69,7 @@ class ODYCIVILCauseRemedy(ODYCIVILCaseTable, TableBase):
     __table_args__ = (Index('ixh_odycivil_cause_remedies_case_number', 'case_number', postgresql_using='hash'),)
 
     id = Column(Integer, primary_key=True)
-    remedy_type = Column(String)
+    remedy_type = Column(String, enum=True)
     amount = Column(Numeric)
     comment = Column(String)
     cause_id = Column(Integer, ForeignKey('odycivil_causes.id'))
@@ -87,7 +88,7 @@ class ODYCIVILInvolvedParty(ODYCIVILCaseTable, TableBase):
     odycivil = relationship('ODYCIVIL', backref='involved_parties')
 
     id = Column(Integer, primary_key=True)
-    party_type = Column(String, nullable=True)
+    party_type = Column(String, nullable=True, enum=True)
     name = Column(String, nullable=True)
     appearance_date = Column(Date)
     _appearance_date_str = Column('appearance_date_str', String)
@@ -133,7 +134,7 @@ class ODYCIVILAlias(ODYCIVILCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     alias = Column(String, nullable=False)
-    alias_type = Column(String, nullable=False)
+    alias_type = Column(String, nullable=False, enum=True)
     defendant_id = Column(Integer, ForeignKey('odycivil_defendants.id'),nullable=True)
     party_id = Column(Integer, ForeignKey('odycivil_involved_parties.id'),nullable=True)
 
@@ -178,9 +179,9 @@ class ODYCIVILJudgment(ODYCIVILCaseTable, TableBase):
     odycivil = relationship('ODYCIVIL', backref='judgments')
 
     id = Column(Integer, primary_key=True)
-    judgment_type = Column(String)  # Monetary, ...
-    judgment_description = Column(String)  # Original, Modified, ...
-    judgment_event_type = Column(String)
+    judgment_type = Column(String, enum=True)  # Monetary, ...
+    judgment_description = Column(String, enum=True)  # Original, Modified, ...
+    judgment_event_type = Column(String, enum=True)
     judgment_against = Column(String)
     judgment_in_favor_of = Column(String)
     judgment_for = Column(String)
@@ -261,7 +262,7 @@ class ODYCIVILJudgmentStatus(ODYCIVILCaseTable, TableBase):
     __table_args__ = (Index('ixh_odycivil_judgment_status_case_number', 'case_number', postgresql_using='hash'),)
 
     id = Column(Integer, primary_key=True)
-    judgment_status = Column(String, nullable=False)
+    judgment_status = Column(String, nullable=False, enum=True)
     judgment_date = Column(Date,nullable=True)
     _judgment_date_str = Column('judgment_date_str',String)
     judgment_id = Column(Integer, ForeignKey('odycivil_judgments.id'))
@@ -292,7 +293,7 @@ class ODYCIVILJudgmentComment(ODYCIVILCaseTable, TableBase):
     val_of_prop_to = Column(String)
     damgs_val_of_prop = Column(Numeric)
     repl_detn_amnt = Column(Numeric)
-    judg_type = Column(String)
+    judg_type = Column(String, enum=True)
     in_favor_of_def = Column(String)
     judg_district = Column(String)
     judg_location = Column(String)
@@ -420,10 +421,10 @@ class ODYCIVILDisposition(ODYCIVILCaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     disp_date = Column(Date)
     _disp_date_str = Column('disp_date_str',String)
-    disp_code = Column(String)
-    disp_description = Column(String)
-    disp_stage = Column(String)
-    disp_stage_description = Column(String)
+    disp_code = Column(String, enum=True)
+    disp_description = Column(String, enum=True)
+    disp_stage = Column(String, enum=True)
+    disp_stage_description = Column(String, enum=True)
     user = Column(String)
     usercdate = Column(Date)
     _usercdate_str = Column('usercdate_str',String)
@@ -451,14 +452,14 @@ class ODYCIVILCourtSchedule(ODYCIVILCaseTable, TableBase):
     odycivil = relationship('ODYCIVIL', backref='court_schedules')
 
     id = Column(Integer, primary_key=True)
-    event_type = Column(String, nullable=False)
+    event_type = Column(String, nullable=False, enum=True)
     date = Column(Date, nullable=True)
     _date_str = Column('date_str', String, nullable=True)
     time = Column(Time, nullable=True)
     _time_str = Column('time_str', String, nullable=True)
-    location = Column(String, nullable=True)
+    location = Column(String, nullable=True, enum=True)
     room = Column(String, nullable=True)
-    result = Column(String,nullable=True)
+    result = Column(String,nullable=True, enum=True)
 
     @hybrid_property
     def date_str(self):
@@ -485,10 +486,10 @@ class ODYCIVILWarrant(ODYCIVILCaseTable, TableBase):
     odycivil = relationship('ODYCIVIL', backref='warrants')
 
     id = Column(Integer, primary_key=True)
-    warrant_type = Column(String)
+    warrant_type = Column(String, enum=True)
     issue_date = Column(Date)
     _issue_date_str = Column('issue_date_str', String, nullable=True)
-    last_status = Column(String)
+    last_status = Column(String, enum=True)
     status_date = Column(Date)
     _status_date_str = Column('status_date_str', String, nullable=True)
 
@@ -515,7 +516,7 @@ class ODYCIVILBondSetting(ODYCIVILCaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     bail_date = Column(Date)
     _bail_date_str = Column('bail_date_str', String)
-    bail_setting_type = Column(String)
+    bail_setting_type = Column(String, enum=True)
     bail_amount = Column(Numeric)
 
 class ODYCIVILBailBond(ODYCIVILCaseTable, TableBase):
@@ -523,11 +524,11 @@ class ODYCIVILBailBond(ODYCIVILCaseTable, TableBase):
     __table_args__ = (Index('ixh_odycivil_bail_bonds_case_number', 'case_number', postgresql_using='hash'),)
 
     id = Column(Integer, primary_key=True)
-    bond_type = Column(String)
+    bond_type = Column(String, enum=True)
     bond_amount_set = Column(Numeric)
     bond_status_date = Column(Date)
     _bond_status_date_str = Column('bond_status_date_str', String)
-    bond_status = Column(String)
+    bond_status = Column(String, enum=True)
 
 class ODYCIVILDocument(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_documents'
@@ -538,7 +539,7 @@ class ODYCIVILDocument(ODYCIVILCaseTable, TableBase):
     file_date = Column(Date,nullable=True)
     _file_date_str = Column('file_date_str',String,nullable=True)
     filed_by = Column(String,nullable=True)
-    document_name = Column(String,nullable=False)
+    document_name = Column(String,nullable=False, enum=True)
     comment = Column(String)
 
     @hybrid_property
@@ -555,10 +556,10 @@ class ODYCIVILService(ODYCIVILCaseTable, TableBase):
     odycivil = relationship('ODYCIVIL', backref='services')
 
     id = Column(Integer, primary_key=True)
-    service_type = Column(String, nullable=False)
+    service_type = Column(String, nullable=False, enum=True)
     issued_date = Column(Date,nullable=True)
     _issued_date_str = Column('issued_date_str',String,nullable=True)
-    service_status = Column(String,nullable=True)
+    service_status = Column(String,nullable=True, enum=True)
 
     @hybrid_property
     def issued_date_str(self):

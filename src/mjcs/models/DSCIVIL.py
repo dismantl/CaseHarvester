@@ -1,5 +1,5 @@
-from .common import TableBase, CaseTable, date_from_str, RelatedPerson, Event, Trial
-from sqlalchemy import Column, Date, Numeric, Integer, String, Boolean, ForeignKey, Time, Index
+from .common import TableBase, MetaColumn as Column, CaseTable, date_from_str, RelatedPerson, Event, Trial
+from sqlalchemy import Date, Numeric, Integer, String, Boolean, ForeignKey, Time, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
@@ -7,15 +7,16 @@ from datetime import datetime
 
 class DSCIVIL(CaseTable, TableBase):
     __tablename__ = 'dscivil'
+    is_root = True
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String)
-    claim_type = Column(String,nullable=True)
+    court_system = Column(String, enum=True)
+    claim_type = Column(String,nullable=True, enum=True)
     district_code = Column(Integer,nullable=True)
     location_code = Column(Integer,nullable=True)
     filing_date = Column(Date,nullable=True)
     _filing_date_str = Column('filing_date_str',String,nullable=True)
-    case_status = Column(String,nullable=True)
+    case_status = Column(String,nullable=True, enum=True)
 
     case = relationship('Case', backref=backref('dscivil', uselist=False))
 
@@ -43,8 +44,8 @@ class DSCIVILComplaint(DSCIVILCaseTable, TableBase):
     complaint_number = Column(Integer,nullable=True)
     plaintiff = Column(String,nullable=True)
     defendant = Column(String,nullable=True)
-    complaint_type = Column(String,nullable=True)
-    complaint_status = Column(String, nullable=True)
+    complaint_type = Column(String,nullable=True, enum=True)
+    complaint_status = Column(String, nullable=True, enum=True)
     status_date = Column(Date, nullable=True)
     _status_date_str = Column('status_date_str',String,nullable=True)
     filing_date = Column(Date,nullable=True)
@@ -91,7 +92,7 @@ class DSCIVILHearing(DSCIVILCaseTable, TableBase):
     room = Column(String,nullable=True)
     location = Column(String)
     duration = Column(String,nullable=True) # TODO confirm type
-    hearing_type = Column(String)
+    hearing_type = Column(String, enum=True)
 
     @hybrid_property
     def date_str(self):
@@ -122,7 +123,7 @@ class DSCIVILJudgment(DSCIVILCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     complaint_id = Column(Integer, ForeignKey('dscivil_complaints.id'))
-    judgment_type = Column(String)
+    judgment_type = Column(String, enum=True)
     judgment_date = Column(Date,nullable=True)
     _judgment_date_str = Column('judgment_date_str',String)
     judgment_amount = Column(Numeric)
