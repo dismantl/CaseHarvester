@@ -3,34 +3,6 @@
 
 GRANT SELECT ON ALL TABLES IN SCHEMA public, redacted TO mjcs_ro_redacted;
 
-REVOKE SELECT ON TABLE public.cc_defendants FROM mjcs_ro_redacted;
-CREATE OR REPLACE VIEW redacted.cc_defendants
- AS
- SELECT cc_defendants.id,
-    cc_defendants.party_type,
-    cc_defendants.party_number,
-    cc_defendants.business_org_name,
-    cc_defendants.case_number
-   FROM cc_defendants;
-
-REVOKE SELECT ON TABLE public.dscivil_complaints FROM mjcs_ro_redacted;
-CREATE OR REPLACE VIEW redacted.dscivil_complaints
- AS
- SELECT dscivil_complaints.id,
-    dscivil_complaints.complaint_number,
-    dscivil_complaints.plaintiff,
-    dscivil_complaints.complaint_type,
-    dscivil_complaints.complaint_status,
-    dscivil_complaints.status_date,
-    dscivil_complaints.status_date_str,
-    dscivil_complaints.filing_date,
-    dscivil_complaints.filing_date_str,
-    dscivil_complaints.amount,
-    dscivil_complaints.last_activity_date,
-    dscivil_complaints.last_activity_date_str,
-    dscivil_complaints.case_number
-   FROM dscivil_complaints;
-
 REVOKE SELECT ON TABLE public.dscr_defendants FROM mjcs_ro_redacted;
 CREATE OR REPLACE VIEW redacted.dscr_defendants
  AS
@@ -88,20 +60,6 @@ CREATE OR REPLACE VIEW redacted.odytraf_defendants
     odytraf_defendants.height,
     odytraf_defendants.case_number
    FROM odytraf_defendants;
-
-REVOKE SELECT ON TABLE public.odycivil_defendants FROM mjcs_ro_redacted;
-CREATE OR REPLACE VIEW redacted.odycivil_defendants
- AS
- SELECT odycivil_defendants.id,
-    odycivil_defendants.race,
-    odycivil_defendants.sex,
-    odycivil_defendants.height,
-    odycivil_defendants.weight,
-    odycivil_defendants.city,
-    odycivil_defendants.state,
-    odycivil_defendants.zip_code,
-    odycivil_defendants.case_number
-   FROM odycivil_defendants;
 
 REVOKE SELECT ON TABLE public.odycvcit_defendants FROM mjcs_ro_redacted;
 CREATE OR REPLACE VIEW redacted.odycvcit_defendants
