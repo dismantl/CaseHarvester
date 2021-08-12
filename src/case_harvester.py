@@ -40,7 +40,7 @@ def run_db_init(args):
     elif args.write_env_only:
         write_env_file(args.environment, args.environment_short, exports, args.db_name, db_username, db_password)
     else:
-        create_database_and_users(db_hostname, args.db_name, secrets)
+        create_database_and_users(db_hostname, args.db_name, secrets, args.environment)
         write_env_file(args.environment, args.environment_short, exports, args.db_name, db_username, db_password)
         create_tables()
         run_db_init_scripts(db_url)
@@ -56,13 +56,13 @@ def run_db_init_scripts(db_url):
             conn.execute(text(commands))
     conn.close()
 
-def create_database_and_users(db_hostname, db_name, secrets):
-    master_username = secrets[args.environment]['DatabaseMasterUsername']
-    master_password = secrets[args.environment]['DatabaseMasterPassword']
-    username = secrets[args.environment]['DatabaseUsername']
-    password = secrets[args.environment]['DatabasePassword']
-    ro_username = secrets[args.environment]['DatabaseReadOnlyUsername']
-    ro_password = secrets[args.environment]['DatabaseReadOnlyPassword']
+def create_database_and_users(db_hostname, db_name, secrets, environment):
+    master_username = secrets[environment]['DatabaseMasterUsername']
+    master_password = secrets[environment]['DatabaseMasterPassword']
+    username = secrets[environment]['DatabaseUsername']
+    password = secrets[environment]['DatabasePassword']
+    ro_username = secrets[environment]['DatabaseReadOnlyUsername']
+    ro_password = secrets[environment]['DatabaseReadOnlyPassword']
 
     print("Creating database, roles, and users")
     postgres_url = f'postgresql://{master_username}:{master_password}@{db_hostname}/postgres'
