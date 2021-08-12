@@ -19,7 +19,7 @@ class DSTRAF(CaseTable, TableBase):
     violation_time = Column(Time)
     _violation_time_str = Column('violation_time_str', String)
     violation_county = Column(String, enum=True)
-    agency_name = Column(String, enum=True)
+    agency_name = Column(String)
     officer_id = Column(String)
     officer_name = Column(String)
     case_status = Column(String, enum=True)

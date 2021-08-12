@@ -93,7 +93,7 @@ class ODYTRAFInvolvedParty(ODYTRAFCaseTable, TableBase):
     _appearance_date_str = Column('appearance_date_str', String)
     removal_date = Column(Date)
     _removal_date_str = Column('removal_date_str', String)
-    agency_name = Column(String, nullable=True, enum=True)
+    agency_name = Column(String, nullable=True)
     address_1 = Column(String, nullable=True)
     address_2 = Column(String, nullable=True)
     city = Column(String, nullable=True)
@@ -367,7 +367,7 @@ class ODYTRAFDocument(ODYTRAFCaseTable, TableBase):
     file_date = Column(Date,nullable=True)
     _file_date_str = Column('file_date_str',String,nullable=True)
     filed_by = Column(String,nullable=True)
-    document_name = Column(String,nullable=True, enum=True)
+    document_name = Column(String,nullable=True)
     comment = Column(String,nullable=True)
 
     @hybrid_property

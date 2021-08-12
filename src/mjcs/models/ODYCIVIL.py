@@ -10,10 +10,10 @@ class ODYCIVIL(CaseTable, TableBase):
     is_root = True
 
     id = Column(Integer, primary_key=True)
-    court_system = Column(String, enum=True)
+    court_system = Column(String)
     location = Column(String, enum=True)
     case_title = Column(String)
-    case_type = Column(String, nullable=True, enum=True)
+    case_type = Column(String, nullable=True)
     filing_date = Column(Date, nullable=True)
     _filing_date_str = Column('filing_date_str',String, nullable=True)
     case_status = Column(String, nullable=True, enum=True)
@@ -539,7 +539,7 @@ class ODYCIVILDocument(ODYCIVILCaseTable, TableBase):
     file_date = Column(Date,nullable=True)
     _file_date_str = Column('file_date_str',String,nullable=True)
     filed_by = Column(String,nullable=True)
-    document_name = Column(String,nullable=False, enum=True)
+    document_name = Column(String,nullable=False)
     comment = Column(String)
 
     @hybrid_property

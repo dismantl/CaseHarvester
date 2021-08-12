@@ -189,7 +189,7 @@ class ODYCRIMCharge(ODYCRIMCaseTable, TableBase):
     _offense_date_from_str = Column('offense_date_from_str', String, nullable=True)
     offense_date_to = Column(Date, nullable=True)
     _offense_date_to_str = Column('offense_date_to_str', String, nullable=True)
-    agency_name = Column(String, enum=True)
+    agency_name = Column(String)
     officer_id = Column(String)
     plea = Column(String, nullable=True, enum=True)
     plea_date = Column(Date, nullable=True)
@@ -390,7 +390,7 @@ class ODYCRIMDocument(ODYCRIMCaseTable, TableBase):
     file_date = Column(Date,nullable=True)
     _file_date_str = Column('file_date_str',String,nullable=True)
     filed_by = Column(String,nullable=True)
-    document_name = Column(String,nullable=False, enum=True)
+    document_name = Column(String,nullable=False)
 
     @hybrid_property
     def file_date_str(self):
