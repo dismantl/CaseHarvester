@@ -25,7 +25,7 @@ Column = MetaColumn
 
 class ColumnMetadata(TableBase):
     __tablename__ = 'column_metadata'
-    __table_args__ = (UniqueConstraint('table', 'column_name', name='column_metadata_column_name_width_pixels_key'),)
+    __table_args__ = (UniqueConstraint('table', 'column_name', name='column_metadata_table_column_name_key'),)
 
     id = Column(Integer, primary_key=True)
     table = Column(String, nullable=False)

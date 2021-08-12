@@ -239,3 +239,8 @@ def decimal_to_float(obj):
 def get_queue_count(queue):
     queue.load()
     return int(queue.attributes['ApproximateNumberOfMessages'])
+
+def get_model_list(module):
+    class_list = [cls for name, cls in module.__dict__.items() if isinstance(cls, type) and hasattr(cls, '__table__')]
+    class_list = [x for x in set(class_list)]  # Remove duplicates
+    return class_list
