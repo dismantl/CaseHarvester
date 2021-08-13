@@ -1,4 +1,4 @@
-from .common import TableBase, MetaColumn as Column, CaseTable, Trial, Event, date_from_str, Defendant, RelatedPerson
+from .common import TableBase, MetaColumn as Column, CaseTable, date_from_str
 from sqlalchemy import Date, Numeric, Integer, String, Boolean, ForeignKey, Time, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -6,6 +6,7 @@ from sqlalchemy.ext.declarative import declared_attr
 from datetime import datetime
 
 class DSTRAF(CaseTable, TableBase):
+    '''District Court Traffic Cases'''
     __tablename__ = 'dstraf'
     is_root = True
 
@@ -146,22 +147,104 @@ class DSTRAFDisposition(DSTRAFCaseTable, TableBase):
         self.sentence_starts = date_from_str(val)
         self._sentence_starts_str = val
 
-class DSTRAFDefendant(DSTRAFCaseTable, Defendant, TableBase):
+class DSTRAFDefendant(DSTRAFCaseTable, TableBase):
     __tablename__ = 'dstraf_defendants'
     __table_args__ = (Index('ixh_dstraf_defendants_case_number', 'case_number', postgresql_using='hash'),)
     dstraf = relationship('DSTRAF', backref='defendants')
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String, redacted=True)
+    race = Column(String, nullable=True)
+    sex = Column(String, nullable=True)
+    height = Column(Integer, nullable=True)
+    weight = Column(Integer, nullable=True)
+    DOB = Column(Date, nullable=True, redacted=True)
+    _DOB_str = Column('DOB_str',String, nullable=True, redacted=True)
+    address_1 = Column(String, nullable=True, redacted=True)
+    address_2 = Column(String, nullable=True, redacted=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    zip_code = Column(String, nullable=True)
 
-class DSTRAFRelatedPerson(DSTRAFCaseTable, RelatedPerson, TableBase):
+    @hybrid_property
+    def DOB_str(self):
+        return self._DOB_str
+    @DOB_str.setter
+    def DOB_str(self,val):
+        self.DOB = date_from_str(val)
+        self._DOB_str = val
+
+class DSTRAFRelatedPerson(DSTRAFCaseTable, TableBase):
     __tablename__ = 'dstraf_related_persons'
     __table_args__ = (Index('ixh_dstraf_related_persons_case_number', 'case_number', postgresql_using='hash'),)
     dstraf = relationship('DSTRAF', backref='related_persons')
 
-class DSTRAFEvent(DSTRAFCaseTable, Event, TableBase):
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=True)
+    connection = Column(String, nullable=True, enum=True)
+    address_1 = Column(String, nullable=True)
+    address_2 = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    zip_code = Column(String, nullable=True)
+    agency_code = Column(String, nullable=True, enum=True)
+    agency_sub_code = Column(String, nullable=True)
+    officer_id = Column(String, nullable=True)
+    attorney_code = Column(Integer,nullable=True)
+    attorney_firm = Column(String,nullable=True)
+
+class DSTRAFEvent(DSTRAFCaseTable, TableBase):
     __tablename__ = 'dstraf_events'
     __table_args__ = (Index('ixh_dstraf_events_case_number', 'case_number', postgresql_using='hash'),)
     dstraf = relationship('DSTRAF', backref='events')
 
-class DSTRAFTrial(DSTRAFCaseTable, Trial, TableBase):
+    id = Column(Integer, primary_key=True)
+    event_name = Column(String, nullable=True, enum=True)
+    date = Column(Date, nullable=True)
+    _date_str = Column('date_str',String, nullable=True)
+    comment = Column(String, nullable=True)
+
+    @hybrid_property
+    def date_str(self):
+        return self._date_str
+    @date_str.setter
+    def date_str(self,val):
+        self.date = date_from_str(val)
+        self._date_str = val
+
+class DSTRAFTrial(DSTRAFCaseTable, TableBase):
     __tablename__ = 'dstraf_trials'
     __table_args__ = (Index('ixh_dstraf_trials_case_number', 'case_number', postgresql_using='hash'),)
     dstraf = relationship('DSTRAF', backref='trials')
+
+    id = Column(Integer, primary_key=True)
+    date = Column(Date, nullable=True)
+    _date_str = Column('date_str', String, nullable=True)
+    time = Column(Time, nullable=True)
+    _time_str = Column('time_str', String, nullable=True)
+    room = Column(String, nullable=True)
+    trial_type = Column(String, nullable=True, enum=True)
+    location = Column(String, nullable=True)
+    reason = Column(String,nullable=True)
+
+    @hybrid_property
+    def date_str(self):
+        return self._date_str
+    @date_str.setter
+    def date_str(self,val):
+        self.date = date_from_str(val)
+        self._date_str = val
+
+    @hybrid_property
+    def time_str(self):
+        return self._time_str
+    @time_str.setter
+    def time_str(self,val):
+        try:
+            self.time = datetime.strptime(val,'%I:%M %p').time()
+        except:
+            try:
+                self.time = datetime.strptime(val,'%I:%M').time()
+            except:
+                pass
+        self._time_str = val

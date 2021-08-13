@@ -1,4 +1,4 @@
-from .common import TableBase, MetaColumn as Column, CaseTable, date_from_str, Defendant
+from .common import TableBase, MetaColumn as Column, CaseTable, date_from_str
 from sqlalchemy import Date, Numeric, Integer, String, Boolean, ForeignKey, Time, BigInteger, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -6,6 +6,7 @@ from sqlalchemy.ext.declarative import declared_attr
 from datetime import datetime
 
 class ODYCIVIL(CaseTable, TableBase):
+    '''MDEC Civil Cases'''
     __tablename__ = 'odycivil'
     is_root = True
 
@@ -67,6 +68,8 @@ class ODYCIVILCause(ODYCIVILCaseTable, TableBase):
 class ODYCIVILCauseRemedy(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_cause_remedies'
     __table_args__ = (Index('ixh_odycivil_cause_remedies_case_number', 'case_number', postgresql_using='hash'),)
+    odycivil_cause = relationship('ODYCIVILCause', backref='cause_remedies')
+    odycivil = relationship('ODYCIVIL', backref='cause_remedies')
 
     id = Column(Integer, primary_key=True)
     remedy_type = Column(String, enum=True)
@@ -74,13 +77,34 @@ class ODYCIVILCauseRemedy(ODYCIVILCaseTable, TableBase):
     comment = Column(String)
     cause_id = Column(Integer, ForeignKey('odycivil_causes.id'))
 
-class ODYCIVILDefendant(ODYCIVILCaseTable, Defendant, TableBase):
+class ODYCIVILDefendant(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_defendants'
     __table_args__ = (Index('ixh_odycivil_defendants_case_number', 'case_number', postgresql_using='hash'),)
     odycivil = relationship('ODYCIVIL', backref='defendants')
 
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    race = Column(String, nullable=True)
+    sex = Column(String, nullable=True)
+    height = Column(Integer, nullable=True)
+    weight = Column(Integer, nullable=True)
+    DOB = Column(Date, nullable=True)
+    _DOB_str = Column('DOB_str',String, nullable=True)
+    address_1 = Column(String, nullable=True)
+    address_2 = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    zip_code = Column(String, nullable=True)
     aliases = relationship('ODYCIVILAlias')
     attorneys = relationship('ODYCIVILAttorney')
+
+    @hybrid_property
+    def DOB_str(self):
+        return self._DOB_str
+    @DOB_str.setter
+    def DOB_str(self,val):
+        self.DOB = date_from_str(val)
+        self._DOB_str = val
 
 class ODYCIVILInvolvedParty(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_involved_parties'
@@ -131,6 +155,7 @@ class ODYCIVILInvolvedParty(ODYCIVILCaseTable, TableBase):
 class ODYCIVILAlias(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_aliases'
     __table_args__ = (Index('ixh_odycivil_aliases_case_number', 'case_number', postgresql_using='hash'),)
+    odycivil = relationship('ODYCIVIL', backref='aliases')
 
     id = Column(Integer, primary_key=True)
     alias = Column(String, nullable=False)
@@ -141,6 +166,7 @@ class ODYCIVILAlias(ODYCIVILCaseTable, TableBase):
 class ODYCIVILAttorney(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_attorneys'
     __table_args__ = (Index('ixh_odycivil_attorneys_case_number', 'case_number', postgresql_using='hash'),)
+    odycivil = relationship('ODYCIVIL', backref='attorneys')
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=True)
@@ -260,6 +286,8 @@ class ODYCIVILJudgment(ODYCIVILCaseTable, TableBase):
 class ODYCIVILJudgmentStatus(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_judgment_statuses'
     __table_args__ = (Index('ixh_odycivil_judgment_status_case_number', 'case_number', postgresql_using='hash'),)
+    odycivil_judgment = relationship('ODYCIVILJudgment', backref='judgment_statuses')
+    odycivil = relationship('ODYCIVIL', backref='judgment_statuses')
 
     id = Column(Integer, primary_key=True)
     judgment_status = Column(String, nullable=False, enum=True)
@@ -278,6 +306,7 @@ class ODYCIVILJudgmentStatus(ODYCIVILCaseTable, TableBase):
 class ODYCIVILJudgmentComment(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_judgment_comments'
     __table_args__ = (Index('ixh_odycivil_judgment_comments_case_number', 'case_number', postgresql_using='hash'),)
+    odycivil = relationship('ODYCIVIL', backref='judgment_comments')
 
     id = Column(Integer, primary_key=True)
     amount = Column(Numeric)
@@ -417,6 +446,7 @@ class ODYCIVILJudgmentComment(ODYCIVILCaseTable, TableBase):
 class ODYCIVILDisposition(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_dispositions'
     __table_args__ = (Index('ixh_odycivil_dispositions_case_number', 'case_number', postgresql_using='hash'),)
+    odycivil = relationship('ODYCIVIL', backref='dispositions')
 
     id = Column(Integer, primary_key=True)
     disp_date = Column(Date)
@@ -512,6 +542,7 @@ class ODYCIVILWarrant(ODYCIVILCaseTable, TableBase):
 class ODYCIVILBondSetting(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_bond_settings'
     __table_args__ = (Index('ixh_odycivil_bond_settings_case_number', 'case_number', postgresql_using='hash'),)
+    odycivil = relationship('ODYCIVIL', backref='bond_settings')
 
     id = Column(Integer, primary_key=True)
     bail_date = Column(Date)
@@ -522,6 +553,7 @@ class ODYCIVILBondSetting(ODYCIVILCaseTable, TableBase):
 class ODYCIVILBailBond(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_bail_bonds'
     __table_args__ = (Index('ixh_odycivil_bail_bonds_case_number', 'case_number', postgresql_using='hash'),)
+    odycivil = relationship('ODYCIVIL', backref='bail_bonds')
 
     id = Column(Integer, primary_key=True)
     bond_type = Column(String, enum=True)

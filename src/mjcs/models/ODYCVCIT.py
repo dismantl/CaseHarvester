@@ -1,4 +1,4 @@
-from .common import TableBase, MetaColumn as Column, CaseTable, date_from_str, Defendant
+from .common import TableBase, MetaColumn as Column, CaseTable, date_from_str
 from sqlalchemy import Date, Numeric, Integer, String, Boolean, ForeignKey, Time, Index
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -6,6 +6,7 @@ from sqlalchemy.ext.declarative import declared_attr
 from datetime import datetime
 
 class ODYCVCIT(CaseTable, TableBase):
+    '''MDEC Civil Citations'''
     __tablename__ = 'odycvcit'
     is_root = True
 
@@ -45,16 +46,36 @@ class ODYCVCITReferenceNumber(ODYCVCITCaseTable, TableBase):
     ref_num = Column(String, nullable=False)
     ref_num_type = Column(String, nullable=False, enum=True)
 
-class ODYCVCITDefendant(ODYCVCITCaseTable, Defendant, TableBase):
+class ODYCVCITDefendant(ODYCVCITCaseTable, TableBase):
     __tablename__ = 'odycvcit_defendants'
     __table_args__ = (Index('ixh_odycvcit_defendants_case_number', 'case_number', postgresql_using='hash'),)
     odycvcit = relationship('ODYCVCIT', backref='defendants')
 
+    id = Column(Integer, primary_key=True)
+    name = Column(String, redacted=True)
+    race = Column(String, nullable=True)
+    sex = Column(String, nullable=True)
     height = Column(String, nullable=True)
+    weight = Column(Integer, nullable=True)
     hair_color = Column(String, nullable=True)
     eye_color = Column(String, nullable=True)
+    DOB = Column(Date, nullable=True, redacted=True)
+    _DOB_str = Column('DOB_str',String, nullable=True, redacted=True)
+    address_1 = Column(String, nullable=True, redacted=True)
+    address_2 = Column(String, nullable=True, redacted=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    zip_code = Column(String, nullable=True)
     aliases = relationship('ODYCVCITAlias')
     attorneys = relationship('ODYCVCITAttorney')
+
+    @hybrid_property
+    def DOB_str(self):
+        return self._DOB_str
+    @DOB_str.setter
+    def DOB_str(self,val):
+        self.DOB = date_from_str(val)
+        self._DOB_str = val
 
 class ODYCVCITInvolvedParty(ODYCVCITCaseTable, TableBase):
     __tablename__ = 'odycvcit_involved_parties'
@@ -96,6 +117,7 @@ class ODYCVCITInvolvedParty(ODYCVCITCaseTable, TableBase):
 class ODYCVCITAlias(ODYCVCITCaseTable, TableBase):
     __tablename__ = 'odycvcit_aliases'
     __table_args__ = (Index('ixh_odycvcit_aliases_case_number', 'case_number', postgresql_using='hash'),)
+    odycvcit = relationship('ODYCVCIT', backref='aliases')
 
     id = Column(Integer, primary_key=True)
     alias = Column(String, nullable=False)
@@ -106,6 +128,7 @@ class ODYCVCITAlias(ODYCVCITCaseTable, TableBase):
 class ODYCVCITAttorney(ODYCVCITCaseTable, TableBase):
     __tablename__ = 'odycvcit_attorneys'
     __table_args__ = (Index('ixh_odycvcit_attorneys_case_number', 'case_number', postgresql_using='hash'),)
+    odycvcit = relationship('ODYCVCIT', backref='attorneys')
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=True)
@@ -375,7 +398,7 @@ class ODYCVCITBondSetting(ODYCVCITCaseTable, TableBase):
 class ODYCVCITDocument(ODYCVCITCaseTable, TableBase):
     __tablename__ = 'odycvcit_documents'
     __table_args__ = (Index('ixh_odycvcit_documents_case_number', 'case_number', postgresql_using='hash'),)
-    ODYCVCIT = relationship('ODYCVCIT', backref='documents')
+    odycvcit = relationship('ODYCVCIT', backref='documents')
 
     id = Column(Integer, primary_key=True)
     file_date = Column(Date,nullable=True)

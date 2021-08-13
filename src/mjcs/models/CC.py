@@ -3,8 +3,10 @@ from sqlalchemy import Date, Numeric, Integer, String, Boolean, ForeignKey, Time
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declared_attr
+from datetime import datetime
 
 class CC(CaseTable, TableBase):
+    '''Circuit Court Civil Cases'''
     __tablename__ = 'cc'
     is_root = True
 
@@ -89,6 +91,7 @@ class CCRelatedPerson(Party, CCCaseTable, TableBase):
 class CCPartyAlias(CCCaseTable, TableBase):
     __tablename__ = 'cc_party_alias'
     __table_args__ = (Index('ixh_cc_party_alias_case_number', 'case_number', postgresql_using='hash'),)
+    cc = relationship('CC', backref='party_aliases')
 
     id = Column(Integer, primary_key=True)
     plaintiff_id = Column(Integer, ForeignKey('cc_plaintiffs.id'),nullable=True)
@@ -99,6 +102,7 @@ class CCPartyAlias(CCCaseTable, TableBase):
 class CCPartyAddress(CCCaseTable, TableBase):
     __tablename__ = 'cc_party_addresses'
     __table_args__ = (Index('ixh_cc_party_addresses_case_number', 'case_number', postgresql_using='hash'),)
+    cc = relationship('CC', backref='party_addresses')
 
     id = Column(Integer, primary_key=True)
     plaintiff_id = Column(Integer, ForeignKey('cc_plaintiffs.id'),nullable=True)
@@ -112,6 +116,7 @@ class CCPartyAddress(CCCaseTable, TableBase):
 class CCAttorney(CCCaseTable, TableBase):
     __tablename__ = 'cc_attorneys'
     __table_args__ = (Index('ixh_cc_attorneys_case_number', 'case_number', postgresql_using='hash'),)
+    cc = relationship('CC', backref='attorneys')
 
     id = Column(Integer, primary_key=True)
     plaintiff_id = Column(Integer, ForeignKey('cc_plaintiffs.id'),nullable=True)
@@ -254,6 +259,7 @@ class CCJudgment(CCCaseTable, TableBase):
 class CCJudgmentModification(CCCaseTable, TableBase):
     __tablename__ = 'cc_judgment_modifications'
     __table_args__ = (Index('ixh_cc_judgment_modifications_case_number', 'case_number', postgresql_using='hash'),)
+    cc = relationship('CC', backref='judgment_modifications')
 
     id = Column(Integer, primary_key=True)
     judgment_id = Column(Integer, ForeignKey('cc_judgments.id'))
@@ -287,6 +293,7 @@ class CCJudgmentModification(CCCaseTable, TableBase):
 class CCJudgmentAgainst(CCCaseTable, TableBase):
     __tablename__ = 'cc_judgments_against'
     __table_args__ = (Index('ixh_cc_judgments_against_case_number', 'case_number', postgresql_using='hash'),)
+    cc = relationship('CC', backref='judgments_against')
 
     id = Column(Integer, primary_key=True)
     judgment_id = Column(Integer, ForeignKey('cc_judgments.id'))
@@ -295,6 +302,7 @@ class CCJudgmentAgainst(CCCaseTable, TableBase):
 class CCJudgmentInFavor(CCCaseTable, TableBase):
     __tablename__ = 'cc_judgments_in_favor'
     __table_args__ = (Index('ixh_cc_judgments_in_favor_case_number', 'case_number', postgresql_using='hash'),)
+    cc = relationship('CC', backref='judgments_in_favor')
 
     id = Column(Integer, primary_key=True)
     judgment_id = Column(Integer, ForeignKey('cc_judgments.id'))
