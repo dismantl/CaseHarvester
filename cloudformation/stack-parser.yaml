@@ -74,7 +74,7 @@ Resources:
         SQSTrigger:
           Type: SQS
           Properties:
-            BatchSize: !If [CreateProdResources, 500, 200]
+            BatchSize: 200
             MaximumBatchingWindowInSeconds: 300
             Queue: !GetAtt ParserQueue.Arn
 
@@ -113,7 +113,7 @@ Resources:
     Type: AWS::IAM::Role
     Condition: CreateProdResources
     Properties:
-      RoleName: !Sub mjcs_ecs_export_task_role
+      RoleName: mjcs_ecs_export_task_role
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -185,6 +185,91 @@ Resources:
           EcsParameters:
             LaunchType: FARGATE
             TaskDefinitionArn: !Ref MonthlyExportTask
+            TaskCount: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: ENABLED
+                SecurityGroups:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+                Subnets:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
+
+  QuarterlyReparseTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub mjcs_ecs_reparse_task_role_${EnvironmentType}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+
+  QuarterlyReparseTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: mjcs_reparse_container
+          Command:
+            - python
+            - -u
+            - case_harvester.py
+            - --environment
+            - production
+            - parser
+            - --reparse
+          Environment:
+            - Name: MJCS_DATABASE_URL
+              Value: !Sub
+                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
+                - db_user: !Ref DatabaseUsername
+                  db_pw: !Ref DatabasePassword
+                  db_addr:
+                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+                  db_name: !Ref DatabaseName
+            - Name: PARSER_QUEUE_NAME
+              Value: !GetAtt ParserQueue.QueueName
+          Image: !Sub
+            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
+            - repo_name:
+                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-region: !Ref AWSRegion
+              awslogs-group: caseharvester-reparse-quarterly
+              awslogs-stream-prefix: caseharvester-reparse-quarterly-logs
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 2048
+      Memory: 12288
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+      NetworkMode: awsvpc
+      TaskRoleArn: !GetAtt QuarterlyReparseTaskRole.Arn
+
+  QuarterlyReparse:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub quarterly_reparse_${EnvironmentType}
+      Description: Reparse all cases
+      ScheduleExpression: cron(0 12 16 FEB,MAY,AUG,NOV ? *)
+      Targets:
+        - Id: reparse_ecs_task_target
+          Arn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
+          RoleArn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+          EcsParameters:
+            LaunchType: FARGATE
+            TaskDefinitionArn: !Ref QuarterlyReparseTask
             TaskCount: 1
             NetworkConfiguration:
               AwsVpcConfiguration:
