@@ -49,7 +49,7 @@ Resources:
       CodeUri: ../pkg/parser
       MemorySize: 300
       Timeout: 900
-      ReservedConcurrentExecutions: !If [CreateProdResources, 900, !Ref "AWS::NoValue"]
+      ReservedConcurrentExecutions: !If [CreateProdResources, 250, !Ref "AWS::NoValue"]
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt ParserFailedQueue.Arn
