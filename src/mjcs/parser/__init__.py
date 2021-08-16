@@ -82,7 +82,6 @@ class Parser:
                 Case.parse_exempt == False, Case.detail_loc.in_([c for c,p in parsers]))
         with db_session() as db:
             self.load_into_queue(db.query(Case.case_number, Case.detail_loc).distinct().filter(filter), config.parser_queue)
-        return self.parse_from_queue(config.parser_queue)
 
     def reparse(self, detail_loc=None):
         logger.info(f'Loading all cases of type {detail_loc if detail_loc else "ANY"} into parser queue')
@@ -94,7 +93,6 @@ class Parser:
                 Case.parse_exempt == False, Case.detail_loc.in_([c for c,p in parsers]))
         with db_session() as db:
             self.load_into_queue(db.query(Case.case_number, Case.detail_loc).distinct().filter(filter), config.parser_queue)
-        return self.parse_from_queue(config.parser_queue)
 
     def parse_from_queue(self, queue):
         from multiprocessing import Pool, set_start_method

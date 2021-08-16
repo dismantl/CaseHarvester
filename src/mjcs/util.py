@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 class NoItemsInQueue(Exception):
     pass
 
+class TableNotFound(Exception):
+    pass
+
 class JSONDatetimeEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime):
@@ -244,3 +247,25 @@ def get_model_list(module):
     class_list = [cls for name, cls in module.__dict__.items() if isinstance(cls, type) and hasattr(cls, '__table__')]
     class_list = [x for x in set(class_list)]  # Remove duplicates
     return class_list
+
+def get_root_model_list(module):
+    model_list = get_model_list(module)
+    return list(filter(lambda model: hasattr(model, 'is_root') and model.is_root, model_list))
+
+def get_orm_class_by_name(table_name):
+    from . import models
+    model_map = {cls.__table__.name: cls for name, cls in models.__dict__.items() if isinstance(cls, type) and hasattr(cls, '__table__')}
+    try:
+        return model_map[table_name]
+    except KeyError:
+        raise TableNotFound(f'Unknown database table {table_name}')
+
+def get_case_model_list(module):
+    model_list = [module.Case]
+    for root_model in get_root_model_list(module):
+        model_list.append(root_model)
+        for rel_name, relationship in root_model.__mapper__.relationships.items():
+            model = get_orm_class_by_name(relationship.target.name)
+            if model not in model_list:
+                model_list.append(model)
+    return model_list

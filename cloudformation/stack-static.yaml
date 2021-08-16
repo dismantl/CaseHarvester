@@ -57,7 +57,7 @@ Mappings:
       dev: 0
     BucketName:
       prod: mjcs-case-details
-      dev: mjcs-case-details-dev    
+      dev: mjcs-case-details-dev
 
 Resources:
   VPC:
@@ -162,6 +162,9 @@ Resources:
         - !GetAtt DatabaseSecurityGroup.GroupId
       Port: 5432
       SnapshotIdentifier: !If [UseDBSnapshot, !Ref DBSnapshotName, !Ref "AWS::NoValue"]
+      AssociatedRoles:
+        - FeatureName: s3Export
+          RoleArn: !GetAtt ExportsRole.Arn
 
   ProdDatabase:
     Type: AWS::RDS::DBInstance
@@ -214,6 +217,41 @@ Resources:
       VersioningConfiguration:
         Status: Enabled
   
+  ExportsBucket:
+    Type: AWS::S3::Bucket
+    Condition: CreateProdResources
+    Properties:
+      AccessControl: PublicRead
+      BucketName: caseharvester-exports
+  
+  ExportsRole:
+    Type: AWS::IAM::Role
+    Condition: CreateProdResources
+    Properties:
+      RoleName: !Sub caseharvester_exports_role
+      Description: IAM role used for exporting to S3 from RDS
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - rds.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: exports_role_policies
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - "arn:aws:s3:::caseharvester-exports/*"
+                  - "arn:aws:s3:::caseharvester-exports"
+
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:

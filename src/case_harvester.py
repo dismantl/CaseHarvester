@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+from sqlalchemy.sql.expression import table
+from mjcs import models
 from mjcs.config import config
 from mjcs.models.common import TableBase
 from mjcs.spider import Spider
 from mjcs.scraper import Scraper
 from mjcs.parser import Parser
+from mjcs.util import db_session, get_case_model_list
 import boto3
 from datetime import datetime, timedelta
 import os
@@ -248,7 +251,35 @@ def run_parser(args):
         parser.parse_unparsed(args.type)
     elif args.reparse:
         parser.reparse(args.type)
-    
+
+def export_tables(args):
+    case_models = get_case_model_list(models)
+    with db_session() as db:
+        for model in case_models:
+            if args.redacted and 'defendants' in model.__tablename__:
+                table_name = f'redacted.{model.__tablename__}'
+                export_name = f'{model.__tablename__}_redacted.csv'
+            else:
+                table_name = model.__tablename__
+                export_name = f'{model.__tablename__}.csv'
+            logger.info(f'Exporting {table_name} to S3')
+            db.execute(f"""
+                SELECT
+                    *
+                FROM
+                    aws_s3.query_export_to_s3('
+                        SELECT
+                            *
+                        FROM
+                            {table_name}',
+                        aws_commons.create_s3_uri(
+                            'caseharvester-exports',
+                            '{export_name}',
+                            'us-east-1'
+                        ),
+                        OPTIONS :='FORMAT CSV, HEADER'
+                    )
+            """)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -327,10 +358,16 @@ if __name__ == '__main__':
         help="Print debug information")
     parser_parser.add_argument('--unparsed', '-u', action='store_true',
         help="Parse cases from the database that have not been successfully parsed (optionally \
-            specifying --type), first loading them into the parser queue")
+            specifying --type), loading them into the parser queue")
     parser_parser.add_argument('--reparse', '-r', action='store_true',
-        help="Reparse all or a specific type (using --type) of case, first loading them into the parser queue")
+        help="Reparse all or a specific type (using --type) of case, loading them into the parser queue")
     parser_parser.set_defaults(func=run_parser)
+
+    parser_export_tables = subparsers.add_parser('export-tables',
+        help='Export all case-related tables to S3')
+    parser_export_tables.add_argument('--redacted', '-r', action='store_true',
+        help="Export only non-redacted columns and tables")
+    parser_export_tables.set_defaults(func=export_tables)
 
     if os.getenv('DEV_MODE'):
         parser_db = subparsers.add_parser('db_init', help="Database initialization")

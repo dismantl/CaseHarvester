@@ -109,6 +109,92 @@ Resources:
         deadLetterTargetArn: !GetAtt ParserFailedQueue.Arn
         maxReceiveCount: 5
 
+  MonthlyExportTaskRole:
+    Type: AWS::IAM::Role
+    Condition: CreateProdResources
+    Properties:
+      RoleName: !Sub mjcs_ecs_export_task_role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+  MonthlyExportTask:
+    Type: AWS::ECS::TaskDefinition
+    Condition: CreateProdResources
+    Properties:
+      ContainerDefinitions:
+        - Name: mjcs_export_container
+          Command:
+            - python
+            - -u
+            - case_harvester.py
+            - --environment
+            - production
+            - export-tables
+            - --redacted
+          Environment:
+            - Name: MJCS_DATABASE_URL
+              Value: !Sub
+                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
+                - db_user: !Ref DatabaseUsername
+                  db_pw: !Ref DatabasePassword
+                  db_addr:
+                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+                  db_name: !Ref DatabaseName
+          Image: !Sub
+            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
+            - repo_name:
+                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-region: !Ref AWSRegion
+              awslogs-group: caseharvester-export-monthly
+              awslogs-stream-prefix: caseharvester-export-monthly-logs
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 256
+      Memory: 512
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+      NetworkMode: awsvpc
+      TaskRoleArn: !GetAtt MonthlyExportTaskRole.Arn
+
+  MonthlyExport:
+    Type: AWS::Events::Rule
+    Condition: CreateProdResources
+    Properties:
+      Name: !Sub monthly_export_${EnvironmentType}
+      Description: Export tables to S3
+      ScheduleExpression: cron(0 0 1 * ? *)
+      Targets:
+        - Id: export_ecs_task_target
+          Arn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
+          RoleArn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+          EcsParameters:
+            LaunchType: FARGATE
+            TaskDefinitionArn: !Ref MonthlyExportTask
+            TaskCount: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: ENABLED
+                SecurityGroups:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+                Subnets:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
+
 Outputs:
   ParserArn:
     Description: ARN of Parser lambda function
