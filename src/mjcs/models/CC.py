@@ -153,7 +153,7 @@ class CCAttorney(CCCaseTable, TableBase):
 class CCCourtSchedule(CCCaseTable, TableBase):
     __tablename__ = 'cc_court_schedule'
     __table_args__ = (Index('ixh_cc_court_schedule_case_number', 'case_number', postgresql_using='hash'),)
-    cc = relationship('CC', backref='court_schedules')
+    cc = relationship('CC', backref='court_schedule')
 
     id = Column(Integer, primary_key=True)
     event_type = Column(String, enum=True)

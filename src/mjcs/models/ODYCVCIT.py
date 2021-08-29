@@ -164,7 +164,7 @@ class ODYCVCITAttorney(ODYCVCITCaseTable, TableBase):
 class ODYCVCITCourtSchedule(ODYCVCITCaseTable, TableBase):
     __tablename__ = 'odycvcit_court_schedule'
     __table_args__ = (Index('ixh_odycvcit_court_schedule_case_number', 'case_number', postgresql_using='hash'),)
-    odycvcit = relationship('ODYCVCIT', backref='court_schedules')
+    odycvcit = relationship('ODYCVCIT', backref='court_schedule')
 
     id = Column(Integer, primary_key=True)
     event_type = Column(String, nullable=False, enum=True)

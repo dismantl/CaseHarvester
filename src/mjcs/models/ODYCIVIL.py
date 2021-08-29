@@ -479,7 +479,7 @@ class ODYCIVILDisposition(ODYCIVILCaseTable, TableBase):
 class ODYCIVILCourtSchedule(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_court_schedule'
     __table_args__ = (Index('ixh_odycivil_court_schedule_case_number', 'case_number', postgresql_using='hash'),)
-    odycivil = relationship('ODYCIVIL', backref='court_schedules')
+    odycivil = relationship('ODYCIVIL', backref='court_schedule')
 
     id = Column(Integer, primary_key=True)
     event_type = Column(String, nullable=False, enum=True)
