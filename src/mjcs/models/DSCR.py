@@ -165,8 +165,8 @@ class DSCRDefendantAlias(DSCRCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     alias_name = Column(String, nullable=True)
-    address_1 = Column(String, nullable=True)
-    address_2 = Column(String, nullable=True)
+    address_1 = Column(String, nullable=True, redacted=True)
+    address_2 = Column(String, nullable=True, redacted=True)
     city = Column(String, nullable=True)
     state = Column(String, nullable=True)
     zip_code = Column(String, nullable=True)

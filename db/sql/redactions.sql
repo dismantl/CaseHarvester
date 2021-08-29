@@ -17,6 +17,16 @@ CREATE OR REPLACE VIEW redacted.dscr_defendants
     dscr_defendants.case_number
    FROM dscr_defendants;
 
+REVOKE SELECT ON TABLE public.dscr_defendant_aliases FROM mjcs_ro_redacted;
+CREATE OR REPLACE VIEW redacted.dscr_defendant_aliases
+ AS
+ SELECT dscr_defendant_aliases.id,
+    dscr_defendant_aliases.alias_name,
+    dscr_defendant_aliases.city,
+    dscr_defendant_aliases.state,
+    dscr_defendant_aliases.zip_code,
+   FROM dscr_defendant_aliases;
+
 REVOKE SELECT ON TABLE public.dsk8_defendants FROM mjcs_ro_redacted;
 CREATE OR REPLACE VIEW redacted.dsk8_defendants
  AS
@@ -30,6 +40,16 @@ CREATE OR REPLACE VIEW redacted.dsk8_defendants
     dsk8_defendants.zip_code,
     dsk8_defendants.case_number
    FROM dsk8_defendants;
+
+REVOKE SELECT ON TABLE public.dsk8_defendant_aliases FROM mjcs_ro_redacted;
+CREATE OR REPLACE VIEW redacted.dsk8_defendant_aliases
+ AS
+ SELECT dsk8_defendant_aliases.id,
+    dsk8_defendant_aliases.alias_name,
+    dsk8_defendant_aliases.city,
+    dsk8_defendant_aliases.state,
+    dsk8_defendant_aliases.zip_code,
+   FROM dsk8_defendant_aliases;
 
 REVOKE SELECT ON TABLE public.odycrim_defendants FROM mjcs_ro_redacted;
 CREATE OR REPLACE VIEW redacted.odycrim_defendants
