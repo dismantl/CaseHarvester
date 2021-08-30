@@ -18,7 +18,6 @@ class Case(TableBase):
     caption = Column(String, nullable=True)
     loc = Column(Integer)
     detail_loc = Column(String, index=True, enum=True)
-    url = Column(String)
     last_scrape = Column(DateTime, nullable=True, index=True)
     last_parse = Column(DateTime, nullable=True, index=True)
     scrape_exempt = Column(Boolean, nullable=False, server_default='false')

@@ -565,7 +565,6 @@ class SearchNode:
                     query_court = self.spider.court,
                     loc = loc,
                     detail_loc = detail_loc,
-                    url = case_url
                 )
                 processed_cases[case_number] = case
         
