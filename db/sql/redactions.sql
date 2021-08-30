@@ -24,7 +24,7 @@ CREATE OR REPLACE VIEW redacted.dscr_defendant_aliases
     dscr_defendant_aliases.alias_name,
     dscr_defendant_aliases.city,
     dscr_defendant_aliases.state,
-    dscr_defendant_aliases.zip_code,
+    dscr_defendant_aliases.zip_code
    FROM dscr_defendant_aliases;
 
 REVOKE SELECT ON TABLE public.dsk8_defendants FROM mjcs_ro_redacted;
@@ -48,7 +48,7 @@ CREATE OR REPLACE VIEW redacted.dsk8_defendant_aliases
     dsk8_defendant_aliases.alias_name,
     dsk8_defendant_aliases.city,
     dsk8_defendant_aliases.state,
-    dsk8_defendant_aliases.zip_code,
+    dsk8_defendant_aliases.zip_code
    FROM dsk8_defendant_aliases;
 
 REVOKE SELECT ON TABLE public.odycrim_defendants FROM mjcs_ro_redacted;
