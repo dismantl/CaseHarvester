@@ -6,7 +6,7 @@ import re
 # Note that consumers may not be called in order
 class DSCPParser(CaseDetailsParser, ChargeFinder):
     inactive_statuses = [
-        # TODO
+        'CLOSED'
     ]
 
     def header(self, soup):

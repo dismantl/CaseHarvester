@@ -8,7 +8,7 @@ import re
 
 class KParser(CaseDetailsParser, ChargeFinder):
     inactive_statuses = [
-        # TODO
+        'Closed/Inactive'
     ]
 
     def header(self, soup):
