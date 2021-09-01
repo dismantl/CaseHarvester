@@ -16,6 +16,7 @@ class BaseParserError(Exception):
 
 # begin parser module exports
 from .DSCR import DSCRParser
+from .DSCP import DSCPParser
 from .DSK8 import DSK8Parser
 from .DSCIVIL import DSCIVILParser
 from .CC import CCParser
@@ -24,9 +25,11 @@ from .ODYCRIM import ODYCRIMParser
 from .ODYCIVIL import ODYCIVILParser
 from .ODYCVCIT import ODYCVCITParser
 from .DSTRAF import DSTRAFParser
+from .K import KParser
 
 parsers = [
     ('DSCR',DSCRParser),
+    ('DSCP',DSCPParser),
     ('DSK8',DSK8Parser),
     ('DSCIVIL',DSCIVILParser),
     ('CC',CCParser),
@@ -34,7 +37,8 @@ parsers = [
     ('ODYCRIM',ODYCRIMParser),
     ('ODYCIVIL',ODYCIVILParser),
     ('ODYCVCIT',ODYCVCITParser),
-    ('DSTRAF',DSTRAFParser)
+    ('DSTRAF',DSTRAFParser),
+    ('K',KParser),
 ]
 
 def parse_case(case_number, detail_loc=None, skip_check=False):

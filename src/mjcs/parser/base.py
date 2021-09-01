@@ -183,6 +183,18 @@ class CaseDetailsParser(ABC):
         self.mark_for_deletion(h6)
         return h6
 
+    def fifth_level_header(self, base, header_name):
+        try:
+            left = base\
+                .find('i',string=re.compile(header_name))\
+                .find_parent('left')
+        except AttributeError:
+            raise ParserError('Fifth level header "%s" not found' % header_name)
+        if not left:
+            raise ParserError('Fifth level header "%s" not found' % header_name)
+        self.mark_for_deletion(left)
+        return left
+
     def table_next_first_column_prompt(self, prev_sibling, first_column_prompt):
         obj = self.immediate_sibling(prev_sibling,'table')
         try:
@@ -309,6 +321,14 @@ class CaseDetailsParser(ABC):
         if value_span:
             self.mark_for_deletion(value_span)
             return self.format_value(value_span.string, **format_args)
+        else:
+            value_span = prompt_span\
+                .find_parent('td')\
+                .find_next_sibling('td')\
+                .find('span',class_='value')
+            if value_span:
+                self.mark_for_deletion(value_span)
+                return self.format_value(value_span.string, **format_args)
         return None
 
     def value_combined_first_column(self, base, first_column_prompt, ignore_missing=False, **format_args):
