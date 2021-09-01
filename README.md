@@ -42,6 +42,8 @@ Case details in the MJCS are formatted differently depending on the county and t
 * DSCR: District Court Criminal Cases
 * DSK8: Baltimore City Criminal Cases
 * DSTRAF: District Court Traffic Cases
+* DSCP: District Court Civil Citations
+* K: Circuit Court Criminal Cases
 
 Each different parser breaks down the case details to a granular level and stores the data in a number of database tables. This [schematic diagram](https://disman.tl/caseharvester/relationships.html) illustrates how this data is represented in the database.
 
