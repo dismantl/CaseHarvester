@@ -112,7 +112,7 @@ class PGAttorney(PGCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     name = Column(String)
-    attorney_type = Column(String)
+    attorney_type = Column(String, enum=True)
     address_1 = Column(String)
     address_2 = Column(String)
     city = Column(String)
@@ -125,7 +125,7 @@ class PGOtherParty(PGCaseTable, TableBase):
     pg = relationship('PG', backref='other_parties')
 
     id = Column(Integer, primary_key=True)
-    party_type = Column(String)
+    party_type = Column(String, enum=True)
     party_number = Column(Integer)
     name = Column(String)
 
@@ -135,7 +135,7 @@ class PGCourtSchedule(PGCaseTable, TableBase):
     pg = relationship('PG', backref='court_schedule')
 
     id = Column(Integer, primary_key=True)
-    event_type = Column(String)
+    event_type = Column(String, enum=True)
     event_date = Column(Date)
     _event_date_str = Column('event_date_str', String)
     time = Column(Time)

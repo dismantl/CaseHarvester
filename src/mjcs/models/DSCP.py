@@ -187,8 +187,8 @@ class DSCPRelatedPerson(DSCPCaseTable, TableBase):
     agency_code = Column(String, nullable=True, enum=True)
     agency_sub_code = Column(String, nullable=True)
     officer_id = Column(String, nullable=True)
-    attorney_code = Column(Integer,nullable=True)
-    attorney_firm = Column(String,nullable=True)
+    attorney_code = Column(Integer, nullable=True, enum=True)
+    attorney_firm = Column(String, nullable=True)
 
 class DSCPEvent(DSCPCaseTable, TableBase):
     __tablename__ = 'dscp_events'
