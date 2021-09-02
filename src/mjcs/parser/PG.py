@@ -5,7 +5,9 @@ import re
 
 class PGParser(CaseDetailsParser, ChargeFinder):
     inactive_statuses = [
-        # TODO
+        'Inactive',
+        'Closed',
+        'Historical'
     ]
 
     def header(self, soup):
