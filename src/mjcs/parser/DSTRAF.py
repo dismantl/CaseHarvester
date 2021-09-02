@@ -42,28 +42,6 @@ class DSTRAFParser(CaseDetailsParser):
         case.officer_id = self.value_combined_first_column(case_table,'Officer ID:',ignore_missing=True)
         db.add(case)
 
-    # #########################################################
-    # # COURT SCHEDULING INFORMATION
-    # #########################################################
-    # @consumer
-    # def trial(self, db, soup):
-    #     try:
-    #         section_header = self.first_level_header(soup, 'Court Scheduling Information')
-    #     except ParserError:
-    #         return
-    #     schedule = DSTRAFTrial(case_number=self.case_number)
-
-    #     table1 = self.table_next_first_column_prompt(section_header, 'Trial Date:')
-    #     schedule.date_str = self.value_first_column(table1, 'Trial Date:')
-    #     schedule.time_str = self.value_column(table1, 'Trial Time:')
-    #     schedule.room = self.value_column(table1, 'Room:',ignore_missing=True)
-
-    #     table2 = self.table_next_first_column_prompt(table1, 'Trial Type:')
-    #     schedule.trial_type = self.value_first_column(table2, 'Trial Type:')
-
-    #     schedule.location = self.value_first_column(soup, 'Trial Location:')
-    #     db.add(schedule)
-
     #########################################################
     # CHARGE INFORMATION
     #########################################################
@@ -196,43 +174,6 @@ class DSTRAFParser(CaseDetailsParser):
             defendant.DOB_str = self.value_combined_first_column(demographics_table,'DOB:',ignore_missing=True)
 
         db.add(defendant)
-
-        # separator = self.immediate_sibling(address_table,'hr')
-
-        # # check for ALIAS tables
-        # prev_obj = separator
-        # while True:
-        #     try:
-        #         alias_table = self.table_next_first_column_prompt(prev_obj,'ALIAS:')
-        #     except ParserError:
-        #         break
-        #     alias = DSTRAFDefendantAlias(case_number=self.case_number)
-        #     alias.alias_name = self.value_first_column(alias_table,'ALIAS:')
-
-        #     try:
-        #         address_table = self.table_next_first_column_prompt(alias_table,'Address:')
-        #     except ParserError:
-        #         address_table = self.immediate_sibling(alias_table,'table')
-        #         separator = self.immediate_sibling(address_table,'hr')
-        #     else:
-        #         alias.address_1 = self.value_first_column(address_table,'Address:')
-        #         address_row = address_table\
-        #             .find('span',class_='FirstColumnPrompt',string='Address:')\
-        #             .find_parent('tr')
-        #         if not address_row.find('span',class_='Prompt') \
-        #                 and len(list(address_row.find_all('span',class_='FirstColumnPrompt'))) == 2 \
-        #                 and len(list(address_row.find_all('span',class_='Value'))) == 2 \
-        #                 and not address_row.find_all('span',class_='FirstColumnPrompt')[1].string:
-        #             address_2 = address_row.find_all('span',class_='Value')[1].string
-        #             if address_2:
-        #                 self.mark_for_deletion(address_2.parent)
-        #                 alias.address_2 = self.format_value(address_2)
-        #         alias.city = self.value_first_column(address_table,'City:')
-        #         alias.state = self.value_column(address_table,'State:')
-        #         alias.zip_code = self.value_column(address_table,'Zip Code:')
-        #         separator = self.immediate_sibling(address_table,'hr')
-        #     db.add(alias)
-        #     prev_obj = separator
 
     #########################################################
     # RELATED PERSON INFORMATION

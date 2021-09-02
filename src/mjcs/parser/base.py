@@ -195,6 +195,18 @@ class CaseDetailsParser(ABC):
         self.mark_for_deletion(left)
         return left
 
+    def sixth_level_header(self, base, header_name):
+        try:
+            table = base\
+                .find('h6',string=re.compile(header_name))\
+                .find_parent('table')
+        except AttributeError:
+            raise ParserError('Fifth level header "%s" not found' % header_name)
+        if not table:
+            raise ParserError('Fifth level header "%s" not found' % header_name)
+        self.mark_for_deletion(table)
+        return table
+
     def table_next_first_column_prompt(self, prev_sibling, first_column_prompt):
         obj = self.immediate_sibling(prev_sibling,'table')
         try:

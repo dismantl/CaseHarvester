@@ -43,3 +43,5 @@ from .K import (K, KDistrictCaseNumber, KPlaintiff, KDefendant, KCharge,
                  KCourtSchedule, KJudgment, KJudgmentModification, KDefendantAlias,
                  KJudgmentAgainst, KJudgmentInFavor, KSupportOrder, KDocument,
                  KSentencingNetTools)
+from .PG import (PG, PGCharge, PGDefendant, PGDefendantAlias, PGOtherParty, 
+                 PGAttorney, PGCourtSchedule, PGDocket, PGPlaintiff)

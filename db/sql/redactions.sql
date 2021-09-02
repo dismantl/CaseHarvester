@@ -111,4 +111,14 @@ CREATE OR REPLACE VIEW redacted.dstraf_defendants
     dstraf_defendants.case_number
    FROM dstraf_defendants;
 
+REVOKE SELECT ON TABLE public.pg_defendants FROM mjcs_ro_redacted;
+CREATE OR REPLACE VIEW redacted.pg_defendants
+ AS
+ SELECT pg_defendants.id,
+    pg_defendants.city,
+    pg_defendants.state,
+    pg_defendants.zip_code,
+    pg_defendants.case_number
+   FROM pg_defendants;
+
 COMMIT;

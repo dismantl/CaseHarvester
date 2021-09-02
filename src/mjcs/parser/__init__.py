@@ -26,6 +26,7 @@ from .ODYCIVIL import ODYCIVILParser
 from .ODYCVCIT import ODYCVCITParser
 from .DSTRAF import DSTRAFParser
 from .K import KParser
+from .PG import PGParser
 
 parsers = [
     ('DSCR',DSCRParser),
@@ -39,6 +40,7 @@ parsers = [
     ('ODYCVCIT',ODYCVCITParser),
     ('DSTRAF',DSTRAFParser),
     ('K',KParser),
+    ('PG',PGParser)
 ]
 
 def parse_case(case_number, detail_loc=None, skip_check=False):

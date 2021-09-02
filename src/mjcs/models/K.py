@@ -80,10 +80,28 @@ class KPlaintiff(Party, KCaseTable, TableBase):
     __table_args__ = (Index('ixh_k_plaintiffs_case_number', 'case_number', postgresql_using='hash'),)
     k = relationship('K', backref='plaintiffs')
 
-class KDefendant(Party, KCaseTable, TableBase):
+class KDefendant(KCaseTable, TableBase):
     __tablename__ = 'k_defendants'
     __table_args__ = (Index('ixh_k_defendants_case_number', 'case_number', postgresql_using='hash'),)
     k = relationship('K', backref='defendants')
+
+    id = Column(Integer, primary_key=True)
+    party_type = Column(String, enum=True)
+    party_number = Column(Integer,nullable=True)
+    name = Column(String,nullable=True, redacted=True)
+    business_org_name = Column(String,nullable=True)
+
+    @declared_attr
+    def aliases(self):
+        return relationship('KPartyAlias')
+
+    @declared_attr
+    def addresses(self):
+        return relationship('KPartyAddress')
+
+    @declared_attr
+    def attorneys(self):
+        return relationship('KAttorney')
 
 class KDefendantAlias(KCaseTable, TableBase):
     __tablename__ = 'k_defendant_aliases'
