@@ -41,6 +41,40 @@ Resources:
       VisibilityTimeout: 300
       QueueName: !Sub mjcs_scraper_queue_${EnvironmentType}
 
+  ScaperQueueNotEmptyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: scraper_queue_not_empty_alarm
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Period: 60
+      Statistic: Average
+      Threshold: 1
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt ScraperQueue.QueueName
+      AlarmActions:
+        - !Ref ScraperServiceScaleOutPolicy
+
+  ScaperQueueEmptyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: scraper_queue_empty_alarm
+      ComparisonOperator: LessThanThreshold
+      EvaluationPeriods: 1
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Period: 60
+      Statistic: Average
+      Threshold: 1
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt ScraperQueue.QueueName
+      AlarmActions:
+        - !Ref ScraperServiceScaleInPolicy
+
   ScraperTaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -76,6 +110,50 @@ Resources:
             - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
       TaskDefinition: !Ref ScraperServiceTask
   
+  ScraperServiceScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 4
+      MinCapacity: 0
+      RoleARN: 
+        Fn::Sub: 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService'
+      ServiceNamespace: ecs
+      ScalableDimension: ecs:service:DesiredCount
+      ResourceId: !Sub service/caseharvester_cluster_${EnvironmentType}/mjcs_scraper_service_${EnvironmentType}
+
+  ScraperServiceScaleOutPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: caseharvester-scraper-service-scale-out-policy
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScraperServiceScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: ExactCapacity
+        StepAdjustments:
+          - MetricIntervalLowerBound: 0
+            MetricIntervalUpperBound: 500000
+            ScalingAdjustment: 1
+          - MetricIntervalLowerBound: 500000
+            MetricIntervalUpperBound: 1000000
+            ScalingAdjustment: 2
+          - MetricIntervalLowerBound: 1000000
+            MetricIntervalUpperBound: 1500000
+            ScalingAdjustment: 3
+          - MetricIntervalLowerBound: 1500000
+            ScalingAdjustment: 4
+  
+  ScraperServiceScaleInPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: caseharvester-scraper-service-scale-in-policy
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScraperServiceScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: ExactCapacity
+        StepAdjustments:
+          - MetricIntervalUpperBound: 0
+            ScalingAdjustment: 0
+
   ScraperServiceTask:
     Type: AWS::ECS::TaskDefinition
     Properties:
