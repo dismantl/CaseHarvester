@@ -201,9 +201,9 @@ class CaseDetailsParser(ABC):
                 .find('h6',string=re.compile(header_name))\
                 .find_parent('table')
         except AttributeError:
-            raise ParserError('Fifth level header "%s" not found' % header_name)
+            raise ParserError('Sixth level header "%s" not found' % header_name)
         if not table:
-            raise ParserError('Fifth level header "%s" not found' % header_name)
+            raise ParserError('Sixth level header "%s" not found' % header_name)
         self.mark_for_deletion(table)
         return table
 
