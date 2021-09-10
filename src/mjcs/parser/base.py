@@ -320,7 +320,7 @@ class CaseDetailsParser(ABC):
 
     def value_first_column(self, base, first_column_prompt, ignore_missing=False, **format_args):
         prompt_span = base\
-            .find('span',class_='FirstColumnPrompt',string=re.compile(first_column_prompt))
+            .find('span',class_='FirstColumnPrompt',string=re.compile(first_column_prompt) if first_column_prompt else '')
         if not prompt_span:
             if ignore_missing:
                 return None
