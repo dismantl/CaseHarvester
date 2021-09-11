@@ -121,4 +121,13 @@ CREATE OR REPLACE VIEW redacted.pg_defendants
     pg_defendants.case_number
    FROM pg_defendants;
 
+REVOKE SELECT ON TABLE public.dv_defendants FROM mjcs_ro_redacted;
+CREATE OR REPLACE VIEW redacted.dv_defendants
+ AS
+ SELECT dv_defendants.id,
+    dv_defendants.city,
+    dv_defendants.state,
+    dv_defendants.case_number
+   FROM dv_defendants;
+
 COMMIT;

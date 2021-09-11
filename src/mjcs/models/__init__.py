@@ -45,3 +45,4 @@ from .K import (K, KDistrictCaseNumber, KPlaintiff, KDefendant, KCharge,
                  KSentencingNetTools)
 from .PG import (PG, PGCharge, PGDefendant, PGDefendantAlias, PGOtherParty, 
                  PGAttorney, PGCourtSchedule, PGDocket, PGPlaintiff)
+from .DV import DV, DVDefendant, DVHearing, DVEvent, DVDefendantAttorney

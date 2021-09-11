@@ -34,6 +34,7 @@ class PGParser(CaseDetailsParser, ChargeFinder):
         case.case_type = self.value_combined_first_column(t1,'Case Type:',ignore_missing=True)
         case.filing_date_str = self.value_combined_first_column(t1,'Filing Date:',ignore_missing=True)
         case.case_status = self.value_combined_first_column(t1,'Case Status:',ignore_missing=True)
+        self.case_status = case.case_status
         db.add(case)
         db.flush()
     
