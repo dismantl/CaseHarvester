@@ -13,12 +13,12 @@ class DV(CaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     court_system = Column(String, enum=True)
-    case_type = Column(String,nullable=True, enum=True)
-    filing_date = Column(Date,nullable=True)
-    _filing_date_str = Column('filing_date_str',String,nullable=True)
-    case_status = Column(String,nullable=True, enum=True)
-    order_valid_thru = Column(Date,nullable=True)
-    _order_valid_thru_str = Column('order_valid_thru_str',String,nullable=True)
+    case_type = Column(String, enum=True)
+    filing_date = Column(Date)
+    _filing_date_str = Column('filing_date_str',String)
+    case_status = Column(String, enum=True)
+    order_valid_thru = Column(Date)
+    _order_valid_thru_str = Column('order_valid_thru_str',String)
 
     case = relationship('Case', backref=backref('dv', uselist=False))
 
@@ -77,15 +77,15 @@ class DVHearing(DVCaseTable, TableBase):
     dv = relationship('DV', backref='hearings')
 
     id = Column(Integer, primary_key=True)
-    hearing_date = Column(Date,nullable=True)
+    hearing_date = Column(Date)
     _hearing_date_str = Column('hearing_date_str',String)
     hearing_time = Column(Time, nullable=True)
     _hearing_time_str = Column('hearing_time_str', String)
     room = Column(String)
-    location = Column(String)
-    served_date = Column(Date,nullable=True)
+    location = Column(String, enum=True)
+    served_date = Column(Date)
     _served_date_str = Column('served_date_str',String)
-    hearing_type = Column(String)
+    hearing_type = Column(String, enum=True)
     result = Column(String)
 
     @hybrid_property
@@ -124,7 +124,7 @@ class DVEvent(DVCaseTable, TableBase):
     dv = relationship('DV', backref='events')
 
     id = Column(Integer, primary_key=True)
-    event_date = Column(Date,nullable=True)
+    event_date = Column(Date)
     _event_date_str = Column('event_date_str',String)
     description = Column(String)
 

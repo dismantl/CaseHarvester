@@ -4,7 +4,8 @@ import re
 
 class DVParser(CaseDetailsParser):
     inactive_statuses = [
-        # TODO
+        'COMPLETE',
+        'CLOSED'
     ]
 
     def header(self, soup):
