@@ -372,6 +372,21 @@ class CaseDetailsParser(ABC):
             self.mark_for_deletion(value_span)
             return self.format_value(value_span.string, **format_args)
         return None
+    
+    def value_column_no_prompt(self, base, prompt, ignore_missing=False, **format_args):
+        prompt_span = base\
+            .find('span',class_='Value',string=re.compile(prompt))
+        if not prompt_span:
+            if ignore_missing:
+                return None
+            raise ParserError('Unable to find column prompt %s' % prompt)
+        self.mark_for_deletion(prompt_span)
+        value_span = prompt_span\
+            .find_next_sibling('span',class_='Value')
+        if value_span:
+            self.mark_for_deletion(value_span)
+            return self.format_value(value_span.string, **format_args)
+        return None
 
     def value_multi_column(self, base, prompt, ignore_missing=False, **format_args):
         prompt_span = base\

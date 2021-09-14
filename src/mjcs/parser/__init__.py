@@ -28,7 +28,7 @@ from .DSTRAF import DSTRAFParser
 from .K import KParser
 from .PG import PGParser
 from .DV import DVParser
-from .MCCR import MCCRParser
+from .MCCI import MCCIParser
 
 parsers = [
     ('DSCR',DSCRParser),
@@ -44,7 +44,7 @@ parsers = [
     ('K',KParser),
     ('PG',PGParser),
     ('DV',DVParser),
-    ('MCCR',MCCRParser)
+    ('MCCI',MCCIParser)
 ]
 
 def parse_case(case_number, detail_loc=None, skip_check=False):

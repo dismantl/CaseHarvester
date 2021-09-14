@@ -343,7 +343,7 @@ if __name__ == '__main__':
 
     parser_parser = subparsers.add_parser('parser', help=\
         "Parse unparsed details from cases downloaded from the Maryland Judiciary Case Search")
-    parser_parser.add_argument('--type', '-t', choices=['ODYTRAF','ODYCRIM','ODYCIVIL','ODYCVCIT','DSCR','DSK8','DSCIVIL','CC','DSTRAF','DSCP','K','PG','DV','MCCR'],
+    parser_parser.add_argument('--type', '-t', choices=['ODYTRAF','ODYCRIM','ODYCIVIL','ODYCVCIT','DSCR','DSK8','DSCIVIL','CC','DSTRAF','DSCP','K','PG','DV','MCCI'],
         help="Only parse cases of this type (requires --load-failed-queue or --unparsed)")
     parser_parser.add_argument('--ignore-errors', action='store_true', default=False,
         help="Ignore parsing errors")
