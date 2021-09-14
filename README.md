@@ -46,6 +46,7 @@ Case details in the MJCS are formatted differently depending on the county and t
 * K: Circuit Court Criminal Cases
 * PG: Prince George's County Circuit Court Criminal Cases
 * DV: Domestic Violence Cases
+* MCCI: Montgomery County Civil Cases
 
 Each different parser breaks down the case details to a granular level and stores the data in a number of database tables. This [schematic diagram](https://disman.tl/caseharvester/relationships.html) illustrates how this data is represented in the database.
 
