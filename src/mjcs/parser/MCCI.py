@@ -160,7 +160,9 @@ class MCCIParser(CaseDetailsParser):
             except AttributeError:
                 try:
                     t2 = self.immediate_sibling(t1,'table')
-                except ParserError:
+                    if f'Attorney(s) for the {party_type}' in list(t2.stripped_strings) or f'{party_type} Aliases' in list(t2.stripped_strings):
+                        raise ContinueParsing
+                except (ParserError, ContinueParsing):
                     pass
                 else:
                     prev_obj = t2
@@ -173,7 +175,8 @@ class MCCIParser(CaseDetailsParser):
                                 .find_parent('tr')
             
             if addr_row_1:
-                address_lines = [self.value_first_column(addr_row_1,'Address:')]
+                addr_line_1 = self.value_first_column(addr_row_1,'Address:')
+                address_lines = [addr_line_1] if addr_line_1 else []
                 prev_row = addr_row_1
                 while True:
                     try:
@@ -186,7 +189,7 @@ class MCCIParser(CaseDetailsParser):
                         address_lines.append(addr_line)
                 if len(address_lines) == 1:
                     party.address = address_lines[0]
-                else:
+                elif len(address_lines) > 1:
                     match = city_state_zip.fullmatch(address_lines[-1])
                     if match:
                         party.address = "\n".join(address_lines[:-1])
@@ -198,13 +201,13 @@ class MCCIParser(CaseDetailsParser):
             db.add(party)
             db.flush()
         
-            try:
-                errant_row = self.immediate_sibling(prev_obj,'tr')
-                prev_obj = errant_row
-            except ParserError:
-                pass
-
             while True:
+                try:
+                    errant_row = self.immediate_sibling(prev_obj,'tr')
+                    prev_obj = errant_row
+                except ParserError:
+                    pass
+
                 combined_alias_table = False
                 try:
                     subsection_table = self.immediate_sibling(prev_obj,'table')
@@ -491,6 +494,7 @@ class MCCIParser(CaseDetailsParser):
             judgment.satisfied_str = self.value_column_no_prompt(t1,'Satisfied',ignore_missing=True)
             judgment.vacated_str = self.value_column_no_prompt(t1,'Vacated',ignore_missing=True)
             judgment.amended_str = self.value_column_no_prompt(t1,'Amended',ignore_missing=True)
+            judgment.renewed_str = self.value_column_no_prompt(t1,'Renewed',ignore_missing=True)
             judgment.debtor = self.value_first_column(t1,'Debtor:')
             judgment.party_role = self.value_column(t1,'Party Role:')
             db.add(judgment)

@@ -217,6 +217,8 @@ class MCCIJudgment(MCCICaseTable, TableBase):
     _vacated_str = Column('vacated_str', String)
     amended = Column(Date)
     _amended_str = Column('amended_str', String)
+    renewed = Column(Date)
+    _renewed_str = Column('renewed_str', String)
 
     @hybrid_property
     def date_str(self):
@@ -257,6 +259,14 @@ class MCCIJudgment(MCCICaseTable, TableBase):
     def amended_str(self,val):
         self.amended = date_from_str(val)
         self._amended_str = val
+    
+    @hybrid_property
+    def renewed_str(self):
+        return self._renewed_str
+    @renewed_str.setter
+    def renewed_str(self,val):
+        self.renewed = date_from_str(val)
+        self._renewed_str = val
 
 class MCCIDocket(MCCICaseTable, TableBase):
     __tablename__ = 'mcci_dockets'
