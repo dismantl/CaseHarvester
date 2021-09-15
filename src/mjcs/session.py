@@ -4,6 +4,7 @@ import h11
 import trio
 import asks
 import os
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +63,18 @@ class AsyncSession:
         return response
 
     async def renew(self):
-        response = await self.request(
+        response = await self.session.request(
+            'GET',
+            f'{config.MJCS_BASE_URL}/inquiry-index.jsp'
+        )
+        soup = BeautifulSoup(response.text, 'html.parser')
+        disclaimer_token = soup.find('input',{'name':'disclaimer'}).get('value')
+        logger.debug(disclaimer_token)
+        response = await self.session.request(
             'POST',
             f'{config.MJCS_BASE_URL}/processDisclaimer.jis',
             data = {
-                'disclaimer':'Y',
+                'disclaimer':disclaimer_token,
                 'action':'Continue'
             }
         )
