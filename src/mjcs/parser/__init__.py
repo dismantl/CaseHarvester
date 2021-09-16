@@ -47,12 +47,7 @@ parsers = [
     ('MCCI',MCCIParser)
 ]
 
-def parse_case(case_number, detail_loc=None, skip_check=False):
-    # check if parse_exempt before scraping
-    if not skip_check:
-        with db_session() as db:
-            if db.query(Case.parse_exempt).filter(Case.case_number == case_number).scalar() == True:
-                return
+def parse_case(case_number, detail_loc=None):
     case_details = config.case_details_bucket.Object(case_number).get()
     case_html = case_details['Body'].read().decode('utf-8')
     if not detail_loc:
@@ -75,21 +70,21 @@ class Parser:
         from multiprocessing_logging import install_mp_handler
         install_mp_handler(logger)
 
-    def parse_case(self, case_number, detail_loc=None, skip_check=False):
+    def parse_case(self, case_number, detail_loc=None):
         if not detail_loc:
             detail_loc = get_detail_loc(case_number)
         logger.debug(f'Worker {getpid()} parsing {case_number} of type {detail_loc}')
-        parse_case(case_number, detail_loc, skip_check)
+        parse_case(case_number, detail_loc)
         logger.info(f'Successfully parsed case {case_number}')
 
     def parse_unparsed(self, detail_loc=None):
         logger.info(f'Loading unparsed cases of type {detail_loc if detail_loc else "ANY"} into parser queue')
         if detail_loc:
             filter = and_(Case.last_parse == None, Case.last_scrape != None,
-                Case.parse_exempt == False, Case.detail_loc == detail_loc)
+                Case.detail_loc == detail_loc)
         else:
             filter = and_(Case.last_parse == None, Case.last_scrape != None,
-                Case.parse_exempt == False, Case.detail_loc.in_([c for c,p in parsers]))
+                Case.detail_loc.in_([c for c,p in parsers]))
         with db_session() as db:
             self.load_into_queue(db.query(Case.case_number, Case.detail_loc).distinct().filter(filter), config.parser_queue)
 
@@ -97,10 +92,10 @@ class Parser:
         logger.info(f'Loading all cases of type {detail_loc if detail_loc else "ANY"} into parser queue')
         if detail_loc:
             filter = and_(Case.last_scrape != None,
-                Case.parse_exempt == False, Case.detail_loc == detail_loc)
+                Case.detail_loc == detail_loc)
         else:
             filter = and_(Case.last_scrape != None,
-                Case.parse_exempt == False, Case.detail_loc.in_([c for c,p in parsers]))
+                Case.detail_loc.in_([c for c,p in parsers]))
         with db_session() as db:
             self.load_into_queue(db.query(Case.case_number, Case.detail_loc).distinct().filter(filter), config.parser_queue)
 

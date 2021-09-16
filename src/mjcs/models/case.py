@@ -20,7 +20,4 @@ class Case(TableBase):
     detail_loc = Column(String, index=True, enum=True)
     last_scrape = Column(DateTime, nullable=True, index=True)
     last_parse = Column(DateTime, nullable=True, index=True)
-    scrape_exempt = Column(Boolean, nullable=False, server_default='false')
-    parse_exempt = Column(Boolean, nullable=False, server_default='false')
     active = Column(Boolean, nullable=False, server_default='true')
-    allow_unparsed_data = Column(Boolean, nullable=False, server_default='false')

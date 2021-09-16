@@ -26,7 +26,6 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
         if len(self.soup.contents) != 1 or not self.soup.div:
             raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
-        self.allow_unparsed_data = self.allow_unparsed_data()
 
     def header(self, soup):
         header = soup.find('div',class_='Header')

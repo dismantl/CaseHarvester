@@ -76,26 +76,23 @@ class Scraper:
             logger.info('Scraper queue is already full, aborting...')
             return
         
-        filter = and_(
-            text("cases.scrape_exempt = False"),
-            or_(
-                text("cases.last_scrape is null"),
-                and_(
-                    text("cases.active = True"),
+        filter = or_(
+            text("cases.last_scrape is null"),
+            and_(
+                text("cases.active = True"),
+                or_(
+                    text("cases.filing_date > current_date"),  # Sometimes MJCS lists filing dates in the future
                     or_(
-                        text("cases.filing_date > current_date"),  # Sometimes MJCS lists filing dates in the future
-                        or_(
-                            text(f"age_days(cases.last_scrape) > ceiling({config.RESCRAPE_COEFFICIENT}*age_days(cases.filing_date))"),
-                            text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE}")  # age_days function is defined in db/sql/functions.sql
-                        )
+                        text(f"age_days(cases.last_scrape) > ceiling({config.RESCRAPE_COEFFICIENT}*age_days(cases.filing_date))"),
+                        text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE}")  # age_days function is defined in db/sql/functions.sql
                     )
-                ),
-                and_(
-                    text("cases.active = False"),
-                    or_(
-                        text("cases.filing_date > current_date"),
-                        text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE_INACTIVE}")
-                    )
+                )
+            ),
+            and_(
+                text("cases.active = False"),
+                or_(
+                    text("cases.filing_date > current_date"),
+                    text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE_INACTIVE}")
                 )
             )
         )
@@ -134,7 +131,6 @@ class Scraper:
             cases = db.query(Case.case_number, Case.detail_loc).\
                 filter(Case.filing_date >= date_start).\
                 filter(Case.filing_date < date_end).\
-                filter(Case.scrape_exempt == False).\
                 all()
         logger.info(f'Found {len(cases)} cases in time range')
 
@@ -211,14 +207,6 @@ class Scraper:
                     error=type(e).__name__
                 )
                 db.add(scrape)
-                # if 3 bad scrapes, scrape_exempt = True
-                last_scrapes = db.query(Scrape).filter(Scrape.case_number == case_number).filter(Scrape.error != None).limit(3).all()
-                if last_scrapes and len(last_scrapes) == 3:
-                    db.execute(
-                        Case.__table__.update()\
-                            .where(Case.case_number == case_number)\
-                            .values(scrape_exempt=True)
-                    )
         else:
             await self.__store_case_details(case_number, detail_loc, response.text, begin, duration)
 

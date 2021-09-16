@@ -38,14 +38,6 @@ class CaseDetailsParser(ABC):
             raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
         self.case_status = None
-        self.allow_unparsed_data = self.allow_unparsed_data()
-
-    def allow_unparsed_data(self):
-        with db_session() as db:
-            return db.execute(
-                select(Case.allow_unparsed_data)\
-                .where(Case.case_number == self.case_number)
-            ).scalar()
 
     def parse(self):
         # All parsing is done within a single database transaction, so no partial data is added or destroyed
@@ -74,7 +66,7 @@ class CaseDetailsParser(ABC):
     def finalize(self, db):
         for obj in self.marked_for_deletion:
             obj.decompose()
-        if list(self.soup.stripped_strings) and not self.allow_unparsed_data:
+        if list(self.soup.stripped_strings):
             raise UnparsedDataError("Data remaining in DOM after parsing:",list(self.soup.stripped_strings))
         self.update_last_parse(db)
 
