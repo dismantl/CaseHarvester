@@ -134,13 +134,7 @@ Resources:
             MetricIntervalUpperBound: 500000
             ScalingAdjustment: 1
           - MetricIntervalLowerBound: 500000
-            MetricIntervalUpperBound: 1000000
             ScalingAdjustment: 2
-          - MetricIntervalLowerBound: 1000000
-            MetricIntervalUpperBound: 1500000
-            ScalingAdjustment: 3
-          - MetricIntervalLowerBound: 1500000
-            ScalingAdjustment: 4
   
   ScraperServiceScaleInPolicy:
     Type: AWS::ApplicationAutoScaling::ScalingPolicy
