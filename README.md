@@ -45,6 +45,7 @@ Case details in the MJCS are formatted differently depending on the county and t
 * DSCP: District Court Civil Citations
 * K: Circuit Court Criminal Cases
 * PG: Prince George's County Circuit Court Criminal Cases
+* PGV: Prince George's County Circuit Court Civil Cases
 * DV: Domestic Violence Cases
 * MCCI: Montgomery County Civil Cases
 
