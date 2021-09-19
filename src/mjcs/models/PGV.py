@@ -43,6 +43,7 @@ class PGVPlaintiff(PGVCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     party_number = Column(Integer)
+    party_type = Column(String)
     name = Column(String)
     address_1 = Column(String)
     address_2 = Column(String)
@@ -58,6 +59,7 @@ class PGVDefendant(PGVCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     party_number = Column(Integer)
+    party_type = Column(String)
     name = Column(String, redacted=True)
     address_1 = Column(String, redacted=True)
     address_2 = Column(String, redacted=True)
