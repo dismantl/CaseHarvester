@@ -46,8 +46,10 @@ from .K import (K, KDistrictCaseNumber, KPlaintiff, KDefendant, KCharge,
 from .PG import (PG, PGCharge, PGDefendant, PGDefendantAlias, PGOtherParty, 
                  PGAttorney, PGCourtSchedule, PGDocket, PGPlaintiff)
 from .DV import DV, DVDefendant, DVHearing, DVEvent, DVDefendantAttorney
-# from .MCCR import (MCCR, MCCRAttorney, MCCRCaseTable, MCCRCharge, MCCRCourtSchedule,
-                #    MCCRDefendant, MCCRDocket)
+from .MCCR import (MCCR, MCCRAttorney, MCCRCaseTable, MCCRCharge, MCCRCourtSchedule,
+                   MCCRDefendant, MCCRDocket, MCCRBailBond, MCCRAudioMedia,
+                   MCCRJudgment, MCCRProbationOfficer, MCCRAlias,
+                   MCCRDistrictCourtNumber, MCCRTrackingNumber, MCCRDWIMonitor)
 from .MCCI import (MCCI, MCCIAttorney, MCCICourtSchedule, MCCIDefendant, MCCIDocket,
                    MCCIInterestedParty, MCCIIssue, MCCIJudgment, MCCIPlaintiff,
                    MCCIAlias, MCCIWard, MCCIAudioMedia, MCCIGarnishee, MCCIResidentAgent)

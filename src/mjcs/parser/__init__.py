@@ -30,6 +30,7 @@ from .PG import PGParser
 from .DV import DVParser
 from .MCCI import MCCIParser
 from .PGV import PGVParser
+from .MCCR import MCCRParser
 
 parsers = [
     ('DSCR',DSCRParser),
@@ -46,7 +47,8 @@ parsers = [
     ('PG',PGParser),
     ('DV',DVParser),
     ('MCCI',MCCIParser),
-    ('PGV',PGVParser)
+    ('PGV',PGVParser),
+    ('MCCR',MCCRParser)
 ]
 
 def parse_case(case_number, detail_loc=None):

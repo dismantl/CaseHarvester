@@ -293,7 +293,8 @@ class CaseDetailsParser(ABC):
             remove_newlines=False,
             boolean_value=False,
             numeric=False,
-            money=False):
+            money=False,
+            percent=False):
         if boolean_value:
             return val and val.lower() != 'false' and val.lower() != 'no'
         if not val:
@@ -308,6 +309,8 @@ class CaseDetailsParser(ABC):
             val = val.replace(',','')
         if money:
             val = val.replace('$','')
+        if percent:
+            val = val.replace('%','')
         return val
 
     def value_first_column(self, base, first_column_prompt, ignore_missing=False, **format_args):

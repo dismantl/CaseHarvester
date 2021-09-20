@@ -14,8 +14,6 @@ class MCCR(CaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     court_system = Column(String, enum=True)
     sub_type = Column(String, enum=True)
-    tracking_number = Column(String)
-    district_court_number = Column(String)
     filing_date = Column(Date)
     _filing_date_str = Column('filing_date_str',String)
     case_status = Column(String, enum=True)
@@ -37,13 +35,29 @@ class MCCRCaseTable(CaseTable):
     def case_number(self):
         return Column(String, ForeignKey('mccr.case_number', ondelete='CASCADE'), nullable=False)
 
+class MCCRTrackingNumber(MCCRCaseTable, TableBase):
+    __tablename__ = 'mccr_tracking_numbers'
+    __table_args__ = (Index('ixh_mccr_tracking_numbers_case_number', 'case_number', postgresql_using='hash'),)
+    mccr = relationship('MCCR', backref='tracking_numbers')
+
+    id = Column(Integer, primary_key=True)
+    tracking_number = Column(String)
+
+class MCCRDistrictCourtNumber(MCCRCaseTable, TableBase):
+    __tablename__ = 'mccr_district_court_numbers'
+    __table_args__ = (Index('ixh_mccr_district_court_numbers_case_number', 'case_number', postgresql_using='hash'),)
+    mccr = relationship('MCCR', backref='district_court_numbers')
+
+    id = Column(Integer, primary_key=True)
+    district_court_number = Column(String)
+
 class MCCRCharge(MCCRCaseTable, TableBase):
     __tablename__ = 'mccr_charges'
     __table_args__ = (Index('ixh_mccr_charges_case_number', 'case_number', postgresql_using='hash'),)
     mccr = relationship('MCCR', backref='charges')
 
     id = Column(Integer, primary_key=True)
-    charge_number = Column(Integer)
+    charge_number = Column(String)
     expunged = Column(Boolean, nullable=False, server_default='false')
     article_section_subsection = Column(String)
     charge_description = Column(String)
@@ -52,15 +66,26 @@ class MCCRCharge(MCCRCaseTable, TableBase):
     disposition_text = Column(String)
     disposition_date = Column(Date)
     _disposition_date_str = Column('disposition_date_str',String)
+    disposition = Column(String)
     judge = Column(String)
     imposed_life_times = Column(String)
     imposed_years = Column(Integer)
     imposed_months = Column(Integer)
     imposed_days = Column(Integer)
-    imposed_consecutive = Column(Boolean, nullable=False, server_default='false')
+    imposed_consecutive = Column(Boolean)
+    imposed_concurrent = Column(Boolean)
     time_served_years = Column(Integer)
     time_served_months = Column(Integer)
     time_served_days = Column(Integer)
+    time_suspended_all_but = Column(Boolean, nullable=False, server_default='false')
+    time_suspended_years = Column(Integer)
+    time_suspended_months = Column(Integer)
+    time_suspended_days = Column(Integer)
+    probation_supervised = Column(Boolean)
+    probation_unsupervised = Column(Boolean)
+    probation_years = Column(Integer)
+    probation_months = Column(Integer)
+    probation_days = Column(Integer)
 
     @hybrid_property
     def disposition_date_str(self):
@@ -70,19 +95,45 @@ class MCCRCharge(MCCRCaseTable, TableBase):
         self.disposition_date = date_from_str(val)
         self._disposition_date_str = val
 
-# class MCCRPlaintiff(MCCRCaseTable, TableBase):
-#     __tablename__ = 'mccr_plaintiffs'
-#     __table_args__ = (Index('ixh_mccr_plaintiffs_case_number', 'case_number', postgresql_using='hash'),)
-#     mccr = relationship('MCCR', backref='plaintiffs')
+class MCCRJudgment(MCCRCaseTable, TableBase):
+    __tablename__ = 'mccr_judgments'
+    __table_args__ = (Index('ixh_mccr_judgments_case_number', 'case_number', postgresql_using='hash'),)
+    mccr = relationship('MCCR', backref='judgments')
 
-#     id = Column(Integer, primary_key=True)
-#     party_number = Column(Integer)
-#     name = Column(String)
-#     address_1 = Column(String)
-#     address_2 = Column(String)
-#     city = Column(String)
-#     state = Column(String)
-#     zip_code = Column(String)
+    id = Column(Integer, primary_key=True)
+    date = Column(Date)
+    _date_str = Column('date_str',String)
+    amount = Column(Numeric)
+    entered_date = Column(Date)
+    _entered_date_str = Column('entered_date_str',String)
+    vacated_date = Column(Date)
+    _vacated_date_str = Column('vacated_date_str',String)
+    debtor = Column(String)
+    party_role = Column(String, enum=True)
+
+    @hybrid_property
+    def date_str(self):
+        return self._date_str
+    @date_str.setter
+    def date_str(self,val):
+        self.date = date_from_str(val)
+        self._date_str = val
+    
+    @hybrid_property
+    def entered_date_str(self):
+        return self._entered_date_str
+    @entered_date_str.setter
+    def entered_date_str(self,val):
+        self.entered_date = date_from_str(val)
+        self._entered_date_str = val
+    
+    @hybrid_property
+    def vacated_date_str(self):
+        return self._vacated_date_str
+    @vacated_date_str.setter
+    def vacated_date_str(self,val):
+        self.vacated_date = date_from_str(val)
+        self._vacated_date_str = val
 
 class MCCRDefendant(MCCRCaseTable, TableBase):
     __tablename__ = 'mccr_defendants'
@@ -94,7 +145,7 @@ class MCCRDefendant(MCCRCaseTable, TableBase):
     gender = Column(String)
     DOB = Column(Date, nullable=True, redacted=True)
     _DOB_str = Column('DOB_str',String, nullable=True, redacted=True)
-    address_1 = Column(String, redacted=True)
+    address = Column(String, redacted=True)
     city = Column(String)
     state = Column(String)
     zip_code = Column(String)
@@ -107,13 +158,14 @@ class MCCRDefendant(MCCRCaseTable, TableBase):
         self.DOB = date_from_str(val)
         self._DOB_str = val
 
-# class MCCRDefendantAlias(MCCRCaseTable, TableBase):
-#     __tablename__ = 'mccr_defendant_aliases'
-#     __table_args__ = (Index('ixh_mccr_defendant_aliases_case_number', 'case_number', postgresql_using='hash'),)
-#     mccr = relationship('MCCR', backref='defendant_aliases')
+class MCCRAlias(MCCRCaseTable, TableBase):
+    __tablename__ = 'mccr_aliases'
+    __table_args__ = (Index('ixh_mccr_aliases_case_number', 'case_number', postgresql_using='hash'),)
+    mccr = relationship('MCCR', backref='aliases')
 
-#     id = Column(Integer, primary_key=True)
-#     alias_name = Column(String)
+    id = Column(Integer, primary_key=True)
+    alias_name = Column(String)
+    party = Column(String)
 
 class MCCRAttorney(MCCRCaseTable, TableBase):
     __tablename__ = 'mccr_attorneys'
@@ -126,9 +178,7 @@ class MCCRAttorney(MCCRCaseTable, TableBase):
     _appearance_date_str = Column('appearance_date_str',String,nullable=True)
     removal_date = Column(Date,nullable=True)
     _removal_date_str = Column('removal_date_str',String,nullable=True)
-    address_1 = Column(String)
-    address_2 = Column(String)
-    address_3 = Column(String)
+    address = Column(String)
     city = Column(String)
     state = Column(String)
     zip_code = Column(String)
@@ -150,15 +200,29 @@ class MCCRAttorney(MCCRCaseTable, TableBase):
         self.removal_date = date_from_str(val)
         self._removal_date_str = val
 
-# class MCCROtherParty(MCCRCaseTable, TableBase):
-#     __tablename__ = 'mccr_other_parties'
-#     __table_args__ = (Index('ixh_mccr_other_parties_case_number', 'case_number', postgresql_using='hash'),)
-#     mccr = relationship('MCCR', backref='other_parties')
+class MCCRProbationOfficer(MCCRCaseTable, TableBase):
+    __tablename__ = 'mccr_probation_officers'
+    __table_args__ = (Index('ixh_mccr_probation_officers_case_number', 'case_number', postgresql_using='hash'),)
+    mccr = relationship('MCCR', backref='probation_officers')
 
-#     id = Column(Integer, primary_key=True)
-#     party_type = Column(String, enum=True)
-#     party_number = Column(Integer)
-#     name = Column(String)
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    address = Column(String)
+    city = Column(String)
+    state = Column(String)
+    zip_code = Column(String)
+
+class MCCRDWIMonitor(MCCRCaseTable, TableBase):
+    __tablename__ = 'mccr_dwi_monitors'
+    __table_args__ = (Index('ixh_mccr_dwi_monitors_case_number', 'case_number', postgresql_using='hash'),)
+    mccr = relationship('MCCR', backref='dwi_monitors')
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    address = Column(String)
+    city = Column(String)
+    state = Column(String)
+    zip_code = Column(String)
 
 class MCCRCourtSchedule(MCCRCaseTable, TableBase):
     __tablename__ = 'mccr_court_schedule'
@@ -215,3 +279,31 @@ class MCCRDocket(MCCRCaseTable, TableBase):
     def docket_date_str(self,val):
         self.docket_date = date_from_str(val)
         self._docket_date_str = val
+
+class MCCRAudioMedia(MCCRCaseTable, TableBase):
+    __tablename__ = 'mccr_audio_media'
+    __table_args__ = (Index('ixh_mccr_audio_media_case_number', 'case_number', postgresql_using='hash'),)
+    mccr = relationship('MCCR', backref='audio_media')
+
+    id = Column(Integer, primary_key=True)
+    audio_media = Column(String)
+    audio_start = Column(String)
+    audio_stop = Column(String)
+    docket_id = Column(Integer, ForeignKey('mccr_dockets.id'))
+
+class MCCRBailBond(MCCRCaseTable, TableBase):
+    __tablename__ = 'mccr_bail_bonds'
+    __table_args__ = (Index('ixh_mccr_bail_bonds_case_number', 'case_number', postgresql_using='hash'),)
+    mccr = relationship('MCCR', backref='bail_bonds')
+
+    id = Column(Integer, primary_key=True)
+    number = Column(Integer)
+    bond_type = Column(String, enum=True)
+    amount = Column(Numeric)
+    minimum_percent = Column(Numeric)
+    bond_history = Column(String)
+    bonding_company = Column(String)
+    bonding_company_address = Column(String)
+    agent = Column(String)
+    agent_address = Column(String)
+    remitter = Column(String)
