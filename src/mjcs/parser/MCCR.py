@@ -166,51 +166,59 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
             attorney.name = self.value_first_column(t,'Name:')
             attorney.appearance_date_str = self.value_first_column(t,'Appearance Date:',ignore_missing=True)
             attorney.removal_date_str = self.value_first_column(t,'Removal Date:',ignore_missing=True)
+            addr_row_1 = None
             try:
                 addr_row_1 = t.find('span',class_='FirstColumnPrompt',string='Address:')\
                               .find_parent('tr')
             except AttributeError:
                 address_row_table = self.immediate_sibling(t)
-                addr_row_1 = address_row_table.find('span',class_='FirstColumnPrompt',string='Address:')\
+                try:
+                    addr_row_1 = address_row_table.find('span',class_='FirstColumnPrompt',string='Address:')\
                             .find_parent('tr')
-                try:
-                    phone_table = self.table_next_first_column_prompt(address_row_table,'Phone:')
-                except ParserError:
+                except AttributeError:
                     pass
                 else:
-                    phone_row = phone_table.find('span',class_='FirstColumnPrompt',string='Phone:')\
-                                .find_parent('tr')
+                    try:
+                        phone_table = self.table_next_first_column_prompt(address_row_table,'Phone:')
+                    except ParserError:
+                        pass
+                    else:
+                        phone_row = phone_table.find('span',class_='FirstColumnPrompt',string='Phone:')\
+                                    .find_parent('tr')
 
-            address_lines = [self.value_first_column(addr_row_1,'Address:')]
-            prev_row = addr_row_1
-            while True:
-                try:
-                    addr_row = self.immediate_sibling(prev_row,'tr')
-                    if addr_row.find('span',class_='FirstColumnPrompt',string='Phone:'):
-                        raise ContinueParsing
-                except (ParserError, ContinueParsing):
-                    break
-                prev_row = addr_row
-                if list(addr_row.stripped_strings):
-                    address_lines.append(self.value_first_column(addr_row,''))
-            if len(address_lines) == 1:
-                attorney.address = address_lines[0]
-            else:
-                match = city_state_zip.fullmatch(address_lines[-1])
-                if match:
-                    attorney.address = "\n".join(address_lines[:-1])
-                    attorney.city = match.group('city')
-                    attorney.state = match.group('state')
-                    attorney.zip_code = match.group('zip_code')
+            if addr_row_1:
+                address_lines = [self.value_first_column(addr_row_1,'Address:')]
+                prev_row = addr_row_1
+                while True:
+                    try:
+                        addr_row = self.immediate_sibling(prev_row,'tr')
+                        if addr_row.find('span',class_='FirstColumnPrompt',string='Phone:'):
+                            raise ContinueParsing
+                    except (ParserError, ContinueParsing):
+                        break
+                    prev_row = addr_row
+                    if list(addr_row.stripped_strings):
+                        addr_line = self.value_first_column(addr_row,'')
+                        if addr_line:
+                            address_lines.append(addr_line)
+                if len(address_lines) == 1:
+                    attorney.address = address_lines[0]
                 else:
-                    attorney.address = "\n".join(address_lines)
-            if not phone_row:
-                try:
-                    phone_row = self.immediate_sibling(prev_row,'tr')
-                except ParserError:
-                    pass
-            if phone_row:
-                attorney.phone = self.value_first_column(phone_row,'Phone:')
+                    match = city_state_zip.fullmatch(address_lines[-1])
+                    if match:
+                        attorney.address = "\n".join(address_lines[:-1])
+                        attorney.city = match.group('city')
+                        attorney.state = match.group('state')
+                        attorney.zip_code = match.group('zip_code')
+                    else:
+                        attorney.address = "\n".join(address_lines)
+                if not phone_row:
+                    try:
+                        phone_row = self.immediate_sibling(prev_row,'tr')
+                    except ParserError:
+                        pass
+                if phone_row:
+                    attorney.phone = self.value_first_column(phone_row,'Phone:')
             db.add(attorney)
     
     ###########################################################
@@ -255,7 +263,9 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
                         break
                     self.mark_for_deletion(loc_val_span)
                     prev_span = loc_val_span
-                    loc_strings.append(self.format_value(loc_val_span.string))
+                    loc_line = self.format_value(loc_val_span.string)
+                    if loc_line:
+                        loc_strings.append(loc_line)
                 sched.location = "\n".join(loc_strings)
 
             sched.courtroom = self.value_column(t1,'Courtroom:',ignore_missing=True)
@@ -457,7 +467,9 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
                     prev_span = prev_span.find_next_sibling('span')
                     if not prev_span or prev_span.get('class') != ['Value']:
                         break
-                    ref_docket_strings.append(self.format_value(prev_span.string))
+                    docket_line = self.format_value(prev_span.string)
+                    if docket_line:
+                        ref_docket_strings.append(docket_line)
                 docket.reference_docket = "\n".join(ref_docket_strings)
             docket.docket_text = self.value_first_column(t1,'Docket Text:',ignore_missing=True)
             db.add(docket)
@@ -506,7 +518,9 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
                 bond_history = []
                 for span in bond_history_val.find_all('span',class_='Value'):
                     self.mark_for_deletion(span)
-                    bond_history.append(self.format_value(span.string))
+                    addr_line = self.format_value(span.string)
+                    if addr_line:
+                        bond_history.append(addr_line)
                 bb.bond_history = "\n".join(bond_history)
             bb.bonding_company = self.value_first_column(t1,'Bonding Company:',ignore_missing=True)
             
@@ -525,7 +539,9 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
                         break
                     prev_row = addr_row
                     if list(addr_row.stripped_strings):
-                        address_lines.append(self.value_first_column(addr_row,''))
+                        addr_line = self.value_first_column(addr_row,'')
+                        if addr_line:
+                            address_lines.append(addr_line)
                 bb.bonding_company_address = "\n".join(address_lines)
 
             if 'Agent:' in list(t1.stripped_strings):
@@ -542,7 +558,9 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
                         break
                     prev_row = addr_row
                     if list(addr_row.stripped_strings):
-                        agent_address_lines.append(self.value_first_column(addr_row,''))
+                        addr_line = self.value_first_column(addr_row,'')
+                        if addr_line:
+                            agent_address_lines.append(addr_line)
                 bb.agent_address = "\n".join(agent_address_lines)
             else:
                 while True:
@@ -576,7 +594,9 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
                                     break
                                 prev_row = addr_row
                                 if list(addr_row.stripped_strings):
-                                    agent_address_lines.append(self.value_first_column(addr_row,''))
+                                    addr_line = self.value_first_column(addr_row,'')
+                                    if addr_line:
+                                        agent_address_lines.append(addr_line)
                             bb.agent_address = "\n".join(agent_address_lines)
                     elif 'Remitter:' in list(t2.stripped_strings):
                         bb.remitter = self.value_first_column(t2,'Remitter:')
@@ -610,7 +630,9 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
                 except ParserError:
                     break
                 prev_row = addr_row
-                address_lines.append(self.value_first_column(addr_row,''))
+                addr_line = self.value_first_column(addr_row,'')
+                if addr_line:
+                    address_lines.append(addr_line)
             if len(address_lines) == 1:
                 officer.address = address_lines[0]
             else:
@@ -652,7 +674,9 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
                 except ParserError:
                     break
                 prev_row = addr_row
-                address_lines.append(self.value_first_column(addr_row,''))
+                addr_line = self.value_first_column(addr_row,'')
+                if addr_line:
+                    address_lines.append(addr_line)
             if len(address_lines) == 1:
                 monitor.address = address_lines[0]
             else:
