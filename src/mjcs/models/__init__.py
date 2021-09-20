@@ -48,7 +48,7 @@ from .PG import (PG, PGCharge, PGDefendant, PGDefendantAlias, PGOtherParty,
 from .DV import DV, DVDefendant, DVHearing, DVEvent, DVDefendantAttorney
 from .MCCR import (MCCR, MCCRAttorney, MCCRCaseTable, MCCRCharge, MCCRCourtSchedule,
                    MCCRDefendant, MCCRDocket, MCCRBailBond, MCCRAudioMedia,
-                   MCCRJudgment, MCCRProbationOfficer, MCCRAlias,
+                   MCCRJudgment, MCCRProbationOfficer, MCCRAlias, MCCRBondRemitter,
                    MCCRDistrictCourtNumber, MCCRTrackingNumber, MCCRDWIMonitor)
 from .MCCI import (MCCI, MCCIAttorney, MCCICourtSchedule, MCCIDefendant, MCCIDocket,
                    MCCIInterestedParty, MCCIIssue, MCCIJudgment, MCCIPlaintiff,

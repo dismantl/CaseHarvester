@@ -106,8 +106,14 @@ class MCCRJudgment(MCCRCaseTable, TableBase):
     amount = Column(Numeric)
     entered_date = Column(Date)
     _entered_date_str = Column('entered_date_str',String)
+    satisfied = Column(Date)
+    _satisfied_str = Column('satisfied_str', String)
     vacated_date = Column(Date)
     _vacated_date_str = Column('vacated_date_str',String)
+    amended = Column(Date)
+    _amended_str = Column('amended_str', String)
+    renewed = Column(Date)
+    _renewed_str = Column('renewed_str', String)
     debtor = Column(String)
     party_role = Column(String, enum=True)
 
@@ -128,12 +134,36 @@ class MCCRJudgment(MCCRCaseTable, TableBase):
         self._entered_date_str = val
     
     @hybrid_property
-    def vacated_date_str(self):
-        return self._vacated_date_str
-    @vacated_date_str.setter
-    def vacated_date_str(self,val):
-        self.vacated_date = date_from_str(val)
-        self._vacated_date_str = val
+    def satisfied_str(self):
+        return self._satisfied_str
+    @satisfied_str.setter
+    def satisfied_str(self,val):
+        self.satisfied = date_from_str(val)
+        self._satisfied_str = val
+    
+    @hybrid_property
+    def vacated_str(self):
+        return self._vacated_str
+    @vacated_str.setter
+    def vacated_str(self,val):
+        self.vacated = date_from_str(val)
+        self._vacated_str = val
+    
+    @hybrid_property
+    def amended_str(self):
+        return self._amended_str
+    @amended_str.setter
+    def amended_str(self,val):
+        self.amended = date_from_str(val)
+        self._amended_str = val
+    
+    @hybrid_property
+    def renewed_str(self):
+        return self._renewed_str
+    @renewed_str.setter
+    def renewed_str(self,val):
+        self.renewed = date_from_str(val)
+        self._renewed_str = val
 
 class MCCRDefendant(MCCRCaseTable, TableBase):
     __tablename__ = 'mccr_defendants'
@@ -306,4 +336,11 @@ class MCCRBailBond(MCCRCaseTable, TableBase):
     bonding_company_address = Column(String)
     agent = Column(String)
     agent_address = Column(String)
+
+class MCCRBondRemitter(MCCRCaseTable, TableBase):
+    __tablename__ = 'mccr_bond_remitters'
+    __table_args__ = (Index('ixh_mccr_bond_remitters_case_number', 'case_number', postgresql_using='hash'),)
+    mccr = relationship('MCCR', backref='bond_remitters')
+
+    id = Column(Integer, primary_key=True)
     remitter = Column(String)

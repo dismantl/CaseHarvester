@@ -1,6 +1,6 @@
 from ..models import (MCCR, MCCRAttorney, MCCRCaseTable, MCCRCharge, MCCRCourtSchedule,
                       MCCRDefendant, MCCRDocket, MCCRBailBond, MCCRAudioMedia,
-                      MCCRJudgment, MCCRProbationOfficer, MCCRAlias,
+                      MCCRJudgment, MCCRProbationOfficer, MCCRAlias, MCCRBondRemitter,
                       MCCRDistrictCourtNumber, MCCRTrackingNumber, MCCRDWIMonitor)
 from .base import CaseDetailsParser, consumer, ParserError, ChargeFinder
 import re
@@ -129,9 +129,15 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
         if subsection_header:
             self.mark_for_deletion(subsection_header)
             if list(subsection_header.find_parent('table').stripped_strings) == ['Defendant Aliases']:
-                for row in self.immediate_sibling(t3,'table').find_all('tr'):
+                prev_obj = t3
+                while True:
+                    try:
+                        alias_table = self.immediate_sibling(prev_obj,'table')
+                    except ParserError:
+                        break
+                    prev_obj = alias_table
                     alias = MCCRAlias(case_number=self.case_number)
-                    alias.alias_name = self.value_first_column(row,'Name:')
+                    alias.alias_name = self.value_first_column(alias_table,'Name:')
                     alias.party = 'Defendant'
                     db.add(alias)
             else:
@@ -153,7 +159,6 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
         except (ParserError, AttributeError):
             return
         
-        # for t in attorneys_table.find_all('table'):
         for span in attorneys_table.find_all('span',class_='FirstColumnPrompt',string='Name:'):
             phone_row = None
             t = span.find_parent('table')
@@ -307,7 +312,7 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
         else:
             charge.disposition_text = self.value_first_column(t4,'Disposition Text:')
             charge.disposition_date_str = self.value_column(t4,'Disposition Date:')
-            charge.judge = self.value_first_column(t4,'Judge:')
+            charge.judge = self.value_first_column(t4,'Judge:',ignore_missing=True)
         
         try:
             t5 = self.table_first_columm_prompt(container,'Time Imposed:')
@@ -395,7 +400,10 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
             judgment.date_str = self.value_first_column(t1,'Date:')
             judgment.amount = self.value_column(t1,'Amount:',money=True)
             judgment.entered_date_str = self.value_column_no_prompt(t1,'Entered',ignore_missing=True)
-            judgment.vacated_date_str = self.value_column_no_prompt(t1,'Vacated',ignore_missing=True)
+            judgment.satisfied_str = self.value_column_no_prompt(t1,'Satisfied',ignore_missing=True)
+            judgment.vacated_str = self.value_column_no_prompt(t1,'Vacated',ignore_missing=True)
+            judgment.amended_str = self.value_column_no_prompt(t1,'Amended',ignore_missing=True)
+            judgment.renewed_str = self.value_column_no_prompt(t1,'Renewed',ignore_missing=True)
             judgment.debtor = self.value_first_column(t1,'Debtor:')
             judgment.party_role = self.value_column(t1,'Party Role:')
             db.add(judgment)
@@ -486,7 +494,10 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
             bb.bond_type = self.value_column(t1,'Type:')
             bb.amount = self.value_first_column(t1,'Amount:',money=True)
             bb.minimum_percent = self.value_column(t1,'Minimum:',percent=True)
-            bb.remitter = self.value_first_column(t1,'Remitter:',ignore_missing=True)
+            for span in t1.find_all('span',class_='FirstColumnPrompt',string='Remitter:'):
+                remitter = MCCRBondRemitter(case_number=self.case_number)
+                remitter.remitter = self.value_first_column(span.find_parent('tr'),'Remitter:')
+                db.add(remitter)
 
             bond_history_prompt = t1.find('span',class_='FirstColumnPrompt',string='Bond History:')
             if bond_history_prompt:
@@ -504,7 +515,8 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
                 address_table = address_span.find_parent('table')
                 addr_row_1 = address_table.find('span',class_='FirstColumnPrompt',string='Address:')\
                                         .find_parent('tr')
-                address_lines = [self.value_first_column(addr_row_1,'Address:')]
+                addr_line_1 = self.value_first_column(addr_row_1,'Address:')
+                address_lines = [addr_line_1] if addr_line_1 else []
                 prev_row = addr_row_1
                 while True:
                     try:
@@ -516,40 +528,58 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
                         address_lines.append(self.value_first_column(addr_row,''))
                 bb.bonding_company_address = "\n".join(address_lines)
 
-            while True:
-                try:
-                    t2 = self.immediate_sibling(prev_obj, 'table')
-                    if 'Agent:' not in list(t2.stripped_strings) and 'Remitter:' not in list(t2.stripped_strings):
-                        raise ContinueParsing
-                except (ParserError, ContinueParsing):
-                    break
-                prev_obj = t2
-                
-                if 'Agent:' in list(t2.stripped_strings):
-                    bb.agent = self.value_first_column(t2,'Agent:')
-
+            if 'Agent:' in list(t1.stripped_strings):
+                bb.agent = self.value_first_column(t1,'Agent:')
+                agent_addr_row_1 = t1.find('span',class_='FirstColumnPrompt',string='Address:')\
+                                        .find_parent('tr')
+                agent_addr_line_1 = self.value_first_column(agent_addr_row_1,'Address:')
+                agent_address_lines = [agent_addr_line_1] if agent_addr_line_1 else []
+                prev_row = agent_addr_row_1
+                while True:
                     try:
-                        t3 = self.table_next_first_column_prompt(t2,'Address:')
+                        addr_row = self.immediate_sibling(prev_row,'tr')
                     except ParserError:
-                        pass
-                    else:
-                        prev_obj = t3
-                        agent_address_table = t3.find('span',class_='FirstColumnPrompt',string='Address:').find_parent('table')
-                        agent_addr_row_1 = agent_address_table.find('span',class_='FirstColumnPrompt',string='Address:')\
-                                                .find_parent('tr')
-                        agent_address_lines = [self.value_first_column(agent_addr_row_1,'Address:')]
-                        prev_row = agent_addr_row_1
-                        while True:
-                            try:
-                                addr_row = self.immediate_sibling(prev_row,'tr')
-                            except ParserError:
-                                break
-                            prev_row = addr_row
-                            if list(addr_row.stripped_strings):
-                                agent_address_lines.append(self.value_first_column(addr_row,''))
-                        bb.agent_address = "\n".join(agent_address_lines)
-                elif 'Remitter:' in list(t2.stripped_strings):
-                    bb.remitter = self.value_first_column(t2,'Remitter:')
+                        break
+                    prev_row = addr_row
+                    if list(addr_row.stripped_strings):
+                        agent_address_lines.append(self.value_first_column(addr_row,''))
+                bb.agent_address = "\n".join(agent_address_lines)
+            else:
+                while True:
+                    try:
+                        t2 = self.immediate_sibling(prev_obj, 'table')
+                        if 'Number:' in list(t2.stripped_strings):
+                            raise ContinueParsing
+                    except (ParserError, ContinueParsing):
+                        break
+                    prev_obj = t2
+                    
+                    if 'Agent:' in list(t2.stripped_strings):
+                        bb.agent = self.value_first_column(t2,'Agent:')
+
+                        try:
+                            t3 = self.table_next_first_column_prompt(t2,'Address:')
+                        except ParserError:
+                            pass
+                        else:
+                            prev_obj = t3
+                            agent_address_table = t3.find('span',class_='FirstColumnPrompt',string='Address:').find_parent('table')
+                            agent_addr_row_1 = agent_address_table.find('span',class_='FirstColumnPrompt',string='Address:')\
+                                                    .find_parent('tr')
+                            agent_addr_line_1 = self.value_first_column(agent_addr_row_1,'Address:')
+                            agent_address_lines = [agent_addr_line_1] if agent_addr_line_1 else []
+                            prev_row = agent_addr_row_1
+                            while True:
+                                try:
+                                    addr_row = self.immediate_sibling(prev_row,'tr')
+                                except ParserError:
+                                    break
+                                prev_row = addr_row
+                                if list(addr_row.stripped_strings):
+                                    agent_address_lines.append(self.value_first_column(addr_row,''))
+                            bb.agent_address = "\n".join(agent_address_lines)
+                    elif 'Remitter:' in list(t2.stripped_strings):
+                        bb.remitter = self.value_first_column(t2,'Remitter:')
             db.add(bb)
 
     #########################################################
