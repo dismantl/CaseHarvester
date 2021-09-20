@@ -37,20 +37,20 @@ Case details in the MJCS are formatted differently depending on the county and t
 * ODYTRAF: MDEC Traffic Cases
 * ODYCIVIL: MDEC Civil Cases
 * ODYCVCIT: MDEC Civil Citations
-* CC: Circuit Court Civil Cases
-* DSCIVIL: District Court Civil Cases
 * DSCR: District Court Criminal Cases
-* DSK8: Baltimore City Criminal Cases
-* DSTRAF: District Court Traffic Cases
+* DSCIVIL: District Court Civil Cases
 * DSCP: District Court Civil Citations
+* DSTRAF: District Court Traffic Cases
 * K: Circuit Court Criminal Cases
+* CC: Circuit Court Civil Cases
+* DV: Domestic Violence Cases
+* DSK8: Baltimore City Criminal Cases
 * PG: Prince George's County Circuit Court Criminal Cases
 * PGV: Prince George's County Circuit Court Civil Cases
-* DV: Domestic Violence Cases
 * MCCI: Montgomery County Civil Cases
+* MCCR: Montgomery County Criminal Cases
 
 The following case types are still in need of parsers:
-* MCCR: Montgomery County Criminal Cases
 * ODYCOA: Court of Appeals
 * ODYCOSA: Court of Special Appeals
 
