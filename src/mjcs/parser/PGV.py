@@ -5,7 +5,9 @@ import re
 
 class PGVParser(CaseDetailsParser):
     inactive_statuses = [
-        # TODO
+        'Closed',
+        'Inactive',
+        'Case Closed Statistically'
     ]
 
     def header(self, soup):

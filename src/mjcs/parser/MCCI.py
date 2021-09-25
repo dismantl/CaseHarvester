@@ -13,7 +13,8 @@ class ContinueParsing(Exception):
 
 class MCCIParser(CaseDetailsParser):
     inactive_statuses = [
-        # TODO
+        'CLOSED',
+        'EXPUNGED'
     ]
 
     def __init__(self, case_number, html):

@@ -12,7 +12,7 @@ class ContinueParsing(Exception):
 
 class MCCRParser(CaseDetailsParser, ChargeFinder):
     inactive_statuses = [
-        # TODO
+        'CLOSED'
     ]
 
     def header(self, soup):
