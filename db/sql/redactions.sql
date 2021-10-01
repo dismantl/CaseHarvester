@@ -130,4 +130,59 @@ CREATE OR REPLACE VIEW redacted.dv_defendants
     dv_defendants.case_number
    FROM dv_defendants;
 
+REVOKE SELECT ON TABLE public.dscp_defendants FROM mjcs_ro_redacted;
+CREATE OR REPLACE VIEW redacted.dscp_defendants
+ AS
+ SELECT dscp_defendants.id,
+    dscp_defendants.race,
+    dscp_defendants.sex,
+    dscp_defendants.height,
+    dscp_defendants.weight,
+    dscp_defendants.city,
+    dscp_defendants.state,
+    dscp_defendants.zip_code,
+    dscp_defendants.case_number
+   FROM dscp_defendants;
+
+REVOKE SELECT ON TABLE public.dscp_defendant_aliases FROM mjcs_ro_redacted;
+CREATE OR REPLACE VIEW redacted.dscp_defendant_aliases
+ AS
+ SELECT dscp_defendant_aliases.id,
+    dscp_defendant_aliases.alias_name,
+    dscp_defendant_aliases.city,
+    dscp_defendant_aliases.state,
+    dscp_defendant_aliases.zip_code
+   FROM dscp_defendant_aliases;
+
+REVOKE SELECT ON TABLE public.k_defendants FROM mjcs_ro_redacted;
+CREATE OR REPLACE VIEW redacted.k_defendants
+ AS
+ SELECT k_defendants.id,
+    k_defendants.party_type,
+    k_defendants.party_number,
+    k_defendants.business_org_name,
+    k_defendants.case_number
+   FROM k_defendants;
+
+REVOKE SELECT ON TABLE public.k_defendant_aliases FROM mjcs_ro_redacted;
+CREATE OR REPLACE VIEW redacted.k_defendant_aliases
+ AS
+ SELECT k_defendant_aliases.id,
+    k_defendant_aliases.alias_name,
+    k_defendant_aliases.city,
+    k_defendant_aliases.state,
+    k_defendant_aliases.zip_code
+   FROM k_defendant_aliases;
+
+REVOKE SELECT ON TABLE public.mccr_defendants FROM mjcs_ro_redacted;
+CREATE OR REPLACE VIEW redacted.mccr_defendants
+ AS
+ SELECT mccr_defendants.id,
+    mccr_defendants.gender,
+    mccr_defendants.city,
+    mccr_defendants.state,
+    mccr_defendants.zip_code,
+    mccr_defendants.case_number
+   FROM mccr_defendants;
+
 COMMIT;
