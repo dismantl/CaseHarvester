@@ -20,7 +20,8 @@ DOCKER_REPO_NAME=caseharvester
 	$(addprefix deploy_,static docker-repo spider scraper parser) \
 	$(addsuffix _production,$(addprefix deploy_,static docker-repo spider scraper parser)) \
 	test clean clean_all list_exports init init_production parser_notification \
-	parser_notification_production docker_image docker_image_production sync docs
+	parser_notification_production docker_image docker_image_production sync docs \
+	pause_scraper_service resume_scraper_service
 
 define package_f
 $(eval component = $(1))
@@ -109,6 +110,22 @@ docker build -t $(REPO_NAME) .
 $(eval REPO_URL = $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(REPO_NAME))
 docker tag $(REPO_NAME):latest $(REPO_URL):latest
 docker push $(REPO_URL)
+endef
+
+define pause_scraper_service_f
+$(eval environment = $(1))
+aws application-autoscaling register-scalable-target --service-namespace ecs \
+	--scalable-dimension ecs:service:DesiredCount --resource-id service/caseharvester_cluster_$(environment)/mjcs_scraper_service_$(environment) \
+	--suspended-state '{"DynamicScalingInSuspended":true,"DynamicScalingOutSuspended":true,"ScheduledScalingSuspended":true}'
+aws ecs update-service --cluster caseharvester_cluster_$(environment) --service mjcs_scraper_service_$(environment) \
+	--desired-count 0
+endef
+
+define resume_scraper_service_f
+$(eval environment = $(1))
+aws application-autoscaling register-scalable-target --service-namespace ecs \
+	--scalable-dimension ecs:service:DesiredCount --resource-id service/caseharvester_cluster_$(environment)/mjcs_scraper_service_$(environment) \
+	--suspended-state '{"DynamicScalingInSuspended":false,"DynamicScalingOutSuspended":false,"ScheduledScalingSuspended":false}'
 endef
 
 
@@ -230,6 +247,12 @@ init_production: .init-prod
 
 list_exports:
 	aws cloudformation list-exports
+
+pause_scraper_service:
+	$(call pause_scraper_service_f,prod)
+
+resume_scraper_service:
+	$(call resume_scraper_service_f,prod)
 
 test:
 	pytest
