@@ -70,32 +70,42 @@ class Scraper:
             await self.__scrape_case(case_number, detail_loc)
         trio.run(__scrape_specific_case, case_number)
     
+    def stale_filter(self):
+        return and_(
+            text("cases.scrape_exempt = False"),
+            or_(
+                text("cases.last_scrape is null"),
+                and_(
+                    text("cases.active = True"),
+                    or_(
+                        text("cases.filing_date > current_date"),  # Sometimes MJCS lists filing dates in the future
+                        or_(
+                            text(f"age_days(cases.last_scrape) > ceiling({config.RESCRAPE_COEFFICIENT}*age_days(cases.filing_date))"),
+                            text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE}")  # age_days function is defined in db/sql/functions.sql
+                        )
+                    )
+                ),
+                and_(
+                    text("cases.active = False"),
+                    or_(
+                        text("cases.filing_date > current_date"),
+                        text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE_INACTIVE}")
+                    )
+                )
+            )
+        )
+
+    def count_stale(self):
+        with db_session() as db:
+            return db.query(Case.case_number).filter(self.stale_filter()).count()
+
     def rescrape_stale(self, days=None):
         # Abort if the scraper queue is already full
         if get_queue_count(config.scraper_queue) > config.SCRAPE_QUEUE_THRESHOLD:
             logger.info('Scraper queue is already full, aborting...')
             return
         
-        filter = or_(
-            text("cases.last_scrape is null"),
-            and_(
-                text("cases.active = True"),
-                or_(
-                    text("cases.filing_date > current_date"),  # Sometimes MJCS lists filing dates in the future
-                    or_(
-                        text(f"age_days(cases.last_scrape) > ceiling({config.RESCRAPE_COEFFICIENT}*age_days(cases.filing_date))"),
-                        text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE}")  # age_days function is defined in db/sql/functions.sql
-                    )
-                )
-            ),
-            and_(
-                text("cases.active = False"),
-                or_(
-                    text("cases.filing_date > current_date"),
-                    text(f"age_days(cases.last_scrape) > {config.MAX_SCRAPE_AGE_INACTIVE}")
-                )
-            )
-        )
+        filter = self.stale_filter()
         if days is not None:
             filter = and_(filter, text(f"age(filing_date) < '{days} days'"))
         logger.info('Generating batch queries')
@@ -131,6 +141,7 @@ class Scraper:
             cases = db.query(Case.case_number, Case.detail_loc).\
                 filter(Case.filing_date >= date_start).\
                 filter(Case.filing_date < date_end).\
+                filter(Case.scrape_exempt == False).\
                 all()
         logger.info(f'Found {len(cases)} cases in time range')
 
@@ -196,9 +207,11 @@ class Scraper:
         try:
             self.__check_scrape_response(case_number, response)
             self.successful_scrapes += 1
-        except FailedScrape as e:
+        except (FailedScrapeTimeout, FailedScrape500, FailedScrapeUnexpectedError, FailedScrapeUnknownError) as e:
             logger.warning(f'Scrape error {type(e).__name__}: {e}')
             await trio.sleep(1) #anti hammer
+        except FailedScrape as e:
+            logger.warning(f'Scrape error {type(e).__name__}: {e}')
             with db_session() as db:
                 scrape = Scrape(
                     case_number=case_number,
@@ -207,6 +220,16 @@ class Scraper:
                     error=type(e).__name__
                 )
                 db.add(scrape)
+                # if 3 bad scrapes, scrape_exempt = True
+                scrape_error_count = db.query(Scrape).filter(Scrape.case_number == case_number)\
+                    .filter(Scrape.error != None)\
+                    .count()
+                if scrape_error_count >= 3:
+                    db.execute(
+                        Case.__table__.update()\
+                            .where(Case.case_number == case_number)\
+                            .values(scrape_exempt=True)
+                    )
         else:
             await self.__store_case_details(case_number, detail_loc, response.text, begin, duration)
 
@@ -226,8 +249,8 @@ class Scraper:
         elif "Note: Initial Sort is by Last Name." in response.text:
             raise FailedScrapeSearchResults
         # case numbers will often be displayed with dashes and/or spaces between parts of it
-        elif not re.search(r'[\- ]*'.join(case_number),response.text) \
-                and not re.search(r'[\- ]*'.join(case_number.lower()),response.text):
+        elif not re.search(r'[- ]*'.join(case_number),response.text) \
+                and not re.search(r'[- ]*'.join(case_number.lower()),response.text):
             raise FailedScrapeNoCaseNumber
 
     async def __store_case_details(self, case_number, detail_loc, html, timestamp, scrape_duration=None):

@@ -20,3 +20,4 @@ class Case(TableBase):
     last_scrape = Column(DateTime, nullable=True)
     last_parse = Column(DateTime, nullable=True)
     active = Column(Boolean, nullable=False, server_default='true')
+    scrape_exempt = Column(Boolean, nullable=False, server_default='false')

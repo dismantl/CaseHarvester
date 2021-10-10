@@ -231,6 +231,8 @@ def run_scraper(args):
         scraper.scrape_specific_case(args.case)
     elif args.stale:
         scraper.rescrape_stale()
+    elif args.stale_count:
+        logger.info(f'Counted {scraper.count_stale()} cases.')
     elif args.rescrape_end:
         scraper.rescrape(days_ago_start=args.rescrape_start, days_ago_end=args.rescrape_end)
     elif args.service:
@@ -256,7 +258,11 @@ def export_tables(args):
     case_models = get_case_model_list(models)
     with db_session() as db:
         for model in case_models:
-            if args.redacted and 'defendants' in model.__tablename__:
+            redacted = False
+            for col in model.__table__.columns:
+                if col.redacted == True:
+                    redacted = True
+            if redacted:
                 table_name = f'redacted.{model.__tablename__}'
                 export_name = f'{model.__tablename__}_redacted.csv'
             else:
@@ -333,6 +339,8 @@ if __name__ == '__main__':
         help="Print debug information")
     parser_scraper.add_argument('--stale', action='store_true',
         help='Send stale cases to scraper queue based on scrape age')
+    parser_scraper.add_argument('--stale-count', action='store_true',
+        help='Count number of stale cases based on scrape age')
     parser_scraper.add_argument('--rescrape-start', type=int, default=0,
         help="Send existing cases to scraper queue for rescraping, starting this many days ago (default 0)")
     parser_scraper.add_argument('--rescrape-end', type=int,
