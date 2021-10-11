@@ -34,8 +34,7 @@ from .ODYCVCIT import (ODYCVCIT, ODYCVCITReferenceNumber, ODYCVCITDefendant,
                       ODYCVCITInvolvedParty, ODYCVCITAlias, ODYCVCITAttorney,
                       ODYCVCITCourtSchedule, ODYCVCITCharge, ODYCVCITProbation,
                       ODYCVCITRestitution, ODYCVCITWarrant, ODYCVCITBailBond,
-                      ODYCVCITBondSetting, ODYCVCITDocument, ODYCVCITService,
-                      ODYCVCITSexOffenderRegistration)
+                      ODYCVCITBondSetting, ODYCVCITDocument, ODYCVCITService)
 from .DSTRAF import (DSTRAF, DSTRAFCharge, DSTRAFDisposition, DSTRAFDefendant, 
                       DSTRAFEvent, DSTRAFTrial, DSTRAFRelatedPerson)
 from .K import (K, KDistrictCaseNumber, KPlaintiff, KDefendant, KCharge,

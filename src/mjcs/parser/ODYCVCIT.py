@@ -2,8 +2,7 @@ from ..models import (ODYCVCIT, ODYCVCITReferenceNumber, ODYCVCITDefendant,
                      ODYCVCITInvolvedParty, ODYCVCITAlias, ODYCVCITAttorney,
                      ODYCVCITCourtSchedule, ODYCVCITCharge, ODYCVCITProbation,
                      ODYCVCITRestitution, ODYCVCITWarrant, ODYCVCITBailBond,
-                     ODYCVCITBondSetting, ODYCVCITDocument, ODYCVCITService,
-                     ODYCVCITSexOffenderRegistration)
+                     ODYCVCITBondSetting, ODYCVCITDocument, ODYCVCITService)
 from .base import CaseDetailsParser, consumer, ParserError, ChargeFinder
 import re
 from bs4 import BeautifulSoup, SoupStrainer
@@ -328,7 +327,7 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
         charge.charge_class = self.value_column(t2,'Charge Class:')
         t3 = self.immediate_sibling(t2,'table')
         probable_cause = self.value_multi_column(t3,'Probable Cause:')
-        self.probable_cause = True if probable_cause == 'YES' else False
+        charge.probable_cause = True if probable_cause == 'YES' else False
         t4 = self.immediate_sibling(t3,'table')
         charge.offense_date_from_str = self.value_multi_column(t4,'Offense Date From:')
         charge.offense_date_to_str = self.value_column(t4,'To:')
@@ -367,10 +366,10 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
         else:
             self.mark_for_deletion(subsection_header)
             t = self.immediate_sibling(subsection_header,'table')
-            charge.jail_life = self.value_multi_column(t,'Life:',boolean_value=True)
-            charge.jail_death = self.value_multi_column(t,'Death:',boolean_value=True)
+            self.mark_for_deletion(t.find('span',class_='Prompt',string='Life:'))
+            self.mark_for_deletion(t.find('span',class_='Prompt',string='Death:'))
             charge.jail_start_date_str = self.value_multi_column(t,'Start Date:')
-            charge.jail_cons_conc = self.value_multi_column(t,'Cons/Conc:',ignore_missing=True)
+            self.mark_for_deletion(t.find('span',class_='Prompt',string='Cons/Conc:'))
             jail_row = self.row_label(t,'Jail Term:')
             charge.jail_years = self.value_column(jail_row,'Yrs:')
             charge.jail_months = self.value_column(jail_row,'Mos:')
@@ -381,22 +380,19 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 pass
             else:
-                try:
-                    charge.jail_suspended_years = self.value_column(suspended_row,'Yrs:')
-                    charge.jail_suspended_months = self.value_column(suspended_row,'Mos:')
-                    charge.jail_suspended_days = self.value_column(suspended_row,'Days:')
-                    charge.jail_suspended_hours = self.value_column(suspended_row,'Hours:')
-                except ParserError:
-                    charge.jail_suspended_term = self.value_multi_column(suspended_row,'Suspended Term:')
+                charge.jail_suspended_years = self.value_column(suspended_row,'Yrs:')
+                charge.jail_suspended_months = self.value_column(suspended_row,'Mos:')
+                charge.jail_suspended_days = self.value_column(suspended_row,'Days:')
+                charge.jail_suspended_hours = self.value_column(suspended_row,'Hours:')
             try:
                 suspend_all_but_row = self.row_label(t,'Suspend All But:')
             except ParserError:
                 pass
             else:
-                charge.jail_suspend_all_but_years = self.value_column(suspend_all_but_row,'Yrs:')
-                charge.jail_suspend_all_but_months = self.value_column(suspend_all_but_row,'Mos:')
-                charge.jail_suspend_all_but_days = self.value_column(suspend_all_but_row,'Days:')
-                charge.jail_suspend_all_but_hours = self.value_column(suspend_all_but_row,'Hours:')
+                self.mark_for_deletion(suspend_all_but_row.find('span',class_='Prompt',string='Yrs:'))
+                self.mark_for_deletion(suspend_all_but_row.find('span',class_='Prompt',string='Mos:'))
+                self.mark_for_deletion(suspend_all_but_row.find('span',class_='Prompt',string='Days:'))
+                self.mark_for_deletion(suspend_all_but_row.find('span',class_='Prompt',string='Hours:'))
 
         return charge
 
@@ -449,31 +445,6 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
                 restitution.restitution_entered_date_str = self.value_column(row,'Entered Date:',ignore_missing=True)
                 restitution.other_cost_amount = self.value_multi_column(row,'OtherCost Amount:',money=True,ignore_missing=True)
                 db.add(restitution)
-
-    #########################################################
-    # SEX OFFENDER REGISTRATION
-    #########################################################
-    @consumer
-    def sex_offender_registration(self, db, soup):
-        try:
-            section_header = soup.find('i',string='Sex Offender Registration:').find_parent('left')
-        except (ParserError, AttributeError):
-            return
-        self.mark_for_deletion(section_header)
-        t = self.immediate_sibling(section_header,'table')
-        if len(list(t.stripped_strings)) > 0:
-            registration = ODYCVCITSexOffenderRegistration(case_number=self.case_number)
-            registration.type = self.value_column(t,'Type:')
-            notes = ''
-            for row in t.find_all('tr'):
-                if 'Value' in list(row.stripped_strings) and 'Prompt' not in list(row.stripped_strings):
-                    if len(notes) > 0:
-                        notes += "\n"
-                    notes += row.find('span',class_='Value').string
-                self.mark_for_deletion(row)
-            if len(notes) > 0:
-                registration.notes = notes
-            db.add(registration)
 
     #########################################################
     # WARRANTS INFORMATION
@@ -569,7 +540,7 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
             prev_obj = separator
             doc = ODYCVCITDocument(case_number=self.case_number)
             doc.file_date_str = self.value_first_column(t,'File Date:')
-            doc.filed_by = self.value_first_column(t,'Filed By:')
+            self.mark_for_deletion(t.find('span',class_='FirstColumnPrompt',string='Filed By:'))
             doc.document_name = self.value_first_column(t,'Document Name:')
             db.add(doc)
 
@@ -598,5 +569,4 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
             service = ODYCVCITService(case_number=self.case_number)
             service.service_type = self.format_value(vals[0].string)
             service.issued_date_str = self.format_value(vals[1].string,money=True)
-            service.service_status = self.format_value(vals[2].string)
             db.add(service)

@@ -85,10 +85,6 @@ class ODYCVCITInvolvedParty(ODYCVCITCaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     party_type = Column(String, nullable=False, enum=True)
     name = Column(String, nullable=False)
-    appearance_date = Column(Date)
-    _appearance_date_str = Column('appearance_date_str', String)
-    removal_date = Column(Date)
-    _removal_date_str = Column('removal_date_str', String)
     agency_name = Column(String, nullable=True)
     address_1 = Column(String, nullable=True)
     address_2 = Column(String, nullable=True)
@@ -97,22 +93,6 @@ class ODYCVCITInvolvedParty(ODYCVCITCaseTable, TableBase):
     zip_code = Column(String, nullable=True)
     aliases = relationship('ODYCVCITAlias')
     attorneys = relationship('ODYCVCITAttorney')
-
-    @hybrid_property
-    def appearance_date_str(self):
-        return self._appearance_date_str
-    @appearance_date_str.setter
-    def appearance_date_str(self,val):
-        self.appearance_date = date_from_str(val)
-        self._appearance_date_str = val
-
-    @hybrid_property
-    def removal_date_str(self):
-        return self._removal_date_str
-    @removal_date_str.setter
-    def removal_date_str(self,val):
-        self.removal_date = date_from_str(val)
-        self._removal_date_str = val
 
 class ODYCVCITAlias(ODYCVCITCaseTable, TableBase):
     __tablename__ = 'odycvcit_aliases'
@@ -221,24 +201,16 @@ class ODYCVCITCharge(ODYCVCITCaseTable, TableBase):
     disposition_date = Column(Date, nullable=True)
     _disposition_date_str = Column('disposition_date_str', String, nullable=True)
     converted_disposition = Column(String, nullable=True)
-    jail_life = Column(Boolean, nullable=True)
-    jail_death = Column(Boolean, nullable=True)
     jail_start_date = Column(Date, nullable=True)
     _jail_start_date_str = Column('jail_start_date_str', String, nullable=True)
-    jail_cons_conc = Column(String)
     jail_years = Column(Integer, nullable=True)
     jail_months = Column(Integer, nullable=True)
     jail_days = Column(Integer, nullable=True)
     jail_hours = Column(Integer, nullable=True)
-    jail_suspended_term = Column(String, nullable=True)
     jail_suspended_years = Column(Integer, nullable=True)
     jail_suspended_months = Column(Integer, nullable=True)
     jail_suspended_days = Column(Integer, nullable=True)
     jail_suspended_hours = Column(Integer, nullable=True)
-    jail_suspend_all_but_years = Column(Integer, nullable=True)
-    jail_suspend_all_but_months = Column(Integer, nullable=True)
-    jail_suspend_all_but_days = Column(Integer, nullable=True)
-    jail_suspend_all_but_hours = Column(Integer, nullable=True)
 
     @hybrid_property
     def plea_date_str(self):
@@ -271,6 +243,14 @@ class ODYCVCITCharge(ODYCVCITCaseTable, TableBase):
     def offense_date_to_str(self,val):
         self.offense_date_to = date_from_str(val)
         self._offense_date_to_str = val
+
+    @hybrid_property
+    def jail_start_date_str(self):
+        return self._jail_start_date_str
+    @jail_start_date_str.setter
+    def jail_start_date_str(self,val):
+        self.jail_start_date = date_from_str(val)
+        self._jail_start_date_str = val
 
 class ODYCVCITProbation(ODYCVCITCaseTable, TableBase):
     __tablename__ = 'odycvcit_probation'
@@ -317,15 +297,6 @@ class ODYCVCITRestitution(ODYCVCITCaseTable, TableBase):
     def restitution_entered_date_str(self,val):
         self.restitution_entered_date = date_from_str(val)
         self._restitution_entered_date_str = val
-
-class ODYCVCITSexOffenderRegistration(ODYCVCITCaseTable, TableBase):
-    __tablename__ = 'odycvcit_sex_offender_registrations'
-    __table_args__ = (Index('ixh_odycvcit_sex_offender_registrations_case_number', 'case_number', postgresql_using='hash'),)
-    odycvcit = relationship('ODYCVCIT', backref='sex_offender_registrations')
-
-    id = Column(Integer, primary_key=True)
-    type = Column(String, enum=True)
-    notes = Column(String)
 
 class ODYCVCITWarrant(ODYCVCITCaseTable, TableBase):
     __tablename__ = 'odycvcit_warrants'
@@ -403,7 +374,6 @@ class ODYCVCITDocument(ODYCVCITCaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     file_date = Column(Date,nullable=True)
     _file_date_str = Column('file_date_str',String,nullable=True)
-    filed_by = Column(String,nullable=True)
     document_name = Column(String,nullable=False)
 
     @hybrid_property
@@ -423,7 +393,6 @@ class ODYCVCITService(ODYCVCITCaseTable, TableBase):
     service_type = Column(String, nullable=False, enum=True)
     issued_date = Column(Date,nullable=True)
     _issued_date_str = Column('issued_date_str',String,nullable=True)
-    service_status = Column(String,nullable=True, enum=True)
 
     @hybrid_property
     def issued_date_str(self):
