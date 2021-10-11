@@ -170,7 +170,7 @@ class DSCRParser(CaseDetailsParser, ChargeFinder):
         demographics_table = self.immediate_sibling(name_table,'table')
         if list(demographics_table.stripped_strings):
             defendant.race = self.value_first_column(demographics_table,'Race:',ignore_missing=True)
-            defendant.sex = self.value_first_column(demographics_table,'Sex:')
+            defendant.sex = self.value_first_column(demographics_table,'Sex:',ignore_missing=True)
             defendant.height = self.value_column(demographics_table,'Height:')
             defendant.weight = self.value_column(demographics_table,'Weight:')
             defendant.DOB_str = self.value_column(demographics_table,'DOB:')
