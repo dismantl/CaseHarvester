@@ -55,7 +55,7 @@ class DSTRAFParser(CaseDetailsParser):
         section = self.immediate_sibling(section_header,'span',class_='AltBodyWindow1')
 
         charge = DSTRAFCharge(case_number=self.case_number)
-        charge.charge = self.value_first_column(section,'Charge:')
+        self.mark_for_deletion(section.find('span',class_='FirstColumnPrompt',string='Charge:'))
         charge.article = self.value_column(section,'Article:')
         charge.sec = self.value_column(section,'Sec:')
         charge.sub_sec = self.value_column(section,'Sub-Sec:')
@@ -134,7 +134,7 @@ class DSTRAFParser(CaseDetailsParser):
             d.addition_statement = self.format_value(info_charge_statement.string)
             self.mark_for_deletion(info_charge_statement)
             details_table = self.table_next_first_column_prompt(statement_table,'Charge:')
-            d.addition_charge = self.value_first_column(details_table,'Charge:')
+            self.mark_for_deletion(details_table.find('span',class_='FirstColumnPrompt',string='Charge:'))
             d.addition_article = self.value_column(details_table,'Article:')
             d.addition_sec = self.value_column(details_table,'Sec:')
             d.addition_sub_sec = self.value_column(details_table,'Sub-Sec:')
@@ -214,11 +214,6 @@ class DSTRAFParser(CaseDetailsParser):
                 person.city = self.value_first_column(table_3,'City:',ignore_missing=True)
                 person.state = self.value_column(table_3,'State:')
                 person.zip_code = self.value_column(table_3,'Zip Code:',ignore_missing=True)
-            else:
-                if list(table_3.stripped_strings): # Agency info
-                    person.agency_code = self.value_first_column(table_3,'Agency Code:')
-                    person.agency_sub_code = self.value_column(table_3,'Agency Sub-Code:')
-                    person.officer_id = self.value_column(table_3,'Officer ID:')
             db.add(person)
 
     #########################################################

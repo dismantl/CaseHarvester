@@ -12,7 +12,6 @@ class DSTRAF(CaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     court_system = Column(String, enum=True)
-    citation_number = Column(String)
     district_code = Column(Integer)
     location_code = Column(Integer)
     violation_date = Column(Date)
@@ -43,9 +42,12 @@ class DSTRAF(CaseTable, TableBase):
     @violation_time_str.setter
     def violation_time_str(self,val):
         try:
-            self.violation_time = datetime.strptime(val,'%I:%M:%S %p').time()
+            self.violation_time = datetime.strptime(val,'%I:%M %p').time()
         except:
-            pass
+            try:
+                self.violation_time = datetime.strptime(val,'%I:%M').time()
+            except:
+                pass
         self._violation_time_str = val
 
 class DSTRAFCaseTable(CaseTable):
@@ -59,7 +61,6 @@ class DSTRAFCharge(DSTRAFCaseTable, TableBase):
     dstraf = relationship('DSTRAF', backref='charges')
 
     id = Column(Integer, primary_key=True)
-    charge = Column(String)
     article = Column(String, enum=True)
     sec = Column(Integer)
     sub_sec = Column(String)
@@ -115,7 +116,6 @@ class DSTRAFDisposition(DSTRAFCaseTable, TableBase):
     suspended_court_costs = Column(Numeric)
     suspended_cicf = Column(Numeric)
     addition_statement = Column(String)
-    addition_charge = Column(String)
     addition_article = Column(String)
     addition_sec = Column(Integer)
     addition_sub_sec = Column(String)
@@ -187,11 +187,6 @@ class DSTRAFRelatedPerson(DSTRAFCaseTable, TableBase):
     city = Column(String, nullable=True)
     state = Column(String, nullable=True)
     zip_code = Column(String, nullable=True)
-    agency_code = Column(String, nullable=True, enum=True)
-    agency_sub_code = Column(String, nullable=True)
-    officer_id = Column(String, nullable=True)
-    attorney_code = Column(Integer,nullable=True)
-    attorney_firm = Column(String,nullable=True)
 
 class DSTRAFEvent(DSTRAFCaseTable, TableBase):
     __tablename__ = 'dstraf_events'
@@ -209,7 +204,7 @@ class DSTRAFEvent(DSTRAFCaseTable, TableBase):
         return self._date_str
     @date_str.setter
     def date_str(self,val):
-        self.date = date_from_str(val)
+        self.date = datetime.strptime(val, '%Y-%m-%d').date()
         self._date_str = val
 
 class DSTRAFTrial(DSTRAFCaseTable, TableBase):
@@ -223,7 +218,6 @@ class DSTRAFTrial(DSTRAFCaseTable, TableBase):
     time = Column(Time, nullable=True)
     _time_str = Column('time_str', String, nullable=True)
     room = Column(String, nullable=True)
-    trial_type = Column(String, nullable=True, enum=True)
     location = Column(String, nullable=True)
     reason = Column(String,nullable=True)
 
