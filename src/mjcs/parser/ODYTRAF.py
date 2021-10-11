@@ -54,9 +54,10 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
         case.violation_date_str = self.value_first_column(case_info_table,'Violation Date:')
         case.violation_time_str = self.value_column(case_info_table,'Violation Time:')
         case.violation_county = self.value_first_column(case_info_table,'Violation County:')
-        case.agency_name = self.value_first_column(case_info_table,'Agency Name:')
-        case.officer_id = self.value_first_column(case_info_table,'Officer ID:')
-        case.officer_name = self.value_column(case_info_table,'Officer Name:')
+        # The following three fields are always blank
+        self.mark_for_deletion(case_info_table.find('span',class_='FirstColumnPrompt',string='Agency Name:'))
+        self.mark_for_deletion(case_info_table.find('span',class_='FirstColumnPrompt',string='Officer ID:'))
+        self.mark_for_deletion(case_info_table.find('span',class_='Prompt',string='Officer Name:'))
         case.case_status = self.value_first_column(case_info_table,'Case Status:')
         self.case_status = case.case_status
         db.add(case)
@@ -417,7 +418,7 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
         else:
             self.mark_for_deletion(subsection_header)
             t = self.immediate_sibling(subsection_header,'table')
-            charge.jail_life_death = self.value_multi_column(t,'Life/Death:')
+            self.mark_for_deletion(t.find('span',class_='Prompt',string='Life/Death:'))
             charge.jail_start_date_str = self.value_multi_column(t,'Start Date:')
             jail_row = self.row_label(t,'Jail Term:')
             charge.jail_years = self.value_column(jail_row,'Yrs:')
@@ -535,7 +536,7 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
         for t in container.find_all('table'):
             doc = ODYTRAFDocument(case_number=self.case_number)
             doc.file_date_str = self.value_first_column(t,'File Date:')
-            doc.filed_by = self.value_first_column(t,'Filed By:')
+            self.mark_for_deletion(t.find('span',class_='FirstColumnPrompt',string='Filed By:'))
             doc.document_name = self.value_first_column(t,'Document Name:')
             doc.comment = self.value_first_column(t,'Comment:')
             db.add(doc)
@@ -566,5 +567,4 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
             service.service_type = self.format_value(vals[0].string)
             service.requested_by = self.format_value(vals[1].string)
             service.issued_date_str = self.format_value(vals[2].string,money=True)
-            service.service_status = self.format_value(vals[3].string)
             db.add(service)

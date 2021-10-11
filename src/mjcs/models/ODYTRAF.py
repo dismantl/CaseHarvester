@@ -13,7 +13,6 @@ class ODYTRAF(CaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     court_system = Column(String, enum=True)
     location = Column(String, enum=True)
-    citation_number = Column(String)
     case_title = Column(String)
     case_type = Column(String, nullable=True, enum=True)
     filing_date = Column(Date, nullable=True)
@@ -23,9 +22,6 @@ class ODYTRAF(CaseTable, TableBase):
     violation_time = Column(Time, nullable=True)
     _violation_time_str = Column('violation_time_str', String, nullable=True)
     violation_county = Column(String, enum=True)
-    agency_name = Column(String, enum=True)
-    officer_id = Column(String)
-    officer_name = Column(String)
     case_status = Column(String, nullable=True, enum=True)
 
     case = relationship('Case', backref=backref('odytraf', uselist=False))
@@ -110,10 +106,6 @@ class ODYTRAFInvolvedParty(ODYTRAFCaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     party_type = Column(String, nullable=False, enum=True)
     name = Column(String, nullable=False)
-    appearance_date = Column(Date)
-    _appearance_date_str = Column('appearance_date_str', String)
-    removal_date = Column(Date)
-    _removal_date_str = Column('removal_date_str', String)
     agency_name = Column(String, nullable=True)
     address_1 = Column(String, nullable=True)
     address_2 = Column(String, nullable=True)
@@ -122,22 +114,6 @@ class ODYTRAFInvolvedParty(ODYTRAFCaseTable, TableBase):
     zip_code = Column(String, nullable=True)
     aliases = relationship('ODYTRAFAlias')
     attorneys = relationship('ODYTRAFAttorney')
-
-    @hybrid_property
-    def appearance_date_str(self):
-        return self._appearance_date_str
-    @appearance_date_str.setter
-    def appearance_date_str(self,val):
-        self.appearance_date = date_from_str(val)
-        self._appearance_date_str = val
-
-    @hybrid_property
-    def removal_date_str(self):
-        return self._removal_date_str
-    @removal_date_str.setter
-    def removal_date_str(self,val):
-        self.removal_date = date_from_str(val)
-        self._removal_date_str = val
 
 class ODYTRAFAlias(ODYTRAFCaseTable, TableBase):
     __tablename__ = 'odytraf_aliases'
@@ -263,7 +239,6 @@ class ODYTRAFCharge(ODYTRAFCaseTable, TableBase):
     probation_unsupervised_months = Column(Integer, nullable=True)
     probation_unsupervised_days = Column(Integer, nullable=True)
     probation_unsupervised_hours = Column(Integer, nullable=True)
-    jail_life_death = Column(String, nullable=True)
     jail_start_date = Column(Date, nullable=True)
     _jail_start_date_str = Column('jail_start_date_str', String, nullable=True)
     jail_years = Column(Integer, nullable=True)
@@ -389,7 +364,6 @@ class ODYTRAFDocument(ODYTRAFCaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     file_date = Column(Date,nullable=True)
     _file_date_str = Column('file_date_str',String,nullable=True)
-    filed_by = Column(String,nullable=True)
     document_name = Column(String,nullable=True)
     comment = Column(String,nullable=True)
 
@@ -411,7 +385,6 @@ class ODYTRAFService(ODYTRAFCaseTable, TableBase):
     requested_by = Column(String, nullable=True)
     issued_date = Column(Date,nullable=True)
     _issued_date_str = Column('issued_date_str',String,nullable=True)
-    service_status = Column(String,nullable=True, enum=True)
 
     @hybrid_property
     def issued_date_str(self):
