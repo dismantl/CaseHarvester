@@ -165,11 +165,6 @@ class DSCPDefendantAlias(DSCPCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     alias_name = Column(String, nullable=True)
-    address_1 = Column(String, nullable=True, redacted=True)
-    address_2 = Column(String, nullable=True, redacted=True)
-    city = Column(String, nullable=True)
-    state = Column(String, nullable=True)
-    zip_code = Column(String, nullable=True)
 
 class DSCPRelatedPerson(DSCPCaseTable, TableBase):
     __tablename__ = 'dscp_related_persons'
@@ -179,16 +174,9 @@ class DSCPRelatedPerson(DSCPCaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=True)
     connection = Column(String, nullable=True, enum=True)
-    address_1 = Column(String, nullable=True)
-    address_2 = Column(String, nullable=True)
-    city = Column(String, nullable=True)
-    state = Column(String, nullable=True)
-    zip_code = Column(String, nullable=True)
     agency_code = Column(String, nullable=True, enum=True)
     agency_sub_code = Column(String, nullable=True)
     officer_id = Column(String, nullable=True)
-    attorney_code = Column(Integer, nullable=True, enum=True)
-    attorney_firm = Column(String, nullable=True)
 
 class DSCPEvent(DSCPCaseTable, TableBase):
     __tablename__ = 'dscp_events'
@@ -222,7 +210,6 @@ class DSCPTrial(DSCPCaseTable, TableBase):
     room = Column(String, nullable=True)
     trial_type = Column(String, nullable=True, enum=True)
     location = Column(String, nullable=True)
-    reason = Column(String,nullable=True)
 
     @hybrid_property
     def date_str(self):

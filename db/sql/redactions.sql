@@ -148,10 +148,7 @@ REVOKE SELECT ON TABLE public.dscp_defendant_aliases FROM mjcs_ro_redacted;
 CREATE OR REPLACE VIEW redacted.dscp_defendant_aliases
  AS
  SELECT dscp_defendant_aliases.id,
-    dscp_defendant_aliases.alias_name,
-    dscp_defendant_aliases.city,
-    dscp_defendant_aliases.state,
-    dscp_defendant_aliases.zip_code
+    dscp_defendant_aliases.alias_name
    FROM dscp_defendant_aliases;
 
 REVOKE SELECT ON TABLE public.k_defendants FROM mjcs_ro_redacted;
