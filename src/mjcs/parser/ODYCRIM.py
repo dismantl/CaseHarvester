@@ -328,7 +328,7 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
         charge.charge_class = self.value_column(t2,'Charge Class:')
         t3 = self.immediate_sibling(t2,'table')
         probable_cause = self.value_multi_column(t3,'Probable Cause:')
-        self.probable_cause = True if probable_cause == 'YES' else False
+        charge.probable_cause = True if probable_cause == 'YES' else False
         t4 = self.immediate_sibling(t3,'table')
         charge.offense_date_from_str = self.value_multi_column(t4,'Offense Date From:')
         charge.offense_date_to_str = self.value_column(t4,'To:')
@@ -466,11 +466,11 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
             registration.type = self.value_column(t,'Type:')
             notes = ''
             for row in t.find_all('tr'):
-                if 'Value' in list(row.stripped_strings) and 'Prompt' not in list(row.stripped_strings):
+                if row.find('span',class_='Value') and not row.find('span',class_='Prompt'):
                     if len(notes) > 0:
                         notes += "\n"
                     notes += row.find('span',class_='Value').string
-                self.mark_for_deletion(row)
+                    self.mark_for_deletion(row)
             if len(notes) > 0:
                 registration.notes = notes
             db.add(registration)
@@ -569,7 +569,7 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
             prev_obj = separator
             doc = ODYCRIMDocument(case_number=self.case_number)
             doc.file_date_str = self.value_first_column(t,'File Date:')
-            doc.filed_by = self.value_first_column(t,'Filed By:')
+            self.mark_for_deletion(t.find('span',class_='FirstColumnPrompt',string='Filed By:'))
             doc.document_name = self.value_first_column(t,'Document Name:')
             db.add(doc)
 
@@ -598,5 +598,4 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
             service = ODYCRIMService(case_number=self.case_number)
             service.service_type = self.format_value(vals[0].string)
             service.issued_date_str = self.format_value(vals[1].string,money=True)
-            service.service_status = self.format_value(vals[2].string)
             db.add(service)
