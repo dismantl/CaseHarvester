@@ -662,7 +662,7 @@ class ODYCIVILParser(CaseDetailsParser):
             prev_obj = separator
             doc = ODYCIVILDocument(case_number=self.case_number)
             doc.file_date_str = self.value_first_column(t,'File Date:')
-            doc.filed_by = self.value_first_column(t,'Filed By:')
+            self.mark_for_deletion(t.find('span',class_='FirstColumnPrompt',string='Filed By:'))
             doc.document_name = self.value_first_column(t,'Document Name:')
             doc.comment = self.value_first_column(t,'Comment:', ignore_missing=True)
             db.add(doc)
@@ -692,5 +692,4 @@ class ODYCIVILParser(CaseDetailsParser):
             service = ODYCIVILService(case_number=self.case_number)
             service.service_type = self.format_value(vals[0].string)
             service.issued_date_str = self.format_value(vals[1].string,money=True)
-            service.service_status = self.format_value(vals[2].string)
             db.add(service)

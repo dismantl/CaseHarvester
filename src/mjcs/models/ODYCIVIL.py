@@ -84,10 +84,6 @@ class ODYCIVILDefendant(ODYCIVILCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     name = Column(String)
-    race = Column(String, nullable=True)
-    sex = Column(String, nullable=True)
-    height = Column(Integer, nullable=True)
-    weight = Column(Integer, nullable=True)
     DOB = Column(Date, nullable=True)
     _DOB_str = Column('DOB_str',String, nullable=True)
     address_1 = Column(String, nullable=True)
@@ -528,7 +524,7 @@ class ODYCIVILWarrant(ODYCIVILCaseTable, TableBase):
         return self._issue_date_str
     @issue_date_str.setter
     def issue_date_str(self,val):
-        self.date = date_from_str(val)
+        self.issue_date = date_from_str(val)
         self._issue_date_str = val
     
     @hybrid_property
@@ -536,7 +532,7 @@ class ODYCIVILWarrant(ODYCIVILCaseTable, TableBase):
         return self._status_date_str
     @status_date_str.setter
     def status_date_str(self,val):
-        self.date = date_from_str(val)
+        self.status_date = date_from_str(val)
         self._status_date_str = val
 
 class ODYCIVILBondSetting(ODYCIVILCaseTable, TableBase):
@@ -550,6 +546,14 @@ class ODYCIVILBondSetting(ODYCIVILCaseTable, TableBase):
     bail_setting_type = Column(String, enum=True)
     bail_amount = Column(Numeric)
 
+    @hybrid_property
+    def bail_date_str(self):
+        return self._bail_date_str
+    @bail_date_str.setter
+    def bail_date_str(self,val):
+        self.bail_date = date_from_str(val)
+        self._bail_date_str = val
+
 class ODYCIVILBailBond(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_bail_bonds'
     __table_args__ = (Index('ixh_odycivil_bail_bonds_case_number', 'case_number', postgresql_using='hash'),)
@@ -562,6 +566,14 @@ class ODYCIVILBailBond(ODYCIVILCaseTable, TableBase):
     _bond_status_date_str = Column('bond_status_date_str', String)
     bond_status = Column(String, enum=True)
 
+    @hybrid_property
+    def bond_status_date_str(self):
+        return self._bond_status_date_str
+    @bond_status_date_str.setter
+    def bond_status_date_str(self,val):
+        self.bond_status_date = date_from_str(val)
+        self._bond_status_date_str = val
+
 class ODYCIVILDocument(ODYCIVILCaseTable, TableBase):
     __tablename__ = 'odycivil_documents'
     __table_args__ = (Index('ixh_odycivil_documents_case_number', 'case_number', postgresql_using='hash'),)
@@ -570,7 +582,6 @@ class ODYCIVILDocument(ODYCIVILCaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     file_date = Column(Date,nullable=True)
     _file_date_str = Column('file_date_str',String,nullable=True)
-    filed_by = Column(String,nullable=True)
     document_name = Column(String,nullable=False)
     comment = Column(String)
 
@@ -591,7 +602,6 @@ class ODYCIVILService(ODYCIVILCaseTable, TableBase):
     service_type = Column(String, nullable=False, enum=True)
     issued_date = Column(Date,nullable=True)
     _issued_date_str = Column('issued_date_str',String,nullable=True)
-    service_status = Column(String,nullable=True, enum=True)
 
     @hybrid_property
     def issued_date_str(self):
