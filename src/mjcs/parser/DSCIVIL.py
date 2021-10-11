@@ -150,13 +150,11 @@ class DSCIVILParser(CaseDetailsParser):
         j.in_favor_of_defendant = self.value_column(t1,'In Favor of Defendant:',boolean_value=True)
         j.possession_value = self.value_first_column(t1,'Possession Of Property Claimed valued At:',money=True)
         awardee_fields = t1.find_all('span',class_='Prompt',string='Is Awarded To The:')
-        possession_awardee = self.value_column(awardee_fields[0].find_parent('tr'),'Is Awarded To The:')
-        # possession_awardee = self.value_column(t1,'Is Awarded To The:') # TODO add to table
+        j.possession_awardee = self.value_column(awardee_fields[0].find_parent('tr'),'Is Awarded To The:')
         j.possession_damages_value = self.value_column(t1,'Together With Damages Of:',money=True)
         j.value_sued_for = self.value_first_column(t1,'Value Of Property Sued For:',money=True)
         j.damages = self.value_column(t1,'Plus Damages Of:',money=True)
-        # awardee = self.value_column(t1,'Is Awarded To The:') # TODO add to table
-        awardee = self.value_column(awardee_fields[1].find_parent('tr'),'Is Awarded To The:')
+        j.awardee = self.value_column(awardee_fields[1].find_parent('tr'),'Is Awarded To The:')
         j.dismissed_with_prejudice = self.value_column(t1,'Dismissed With Prejudice:',boolean_value=True)
         j.replevin_detinue = self.value_first_column(t1,'Replevin/Detinue Amount:',money=True)
         j.recorded_lien_date_str = self.value_first_column(t1,'Recorded Lien Date:')

@@ -154,6 +154,8 @@ class DSCIVILJudgment(DSCIVILCaseTable, TableBase):
     _renewed_lien_date_str = Column('renewed_lien_date_str',String,nullable=True)
     satisfaction_date = Column(Date,nullable=True)
     _satisfaction_date_str = Column('satisfaction_date_str',String,nullable=True)
+    possession_awardee = Column(String)
+    awardee = Column(String)
 
     @hybrid_property
     def judgment_date_str(self):
@@ -209,9 +211,6 @@ class DSCIVILRelatedPerson(DSCIVILCaseTable, TableBase):
     city = Column(String, nullable=True)
     state = Column(String, nullable=True)
     zip_code = Column(String, nullable=True)
-    agency_code = Column(String, nullable=True, enum=True)
-    agency_sub_code = Column(String, nullable=True)
-    officer_id = Column(String, nullable=True)
     attorney_code = Column(Integer,nullable=True)
     attorney_firm = Column(String,nullable=True)
     complaint_id = Column(Integer, ForeignKey('dscivil_complaints.id'))
@@ -247,9 +246,8 @@ class DSCIVILTrial(DSCIVILCaseTable, TableBase):
     time = Column(Time, nullable=True)
     _time_str = Column('time_str', String, nullable=True)
     room = Column(String, nullable=True)
-    trial_type = Column(String, nullable=True, enum=True)
+    duration = Column(String,nullable=True)
     location = Column(String, nullable=True)
-    reason = Column(String,nullable=True)
 
     @hybrid_property
     def date_str(self):
