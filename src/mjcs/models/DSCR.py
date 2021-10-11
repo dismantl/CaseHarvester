@@ -187,8 +187,6 @@ class DSCRRelatedPerson(DSCRCaseTable, TableBase):
     agency_code = Column(String, nullable=True, enum=True)
     agency_sub_code = Column(String, nullable=True)
     officer_id = Column(String, nullable=True)
-    attorney_code = Column(Integer,nullable=True)
-    attorney_firm = Column(String,nullable=True)
 
 class DSCREvent(DSCRCaseTable, TableBase):
     __tablename__ = 'dscr_events'
@@ -222,7 +220,6 @@ class DSCRTrial(DSCRCaseTable, TableBase):
     room = Column(String, nullable=True)
     trial_type = Column(String, nullable=True, enum=True)
     location = Column(String, nullable=True)
-    reason = Column(String,nullable=True)
 
     @hybrid_property
     def date_str(self):
