@@ -411,7 +411,7 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
             judgment.amount = self.value_column(t1,'Amount:',money=True)
             judgment.entered_date_str = self.value_column_no_prompt(t1,'Entered',ignore_missing=True)
             judgment.satisfied_str = self.value_column_no_prompt(t1,'Satisfied',ignore_missing=True)
-            judgment.vacated_str = self.value_column_no_prompt(t1,'Vacated',ignore_missing=True)
+            judgment.vacated_date_str = self.value_column_no_prompt(t1,'Vacated',ignore_missing=True)
             judgment.amended_str = self.value_column_no_prompt(t1,'Amended',ignore_missing=True)
             judgment.renewed_str = self.value_column_no_prompt(t1,'Renewed',ignore_missing=True)
             judgment.debtor = self.value_first_column(t1,'Debtor:')
@@ -447,7 +447,7 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
             prev_obj = separator
 
             docket = MCCRDocket(case_number=self.case_number)
-            docket.date_str = self.value_first_column(t1,'Docket Date:')
+            docket.docket_date_str = self.value_first_column(t1,'Docket Date:')
             docket.docket_number = self.value_column(t1,'Docket Number:')
             docket.docket_description = self.value_first_column(t1,'Docket Description:')
             docket.docket_type = self.value_first_column(t1,'Docket Type:')

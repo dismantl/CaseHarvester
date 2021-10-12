@@ -142,12 +142,12 @@ class MCCRJudgment(MCCRCaseTable, TableBase):
         self._satisfied_str = val
     
     @hybrid_property
-    def vacated_str(self):
-        return self._vacated_str
-    @vacated_str.setter
-    def vacated_str(self,val):
-        self.vacated = date_from_str(val)
-        self._vacated_str = val
+    def vacated_date_str(self):
+        return self._vacated_date_str
+    @vacated_date_str.setter
+    def vacated_date_str(self,val):
+        self.vacated_date = date_from_str(val)
+        self._vacated_date_str = val
     
     @hybrid_property
     def amended_str(self):
@@ -283,7 +283,7 @@ class MCCRCourtSchedule(MCCRCaseTable, TableBase):
     @event_time_str.setter
     def event_time_str(self,val):
         try:
-            self.event_time = datetime.strptime(val,'%H:%M:%S').time()
+            self.event_time = datetime.strptime(val,'%I:%M %p').time()
         except:
             pass
         self._event_time_str = val
@@ -301,6 +301,8 @@ class MCCRDocket(MCCRCaseTable, TableBase):
     docket_type = Column(String)
     filed_by = Column(String)
     docket_text = Column(String)
+    status = Column(String)
+    ruling_judge = Column(String)
 
     @hybrid_property
     def docket_date_str(self):
