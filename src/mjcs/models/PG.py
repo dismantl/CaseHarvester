@@ -114,7 +114,6 @@ class PGAttorney(PGCaseTable, TableBase):
     name = Column(String)
     attorney_type = Column(String, enum=True)
     address_1 = Column(String)
-    address_2 = Column(String)
     city = Column(String)
     state = Column(String)
     zip_code = Column(String)

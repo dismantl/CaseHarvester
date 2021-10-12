@@ -151,7 +151,7 @@ class PGParser(CaseDetailsParser, ChargeFinder):
         for span in t1.find_all('span',class_='FirstColumnPrompt',string='Name:'):
             row = span.find_parent('tr')
             alias = PGDefendantAlias(case_number=self.case_number)
-            alias.name = self.value_first_column(row,'Name:')
+            alias.alias_name = self.value_first_column(row,'Name:')
             db.add(alias)
     
     ###########################################################
