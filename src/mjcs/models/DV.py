@@ -102,10 +102,10 @@ class DVHearing(DVCaseTable, TableBase):
     @hearing_time_str.setter
     def hearing_time_str(self,val):
         try:
-            self.time = datetime.strptime(val,'%I:%M %p').time()
+            self.hearing_time = datetime.strptime(val,'%I:%M %p').time()
         except:
             try:
-                self.time = datetime.strptime(val,'%I:%M').time()
+                self.hearing_time = datetime.strptime(val,'%I:%M').time()
             except:
                 pass
         self._hearing_time_str = val
