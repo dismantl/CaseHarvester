@@ -189,10 +189,10 @@ class CCCourtSchedule(CCCaseTable, TableBase):
     @event_time_str.setter
     def event_time_str(self,val):
         try:
-            self.time = datetime.strptime(val,'%I:%M %p').time()
+            self.event_time = datetime.strptime(val,'%I:%M %p').time()
         except:
             try:
-                self.time = datetime.strptime(val,'%I:%M').time()
+                self.event_time = datetime.strptime(val,'%I:%M').time()
             except:
                 pass
         self._event_time_str = val
@@ -212,7 +212,6 @@ class CCDocument(CCCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     document_number = Column(Integer)
-    sequence_number = Column(Integer)
     file_date = Column(Date,nullable=True)
     _file_date_str = Column('file_date_str',String,nullable=True)
     entered_date = Column(Date,nullable=True)
@@ -222,6 +221,22 @@ class CCDocument(CCCaseTable, TableBase):
     party_number = Column(Integer,nullable=True)
     document_name = Column(String,nullable=True)
     text = Column(Text,nullable=True)
+
+    @hybrid_property
+    def file_date_str(self):
+        return self._file_date_str
+    @file_date_str.setter
+    def file_date_str(self,val):
+        self.file_date = date_from_str(val)
+        self._file_date_str = val
+    
+    @hybrid_property
+    def entered_date_str(self):
+        return self._entered_date_str
+    @entered_date_str.setter
+    def entered_date_str(self,val):
+        self.entered_date = date_from_str(val)
+        self._entered_date_str = val
 
 class CCJudgment(CCCaseTable, TableBase):
     __tablename__ = 'cc_judgments'
