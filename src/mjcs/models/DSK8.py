@@ -226,8 +226,6 @@ class DSK8Defendant(DSK8CaseTable, TableBase):
     name = Column(String, redacted=True)
     race = Column(String, nullable=True)
     sex = Column(String, nullable=True)
-    height = Column(Integer, nullable=True)
-    weight = Column(Integer, nullable=True)
     DOB = Column(Date, nullable=True, redacted=True)
     _DOB_str = Column('DOB_str',String, nullable=True, redacted=True)
     address_1 = Column(String, nullable=True, redacted=True)
@@ -270,11 +268,6 @@ class DSK8RelatedPerson(DSK8CaseTable, TableBase):
     city = Column(String, nullable=True)
     state = Column(String, nullable=True)
     zip_code = Column(String, nullable=True)
-    agency_code = Column(String, nullable=True, enum=True)
-    agency_sub_code = Column(String, nullable=True)
-    officer_id = Column(String, nullable=True)
-    attorney_code = Column(Integer,nullable=True)
-    attorney_firm = Column(String,nullable=True)
 
 class DSK8Event(DSK8CaseTable, TableBase):
     __tablename__ = 'dsk8_events'
@@ -306,7 +299,6 @@ class DSK8Trial(DSK8CaseTable, TableBase):
     time = Column(Time, nullable=True)
     _time_str = Column('time_str', String, nullable=True)
     room = Column(String, nullable=True)
-    trial_type = Column(String, nullable=True, enum=True)
     location = Column(String, nullable=True)
     reason = Column(String,nullable=True)
 

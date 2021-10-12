@@ -33,8 +33,6 @@ CREATE OR REPLACE VIEW redacted.dsk8_defendants
  SELECT dsk8_defendants.id,
     dsk8_defendants.race,
     dsk8_defendants.sex,
-    dsk8_defendants.height,
-    dsk8_defendants.weight,
     dsk8_defendants.city,
     dsk8_defendants.state,
     dsk8_defendants.zip_code,
