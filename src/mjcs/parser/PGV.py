@@ -84,6 +84,7 @@ class PGVParser(CaseDetailsParser):
                 plaintiff.state = self.value_column(address_table,'State:')
                 plaintiff.zip_code = self.value_column(address_table,'Zip Code:')
             db.add(plaintiff)
+            db.flush()
         
             while True:
                 try:
@@ -102,7 +103,7 @@ class PGVParser(CaseDetailsParser):
                         attorney = PGVAttorney(case_number=self.case_number)
                         attorney.name = self.value_first_column(r1,'Name:')
                         attorney.attorney_type = self.value_first_column(r2,'Attorney Type:')
-                        attorney.address_1 = self.value_first_column(r3,'Address:')
+                        attorney.address = self.value_first_column(r3,'Address:')
                         attorney.city = self.value_first_column(r4,'City:')
                         attorney.state = self.value_column(r4,'State:')
                         attorney.zip_code = self.value_column(r4,'Zip Code:')
@@ -157,7 +158,7 @@ class PGVParser(CaseDetailsParser):
                     for span in t1.find_all('span',class_='FirstColumnPrompt',string='Name:'):
                         row = span.find_parent('tr')
                         alias = PGVDefendantAlias(case_number=self.case_number)
-                        alias.name = self.value_first_column(row,'Name:')
+                        alias.alias_name = self.value_first_column(row,'Name:')
                         db.add(alias)
                 elif list(subsection_header.stripped_strings) == ['Attorney Information']:
                     self.mark_for_deletion(subsection_header)
@@ -170,7 +171,7 @@ class PGVParser(CaseDetailsParser):
                         attorney = PGVAttorney(case_number=self.case_number)
                         attorney.name = self.value_first_column(r1,'Name:')
                         attorney.attorney_type = self.value_first_column(r2,'Attorney Type:')
-                        attorney.address_1 = self.value_first_column(r3,'Address:')
+                        attorney.address = self.value_first_column(r3,'Address:')
                         attorney.city = self.value_first_column(r4,'City:')
                         attorney.state = self.value_column(r4,'State:')
                         attorney.zip_code = self.value_column(r4,'Zip Code:')
@@ -197,7 +198,7 @@ class PGVParser(CaseDetailsParser):
             attorney = PGVAttorney(case_number=self.case_number)
             attorney.name = self.value_first_column(r1,'Name:')
             attorney.attorney_type = self.value_first_column(r2,'Attorney Type:')
-            attorney.address_1 = self.value_first_column(r3,'Address:')
+            attorney.address = self.value_first_column(r3,'Address:')
             attorney.city = self.value_first_column(r4,'City:')
             attorney.state = self.value_column(r4,'State:')
             attorney.zip_code = self.value_column(r4,'Zip Code:')
