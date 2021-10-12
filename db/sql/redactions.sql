@@ -156,20 +156,8 @@ CREATE OR REPLACE VIEW redacted.k_defendants
  AS
  SELECT k_defendants.id,
     k_defendants.party_type,
-    k_defendants.party_number,
-    k_defendants.business_org_name,
     k_defendants.case_number
    FROM k_defendants;
-
-REVOKE SELECT ON TABLE public.k_defendant_aliases FROM mjcs_ro_redacted;
-CREATE OR REPLACE VIEW redacted.k_defendant_aliases
- AS
- SELECT k_defendant_aliases.id,
-    k_defendant_aliases.alias_name,
-    k_defendant_aliases.city,
-    k_defendant_aliases.state,
-    k_defendant_aliases.zip_code
-   FROM k_defendant_aliases;
 
 REVOKE SELECT ON TABLE public.mccr_defendants FROM mjcs_ro_redacted;
 CREATE OR REPLACE VIEW redacted.mccr_defendants

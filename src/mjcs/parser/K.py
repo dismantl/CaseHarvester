@@ -1,4 +1,4 @@
-from ..models import (K, KDistrictCaseNumber, KPlaintiff, KDefendant,
+from ..models import (K, KDefendant,
                      KRelatedPerson, KPartyAlias, KPartyAddress, KAttorney,
                      KCourtSchedule, KJudgment, KJudgmentModification,
                      KJudgmentAgainst, KJudgmentInFavor, KSupportOrder,
@@ -43,20 +43,8 @@ class KParser(CaseDetailsParser, ChargeFinder):
         db.add(case)
         db.flush()
 
-        if 'District Case No:' in t1.text:
-            row = self.row_first_columm_prompt(t1,'District Case No:')
-            while row:
-                self.mark_for_deletion(row)
-                d = KDistrictCaseNumber(case_number=self.case_number)
-                d.district_case_number = self.format_value(row.find('span',class_='Value').string)
-                db.add(d)
-                try:
-                    row = self.immediate_sibling(row,'tr')
-                except ParserError:
-                    break
-
     ###########################################################
-    # Party (Plaintiff, Defendant, Related Person) Information
+    # Party (Defendant, Related Person) Information
     ###########################################################
     def party(self, db, soup, party_str, party_cls, party_id_param):
         try:
@@ -89,19 +77,19 @@ class KParser(CaseDetailsParser, ChargeFinder):
                 t3 = self.immediate_sibling(t2,'table')
 
                 p = party_cls(case_number=self.case_number)
-                party_id = p.id
                 p.party_type = self.value_combined_first_column(t1,'Party Type:',ignore_missing=True)
                 if not p.party_type:
                     p.party_type = party_str
-                p.party_number = self.value_column(t1,'Party No.:',ignore_missing=True)
+                # p.party_number = self.value_column(t1,'Party No.:',ignore_missing=True)
                 name_table = t1
                 if name_table:
                     p.name = self.value_combined_first_column(name_table,'Name:',ignore_missing=True)
                     if not p.name:
                         p.name = self.value_first_column(name_table,'Name:',ignore_missing=True)
-                    p.business_org_name = self.value_first_column(name_table,'Business or Organization Name:',ignore_missing=True)
+                    # p.business_org_name = self.value_first_column(name_table,'Business or Organization Name:',ignore_missing=True)
                 db.add(p)
                 db.flush()
+                party_id = p.id
 
                 if party_str == 'Defendant':
                     demographics_table = t2
@@ -221,13 +209,6 @@ class KParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = separator
-
-    #########################################################
-    # Plaintiff/Petitioner Information
-    #########################################################
-    @consumer
-    def plaintiff(self, db, soup):
-        return self.party(db, soup, 'Plaintiff/Petitioner', KPlaintiff, 'plaintiff_id')
 
     #########################################################
     # Defendant Information

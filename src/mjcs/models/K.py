@@ -48,20 +48,10 @@ class KCaseTable(CaseTable):
     def case_number(self):
         return Column(String, ForeignKey('k.case_number', ondelete='CASCADE'), nullable=False)
 
-class KDistrictCaseNumber(KCaseTable, TableBase):
-    __tablename__ = 'k_district_case_numbers'
-    __table_args__ = (Index('ixh_k_district_case_numbers_case_number', 'case_number', postgresql_using='hash'),)
-    k = relationship('K', backref='district_case_numbers')
-
-    id = Column(Integer, primary_key=True)
-    district_case_number = Column(String) # TODO eventually make a ForeignKey relation
-
 class Party:
     id = Column(Integer, primary_key=True)
     party_type = Column(String, enum=True)
-    party_number = Column(Integer,nullable=True)
     name = Column(String,nullable=True)
-    business_org_name = Column(String,nullable=True)
 
     @declared_attr
     def aliases(self):
@@ -74,11 +64,6 @@ class Party:
     @declared_attr
     def attorneys(self):
         return relationship('KAttorney')
-
-class KPlaintiff(Party, KCaseTable, TableBase):
-    __tablename__ = 'k_plaintiffs'
-    __table_args__ = (Index('ixh_k_plaintiffs_case_number', 'case_number', postgresql_using='hash'),)
-    k = relationship('K', backref='plaintiffs')
 
 class KDefendant(KCaseTable, TableBase):
     __tablename__ = 'k_defendants'
@@ -87,9 +72,21 @@ class KDefendant(KCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     party_type = Column(String, enum=True)
-    party_number = Column(Integer,nullable=True)
     name = Column(String,nullable=True, redacted=True)
-    business_org_name = Column(String,nullable=True)
+    race = Column(String, nullable=True)
+    sex = Column(String, nullable=True)
+    height = Column(Integer, nullable=True)
+    weight = Column(Integer, nullable=True)
+    DOB = Column(Date, nullable=True, redacted=True)
+    _DOB_str = Column('DOB_str',String, nullable=True, redacted=True)
+
+    @hybrid_property
+    def DOB_str(self):
+        return self._DOB_str
+    @DOB_str.setter
+    def DOB_str(self,val):
+        self.DOB = date_from_str(val)
+        self._DOB_str = val
 
     @declared_attr
     def aliases(self):
@@ -102,19 +99,6 @@ class KDefendant(KCaseTable, TableBase):
     @declared_attr
     def attorneys(self):
         return relationship('KAttorney')
-
-class KDefendantAlias(KCaseTable, TableBase):
-    __tablename__ = 'k_defendant_aliases'
-    __table_args__ = (Index('ixh_k_defendant_aliases_case_number', 'case_number', postgresql_using='hash'),)
-    k = relationship('K', backref='defendant_aliases')
-
-    id = Column(Integer, primary_key=True)
-    alias_name = Column(String, nullable=True)
-    address_1 = Column(String, nullable=True, redacted=True)
-    address_2 = Column(String, nullable=True, redacted=True)
-    city = Column(String, nullable=True)
-    state = Column(String, nullable=True)
-    zip_code = Column(String, nullable=True)
 
 class KRelatedPerson(Party, KCaseTable, TableBase):
     __tablename__ = 'k_related_persons'
@@ -127,7 +111,6 @@ class KPartyAlias(KCaseTable, TableBase):
     k = relationship('K', backref='party_aliases')
 
     id = Column(Integer, primary_key=True)
-    plaintiff_id = Column(Integer, ForeignKey('k_plaintiffs.id'),nullable=True)
     defendant_id = Column(Integer, ForeignKey('k_defendants.id'),nullable=True)
     related_person_id = Column(Integer, ForeignKey('k_related_persons.id'),nullable=True)
     name = Column(String)
@@ -138,7 +121,6 @@ class KPartyAddress(KCaseTable, TableBase):
     k = relationship('K', backref='party_addresses')
 
     id = Column(Integer, primary_key=True)
-    plaintiff_id = Column(Integer, ForeignKey('k_plaintiffs.id'),nullable=True)
     defendant_id = Column(Integer, ForeignKey('k_defendants.id'),nullable=True)
     related_person_id = Column(Integer, ForeignKey('k_related_persons.id'),nullable=True)
     address_1 = Column(String)
@@ -154,7 +136,6 @@ class KAttorney(KCaseTable, TableBase):
     k = relationship('K', backref='attorneys')
 
     id = Column(Integer, primary_key=True)
-    plaintiff_id = Column(Integer, ForeignKey('k_plaintiffs.id'),nullable=True)
     defendant_id = Column(Integer, ForeignKey('k_defendants.id'),nullable=True)
     related_person_id = Column(Integer, ForeignKey('k_related_persons.id'),nullable=True)
     name = Column(String)
@@ -197,7 +178,6 @@ class KCharge(KCaseTable, TableBase):
     statute_code = Column(String, nullable=True)
     charge_description = Column(String, nullable=True)
     charge_class = Column(String, enum=True)
-    probable_cause = Column(Boolean)
     offense_date_from = Column(Date, nullable=True)
     _offense_date_from_str = Column('offense_date_from_str', String, nullable=True)
     offense_date_to = Column(Date, nullable=True)
@@ -206,26 +186,18 @@ class KCharge(KCaseTable, TableBase):
     citation = Column(String)
     charge_amend_number = Column(Integer)
     sentence_version = Column(Integer)
-    agency_name = Column(String)
-    officer_id = Column(String)
     plea = Column(String, nullable=True, enum=True)
     plea_date = Column(Date, nullable=True)
     _plea_date_str = Column('plea_date_str', String, nullable=True)
     disposition = Column(String, nullable=True, enum=True)
     disposition_date = Column(Date, nullable=True)
     _disposition_date_str = Column('disposition_date_str', String, nullable=True)
-    converted_disposition = Column(String, nullable=True)
     disposition_merged_text = Column(String)
     jail_life = Column(Boolean, nullable=True)
-    jail_death = Column(Boolean, nullable=True)
-    jail_start_date = Column(Date, nullable=True)
-    _jail_start_date_str = Column('jail_start_date_str', String, nullable=True)
-    jail_cons_conc = Column(String)
     jail_years = Column(Integer, nullable=True)
     jail_months = Column(Integer, nullable=True)
     jail_days = Column(Integer, nullable=True)
     jail_hours = Column(Integer, nullable=True)
-    jail_suspended_term = Column(String, nullable=True)
     jail_suspended_years = Column(Integer, nullable=True)
     jail_suspended_months = Column(Integer, nullable=True)
     jail_suspended_days = Column(Integer, nullable=True)
@@ -289,14 +261,6 @@ class KCharge(KCaseTable, TableBase):
         self.offense_date_to = date_from_str(val)
         self._offense_date_to_str = val
 
-    @hybrid_property
-    def jail_start_date_str(self):
-        return self._jail_start_date_str
-    @jail_start_date_str.setter
-    def jail_start_date_str(self,val):
-        self.jail_start_date = date_from_str(val)
-        self._jail_start_date_str = val
-
 class KCourtSchedule(KCaseTable, TableBase):
     __tablename__ = 'k_court_schedule'
     __table_args__ = (Index('ixh_k_court_schedule_case_number', 'case_number', postgresql_using='hash'),)
@@ -336,10 +300,10 @@ class KCourtSchedule(KCaseTable, TableBase):
     @event_time_str.setter
     def event_time_str(self,val):
         try:
-            self.time = datetime.strptime(val,'%I:%M %p').time()
+            self.event_time = datetime.strptime(val,'%I:%M %p').time()
         except:
             try:
-                self.time = datetime.strptime(val,'%I:%M').time()
+                self.event_time = datetime.strptime(val,'%I:%M').time()
             except:
                 pass
         self._event_time_str = val
@@ -359,7 +323,6 @@ class KDocument(KCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     document_number = Column(Integer)
-    sequence_number = Column(Integer)
     file_date = Column(Date,nullable=True)
     _file_date_str = Column('file_date_str',String,nullable=True)
     entered_date = Column(Date,nullable=True)
@@ -369,6 +332,22 @@ class KDocument(KCaseTable, TableBase):
     party_number = Column(Integer,nullable=True)
     document_name = Column(String,nullable=True)
     text = Column(Text,nullable=True)
+
+    @hybrid_property
+    def file_date_str(self):
+        return self._file_date_str
+    @file_date_str.setter
+    def file_date_str(self,val):
+        self.file_date = date_from_str(val)
+        self._file_date_str = val
+    
+    @hybrid_property
+    def entered_date_str(self):
+        return self._entered_date_str
+    @entered_date_str.setter
+    def entered_date_str(self,val):
+        self.entered_date = date_from_str(val)
+        self._entered_date_str = val
 
 class KJudgment(KCaseTable, TableBase):
     __tablename__ = 'k_judgments'
@@ -468,7 +447,7 @@ class KSupportOrder(KCaseTable, TableBase):
     obligor = Column(String)
     effective_date = Column(Date,nullable=True)
     _effective_date_str = Column('effective_date_str',String)
-    effective_date_text = Column(String,nullable=True) # TODO confirm data type
+    effective_date_text = Column(String,nullable=True)
     status = Column(String, enum=True)
     date = Column(Date,nullable=True)
     _date_str = Column('date_str',String)
@@ -534,15 +513,15 @@ class KSentencingNetTools(KCaseTable, TableBase):
     probation_days = Column(Integer, nullable=True)
     probation_hours = Column(Integer, nullable=True)
     fine_amount = Column(Numeric)
-    _fine_due_date_str = Column('fine_due_date_str', String)
     fine_due_date = Column(Date)
+    _fine_due_date_str = Column('fine_due_date_str', String)
     cws_hours = Column(Integer)
     credit_time_served = Column(Integer)
     
     @hybrid_property
-    def fine_due_str(self):
-        return self._fine_due_str
-    @fine_due_str.setter
-    def fine_due_str(self,val):
-        self.fine_due = date_from_str(val)
-        self._fine_due_str = val
+    def fine_due_date_str(self):
+        return self._fine_due_date_str
+    @fine_due_date_str.setter
+    def fine_due_date_str(self,val):
+        self.fine_due_date = date_from_str(val)
+        self._fine_due_date_str = val
