@@ -7,11 +7,13 @@ import asks
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 import re
 import string
 import json
 import logging
 from enum import Enum
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -250,22 +252,51 @@ class Spider:
                     logger.debug(f'Saving slice {slice.id}')
                     slice.save()
         self.__calculate_results()
-        config.spider_table.put_item(Item=float_to_decimal(self.__dict__))
+        run_obj = float_to_decimal(self.__dict__)
+        try:
+            config.spider_table.put_item(Item=run_obj)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ValidationException' \
+                    and 'Item size has exceeded the maximum allowed size' in e.response['Error']['Message']:
+                logger.info('Run state too large for DynamoDB, saving to S3')
+                exported_key = self.__export_state(run_obj)
+                config.spider_table.put_item(Item={
+                    'id': self.id,  # Hash/partition key
+                    'timestamp': self.timestamp.isoformat() if self.timestamp else None,  # Range/sort key
+                    's3_key': exported_key
+                })
+            else:
+                raise e
 
     def __load_run(self, run_datetime=None):
         if run_datetime:
             item = config.spider_table.get_item(Key={
                 'id': self.id,
                 'timestamp': run_datetime.isoformat()
-            })
-            return decimal_to_float(item['Item'])
+            })['Item']
         else:
             item = config.spider_table.query(
                 KeyConditionExpression=Key('id').eq(self.id),
                 ScanIndexForward=False,
                 Limit=1
-            )
-            return decimal_to_float(item['Items'][0])
+            )['Items'][0]
+        if item.get('s3_key'):
+            logger.info('Importing run state from S3')
+            return decimal_to_float(self.__import_state(item['s3_key']))
+        else:
+            return decimal_to_float(item)
+
+    def __export_state(self, state):
+        s3_key = str(uuid.uuid4())
+        config.spider_runs_bucket.put_object(
+            Body = json.dumps(state, cls=JSONDatetimeEncoder).encode('utf-8'),
+            Key = s3_key
+        )
+        return s3_key
+
+    def __import_state(self, s3_key):
+        s3_obj = config.spider_runs_bucket.Object(s3_key).get()
+        return json.load(s3_obj['Body'])
 
     def __calculate_results(self):
         self.results['total_cases_added'] = self.results['total_cases_processed'] = self.results['total_requests'] = 0
