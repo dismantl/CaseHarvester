@@ -32,7 +32,6 @@ class ColumnMetadata(TableBase):
     column_name = Column(String, nullable=False)
     label = Column(String)
     description = Column(String)
-    width_pixels = Column(Integer)
     allowed_values = Column(ARRAY(String, dimensions=1))
     redacted = Column(Boolean, nullable=False, server_default='false')
     order = Column(Integer)
