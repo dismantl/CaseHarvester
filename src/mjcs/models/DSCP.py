@@ -138,7 +138,7 @@ class DSCPDefendant(DSCPCaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, redacted=True)
-    race = Column(String, nullable=True)
+    race = Column(String, nullable=True, enum=True)
     sex = Column(String, nullable=True)
     height = Column(Integer, nullable=True)
     weight = Column(Integer, nullable=True)

@@ -224,7 +224,7 @@ class DSK8Defendant(DSK8CaseTable, TableBase):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, redacted=True)
-    race = Column(String, nullable=True)
+    race = Column(String, nullable=True, enum=True)
     sex = Column(String, nullable=True)
     DOB = Column(Date, nullable=True, redacted=True)
     _DOB_str = Column('DOB_str',String, nullable=True, redacted=True)
