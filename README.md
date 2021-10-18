@@ -1,5 +1,5 @@
 <img src="https://openjusticebaltimore.org/images/caseharvester200h.png" alt="Case Harvester" />
-<img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fjy1glqydn8.execute-api.us-east-1.amazonaws.com%2Fdeploy%2Fapi%2Fcases%2Fcount&label=Total%20cases&query=$.count&color=blue" alt"Total cases" />
+<img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.mdcaseexplorer.com%2Fapi%2Fv1%2Fcases%2Fcount&label=Total%20cases&query=$.count&color=blue" alt"Total cases" />
 
 # Case Harvester
 Case Harvester is a project designed to mine the [Maryland Judiciary Case Search](https://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp) (MJCS) and build a near-complete database of Maryland court cases that can be queried and analyzed without the limitations of the MJCS interface. It is designed to leverage [Amazon Web Services (AWS)](https://aws.amazon.com/) for scalability and performance.
