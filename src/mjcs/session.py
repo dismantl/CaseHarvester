@@ -5,6 +5,7 @@ import trio
 import asks
 import os
 from bs4 import BeautifulSoup
+from pypasser import reCaptchaV3
 
 logger = logging.getLogger(__name__)
 
@@ -70,12 +71,16 @@ class AsyncSession:
         soup = BeautifulSoup(response.text, 'html.parser')
         disclaimer_token = soup.find('input',{'name':'disclaimer'}).get('value')
         logger.debug(disclaimer_token)
+        captcha_endpoint = 'https://www.google.com/recaptcha/api2/anchor?ar=1&k=6LeZrYYbAAAAAKAZ8DD6m9pYpfd-9-zgw7AHNX02&co=aHR0cHM6Ly9jYXNlc2VhcmNoLmNvdXJ0cy5zdGF0ZS5tZC51czo0NDM.&hl=en&v=UrRmT3mBwY326qQxUfVlHu1P&size=invisible&sa=submit&cb=y2j4jglyhuqt'
+        recaptcha_response = reCaptchaV3(captcha_endpoint)
         response = await self.session.request(
             'POST',
             f'{config.MJCS_BASE_URL}/processDisclaimer.jis',
             data = {
-                'disclaimer':disclaimer_token,
-                'action':'Continue'
+                'disclaimer': disclaimer_token,
+                'txtReCaptchaMinScore': '0.7',
+                'txtReCaptchaScoreSvc': 'https://jportal.mdcourts.gov/casesearch/resources/jisrecaptcha/score',
+                'g-recaptcha-response': recaptcha_response
             }
         )
         if response.status_code != 200:
