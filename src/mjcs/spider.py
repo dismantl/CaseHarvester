@@ -544,7 +544,7 @@ class SearchNode:
 
     async def __search(self, session_pool):
         query_params = {
-            'lastName':self.search_string,
+            'lastName':self.search_string + '%',
             'countyName':self.spider.court,
             'site':self.spider.site,
             'company':'N',
@@ -694,7 +694,7 @@ class SearchNode:
                 method=method,
                 url=url,
                 data=post_params,
-                max_redirects=1
+                max_redirects=2
             )
         except asks.errors.RequestTimeout:
             raise FailedSearchTimeout
