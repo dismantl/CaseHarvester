@@ -8,17 +8,12 @@ import botocore
 import re
 import json
 import trio
+import asks
 from datetime import datetime, timedelta
 from sqlalchemy import and_, or_, text
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
-
-class ScraperItem:
-    def __init__(self, case_number, detail_loc):
-        self.case_number = case_number
-        self.detail_loc = detail_loc
-        self.timeouts = 0
-        self.errors = 0
 
 class FailedScrape(Exception):
     pass
@@ -66,8 +61,7 @@ class Scraper:
     
     def scrape_specific_case(self, case_number):
         async def __scrape_specific_case(case_number):
-            detail_loc = get_detail_loc(case_number)
-            await self.__scrape_case(case_number, detail_loc)
+            await self.__scrape_case(case_number)
         trio.run(__scrape_specific_case, case_number)
     
     def stale_filter(self):
@@ -188,15 +182,31 @@ class Scraper:
                 logger.debug('Queue full, waiting...')
                 await trio.sleep(5)
 
-    async def __scrape_case(self, case_number, detail_loc):
+    async def __scrape_case(self, case_number, detail_loc=None):
         session = await self.session_pool.get()
         logger.debug(f"Requesting case details for {case_number}")
         begin = datetime.now()
+
+        try:
+            response = await session.request(
+                method='GET',
+                url = f'{config.MJCS_BASE_URL}/inquirySearch.jis',
+                max_redirects=2
+            )
+        except asks.errors.RequestTimeout:
+            raise FailedScrapeUnknownError
+        
+        if response.status_code != 200:
+            logger.debug("Failed to retrieve search page")
+            raise FailedScrapeUnknownError(response.text)
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
         response = await session.request(
             'POST',
             f'{config.MJCS_BASE_URL}/inquiryByCaseNum.jis',
             data = {
-                'caseId': case_number
+                'caseId': case_number,
+                'searchtype': soup.find('input',{'name':'searchtype'}).get('value')
             }
         )
         end = datetime.now()
@@ -238,7 +248,8 @@ class Scraper:
             raise FailedScrape500(f'{response.status_code}: {response.text}')
         elif response.status_code != 200:
             raise FailedScrapeUnknownError(f'{response.status_code}: {response.text}')
-        elif re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text):
+        elif re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text) \
+                or re.search(r'Case Search will only return results that exactly match',response.text):
             raise FailedScrapeNotFound
         elif 'Sorry, but your query has timed out after 2 minute' in response.text:
             raise FailedScrapeTimeout
@@ -284,7 +295,7 @@ class Scraper:
                     Key = case_number,
                     Metadata = {
                         'timestamp': timestamp.isoformat(),
-                        'detail_loc': detail_loc
+                        'detail_loc': detail_loc or 'Unknown'
                     }
                 )
                 try:

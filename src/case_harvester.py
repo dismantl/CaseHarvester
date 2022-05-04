@@ -248,11 +248,11 @@ def run_parser(args):
     elif args.queue:
         parser.parse_from_queue(config.parser_queue)
     elif args.case:
-        parser.parse_case(args.case)
+        parser.parse_case(args.case, args.type)
     elif args.unparsed:
-        parser.parse_unparsed(args.type)
+        parser.parse_unparsed()
     elif args.reparse:
-        parser.reparse(args.type)
+        parser.reparse()
 
 def export_tables(args):
     case_models = get_case_model_list(models)
@@ -352,7 +352,7 @@ if __name__ == '__main__':
     parser_parser = subparsers.add_parser('parser', help=\
         "Parse unparsed details from cases downloaded from the Maryland Judiciary Case Search")
     parser_parser.add_argument('--type', '-t', choices=['ODYTRAF','ODYCRIM','ODYCIVIL','ODYCVCIT','DSCR','DSK8','DSCIVIL','CC','DSTRAF','DSCP','K','PG','DV','MCCI','PGV','MCCR'],
-        help="Only parse cases of this type (requires --load-failed-queue or --unparsed)")
+        help="Force parsing as this case type")
     parser_parser.add_argument('--ignore-errors', action='store_true', default=False,
         help="Ignore parsing errors")
     parser_parser.add_argument('--queue', action='store_true',

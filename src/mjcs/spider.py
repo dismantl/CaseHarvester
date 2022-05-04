@@ -14,6 +14,7 @@ import json
 import logging
 from enum import Enum
 import uuid
+import xml.etree.ElementTree as ElementTree
 
 logger = logging.getLogger(__name__)
 
@@ -545,6 +546,7 @@ class SearchNode:
     async def __search(self, session_pool):
         query_params = {
             'lastName':self.search_string + '%',
+            # 'firstName': '%',
             'countyName':self.spider.court,
             'site':self.spider.site,
             'company':'N',
@@ -566,36 +568,25 @@ class SearchNode:
         # Process results
         processed_cases = {}
         for row in rows:
-            elements = row.find_all('td')
-            try:
-                case_number = elements[0].a.string
-            except:
-                self.error = 'Error parsing result rows'
-                self.status = NodeStatus.FAILED
-                return
+            case_number = row[0]
             if not processed_cases.get(case_number): # case numbers can appear multiple times in results
-                case_url = elements[0].a['href']
-                url_components = re.search("loc=(\d+)&detailLoc=([A-Z\d]+)$", case_url)
-                loc = url_components.group(1)
-                detail_loc = url_components.group(2)
-                if elements[7].string:
+                if row[7]:
                     try:
-                        filing_date = datetime.strptime(elements[7].string,"%m/%d/%Y")
+                        filing_date = datetime.strptime(row[7],"%m/%d/%Y")
                     except:
                         filing_date = None
                 else:
                     filing_date = None
                 case = Case(
-                    case_number = case_number,
-                    court = elements[4].string,
-                    case_type = elements[5].string,
-                    status = elements[6].string,
+                    case_number = row[0],
+                    court = row[4],
+                    case_type = row[5],
+                    status = row[6],
                     filing_date = filing_date,
-                    filing_date_original = elements[7].string,
-                    caption = elements[8].string,
+                    filing_date_original = row[7],
+                    caption = row[8],
                     query_court = self.spider.court,
-                    loc = loc,
-                    detail_loc = detail_loc,
+                    detail_loc = 'Unknown'
                 )
                 processed_cases[case_number] = case
         
@@ -614,8 +605,8 @@ class SearchNode:
             messages = [
                 json.dumps({
                     'case_number': case.case_number,
-                    'loc': case.loc,
-                    'detail_loc': case.detail_loc
+                    'detail_loc': case.detail_loc,
+                    'loc': case.loc
                 }) for case in new_cases
             ]
             send_to_queue(config.scraper_queue, messages)
@@ -633,12 +624,12 @@ class SearchNode:
 
     async def __get_results(self, session, query_params):
         try:
-            response_html = await self.__query_mjcs(
+            response = await self.__query_mjcs(
                 session,
                 url = f'{config.MJCS_BASE_URL}/inquirySearch.jis',
                 method = 'POST',
                 post_params = query_params,
-                xml = False
+                xml = True
             )
         except FailedSearchTimeout:
             self.__split()
@@ -652,42 +643,38 @@ class SearchNode:
             self.error = f'{type(e).__name__}: {e}'
             return
 
-        # Parse HTML
-        html = BeautifulSoup(response_html.text,'html.parser')
-        results_table = html.find('table',class_='results',id='row')
-        if not results_table:  # Sanity check
-            err_msg = 'Error finding results table in returned HTML'
-            self.error = err_msg
+        # Parse XML
+        try:
+            root = ElementTree.fromstring(response.text)
+        except ElementTree.ParseError as e:
             self.status = NodeStatus.FAILED
+            self.error = f'{type(e).__name__}: {e}'
             return
-        rows = list(results_table.tbody.find_all('tr'))
-        
-        # Paginate through results if needed
-        while html.find('span',class_='pagelinks').find('a',string='Next'):
-            try:
-                response_html = await self.__query_mjcs(
-                    session,
-                    url = 'https://casesearch.courts.state.md.us' + html.find('span',class_='pagelinks').find('a',string='Next')['href'],
-                    method = 'GET'
-                )
-            except FailedSearch as e:
-                self.status = NodeStatus.FAILED
-                self.error = f'{type(e).__name__}: {e}'
-                return
-            html = BeautifulSoup(response_html.text,'html.parser')
-            try:
-                for row in html.find('table',class_='results',id='row').tbody.find_all('tr'):
-                    rows.append(row)
-            except:
-                err_msg = 'Error parsing results table'
-                self.status = NodeStatus.FAILED
-                self.error = err_msg
-                return
+
+        rows = [[element.text for element in row] for row in root]
         return rows
 
     async def __query_mjcs(self, session, url, method='POST', post_params={}, xml=False):
         if xml:
             post_params['d-16544-e'] = 3
+        try:
+            self.results['requests'] += 1
+            response = await session.request(
+                method='GET',
+                url = f'{config.MJCS_BASE_URL}/inquirySearch.jis',
+                max_redirects=2
+            )
+        except asks.errors.RequestTimeout:
+            raise FailedSearchTimeout
+        
+        if response.status_code != 200:
+            logger.debug("Failed to retrieve search page")
+            raise FailedSearch500Error(response.text)
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        post_params['txtSession'] = soup.find('input',{'name':'txtSession'}).get('value')
+        post_params['searchtype'] = soup.find('input',{'name':'searchtype'}).get('value')
+        
         try:
             self.results['requests'] += 1
             response = await session.request(
@@ -716,6 +703,9 @@ class SearchNode:
         elif 'text/html' in response.headers['Content-Type'] and 'Case Search is temporarily unavailable' in response.text:
             logger.warning(f"MJCS Unavailable error: {self.id}")
             raise FailedSearchUnavailable
+        elif 'text/html' in response.headers['Content-Type'] \
+                and re.search(r'<span class="error">\s*<br>Invalid Search Criteria!',response.text):
+            raise CompletedSearchNoResults
 
         return response  
 

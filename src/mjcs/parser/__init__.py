@@ -1,8 +1,7 @@
 from ..config import config
-from ..util import (NoItemsInQueue, db_session, cases_batch_filter, 
-    get_detail_loc, send_to_queue)
+from ..util import (NoItemsInQueue, db_session, get_detail_loc, send_to_queue)
 from ..models import Case
-from sqlalchemy import and_, distinct
+from sqlalchemy import and_
 import json
 import logging
 from os import getpid, cpu_count
@@ -13,6 +12,16 @@ logger = logging.getLogger(__name__)
 
 class BaseParserError(Exception):
     pass
+
+class ParserError(BaseParserError):
+    def __init__(self, message, content=None):
+        self.message = message
+        self.content = content
+
+class UnparsedDataError(BaseParserError):
+    def __init__(self, message, content):
+        self.message = message
+        self.content = content
 
 # begin parser module exports
 from .DSCR import DSCRParser
@@ -33,22 +42,22 @@ from .PGV import PGVParser
 from .MCCR import MCCRParser
 
 parsers = [
+    ('ODYCIVIL',ODYCIVILParser),
+    ('ODYTRAF',ODYTRAFParser),
+    ('DSTRAF',DSTRAFParser),
+    ('ODYCRIM',ODYCRIMParser),
     ('DSCR',DSCRParser),
-    ('DSCP',DSCPParser),
-    ('DSK8',DSK8Parser),
     ('DSCIVIL',DSCIVILParser),
     ('CC',CCParser),
-    ('ODYTRAF',ODYTRAFParser),
-    ('ODYCRIM',ODYCRIMParser),
-    ('ODYCIVIL',ODYCIVILParser),
-    ('ODYCVCIT',ODYCVCITParser),
-    ('DSTRAF',DSTRAFParser),
-    ('K',KParser),
-    ('PG',PGParser),
-    ('DV',DVParser),
     ('MCCI',MCCIParser),
     ('PGV',PGVParser),
-    ('MCCR',MCCRParser)
+    ('DSK8',DSK8Parser),
+    ('DV',DVParser),
+    ('DSCP',DSCPParser),
+    ('PG',PGParser),
+    ('ODYCVCIT',ODYCVCITParser),
+    ('MCCR',MCCRParser),
+    ('K',KParser)
 ]
 
 def parse_case(case_number, detail_loc=None):
@@ -60,12 +69,29 @@ def parse_case(case_number, detail_loc=None):
         except KeyError:
             detail_loc = get_detail_loc(case_number)
     logger.debug(f'Parsing case {case_number}')
-    for category,parser in parsers:
-        if detail_loc == category:
-            return parser(case_number, case_html).parse()
-    err = f'Unsupported case type {detail_loc} for case number {case_number}'
-    logger.debug(err)
-    raise NotImplementedError(err)
+    if detail_loc and detail_loc != 'Unknown':
+        for category,parser in parsers:
+            if detail_loc == category:
+                parser(case_number, case_html).parse()
+                return
+        err = f'Unsupported case type {detail_loc} for case number {case_number}'
+        logger.debug(err)
+        raise NotImplementedError(err)
+    else:
+        for category, parser in parsers:
+            try:
+                logger.debug(f"Attempting to parse {case_number} as {category}")
+                parser(case_number, case_html).parse()
+            except:
+                logger.debug(f"Failed to parse {case_number} as {category}")
+            else:
+                logger.debug(f"Successfully parsed {case_number} as {category}")
+                with db_session() as db:
+                    db.query(Case).filter_by(case_number=case_number).update({'detail_loc': category})
+                return
+        err = f'Failed to parse case number {case_number}'
+        logger.debug(err)
+        raise ParserError(err)
 
 class Parser:
     def __init__(self, ignore_errors=False, parallel=False):
@@ -75,8 +101,6 @@ class Parser:
         install_mp_handler(logger)
 
     def parse_case(self, case_number, detail_loc=None):
-        if not detail_loc:
-            detail_loc = get_detail_loc(case_number)
         logger.debug(f'Worker {getpid()} parsing {case_number} of type {detail_loc}')
         parse_case(case_number, detail_loc)
         logger.info(f'Successfully parsed case {case_number}')
@@ -119,8 +143,6 @@ class Parser:
                         logger.info('No items found in queue')
                         break
                     for case_number, detail_loc, receipt_handle in cases:    
-                        if not detail_loc:
-                            detail_loc = get_detail_loc(case_number)
                         logger.debug(f'Dispatching {case_number} {detail_loc} to worker')
                         def callback_wrapper(case_number, receipt_handle):
                             def callback(_):
@@ -140,9 +162,7 @@ class Parser:
                                     except NotImplementedError:
                                         pass
                                     except Exception as e:
-                                        if not detail_loc:
-                                            detail_loc = get_detail_loc(case_number)
-                                        logger.error(f'Error parsing case {case_number} ({config.MJCS_BASE_URL}/inquiryDetail.jis?caseId={case_number}&detailLoc={detail_loc}): {e}', exc_info=not self.ignore_errors)
+                                        logger.error(f'Error parsing case {case_number} (https://mdcaseexplorer.com/case/{case_number}): {e}', exc_info=not self.ignore_errors)
                                         if not self.ignore_errors:
                                             raise
                                     jobs.remove((job, case_number, detail_loc))
@@ -165,9 +185,7 @@ class Parser:
                     except NotImplementedError:
                         pass
                     except Exception as e:
-                        if not detail_loc:
-                            detail_loc = get_detail_loc(case_number)
-                        logger.error(f'Error parsing case {case_number} ({config.MJCS_BASE_URL}/inquiryDetail.jis?caseId={case_number}&detailLoc={detail_loc}): {e}', exc_info=not self.ignore_errors)
+                        logger.error(f'Error parsing case {case_number} (https://mdcaseexplorer.com/case/{case_number}): {e}', exc_info=not self.ignore_errors)
                         if not self.ignore_errors:
                             raise
                     finally:

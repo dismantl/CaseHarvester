@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup, SoupStrainer
 from ..util import db_session
 from ..models import Case, Scrape
 from ..config import config
-from . import BaseParserError
+from . import ParserError, UnparsedDataError
 import re
 from sqlalchemy.sql import select, text
 from datetime import datetime
@@ -11,16 +11,6 @@ import inspect
 import logging
 
 logger = logging.getLogger(__name__)
-
-class ParserError(BaseParserError):
-    def __init__(self, message, content=None):
-        self.message = message
-        self.content = content
-
-class UnparsedDataError(BaseParserError):
-    def __init__(self, message, content):
-        self.message = message
-        self.content = content
 
 def consumer(func):
     func.consumer = True
