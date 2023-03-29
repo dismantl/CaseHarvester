@@ -8,7 +8,7 @@ import re
 from bs4 import BeautifulSoup, SoupStrainer
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('mjcs')
 
 # Note that consumers may not be called in order
 class ODYCIVILParser(CaseDetailsParser):

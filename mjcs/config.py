@@ -12,6 +12,7 @@ class Config:
     def __init__(self):
         self.initialized = False
         self.aws_profile = None
+        self.environment = None
         if os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
             self.initialize_from_environment()
 
@@ -34,11 +35,10 @@ class Config:
         if os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
             logger.debug('Detected Lambda function, initializing environment.')
         elif environment:
+            self.environment = environment
             logger.debug(f'Initializing config from environment {environment}')
-        
-        if environment:
             from dotenv import load_dotenv # imported here so we don't have to package dotenv with lambda functions
-            env_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'env')
+            env_dir = os.path.join(os.path.dirname(__file__), '..', 'env')
             load_dotenv(dotenv_path=os.path.join(env_dir,'base.env'))
             if environment == 'dev' or environment == 'development':
                 load_dotenv(dotenv_path=os.path.join(env_dir,'development.env'))
@@ -48,20 +48,20 @@ class Config:
                 raise Exception('Invalid environment %s' % environment)
 
         # General options
-        self.MJCS_BASE_URL = os.getenv('MJCS_BASE_URL', 'https://casesearch.courts.state.md.us/casesearch')
+        self.MJCS_DOMAIN = os.getenv('MJCS_DOMAIN', 'casesearch.courts.state.md.us')
+        self.MJCS_SITE = os.getenv('MJCS_SITE', f'https://{self.MJCS_DOMAIN}')
+        self.MJCS_BASE_URL = os.getenv('MJCS_BASE_URL', f'{self.MJCS_SITE}/casesearch')
         self.CASE_BATCH_SIZE = int(os.getenv('CASE_BATCH_SIZE',1000))
         self.QUERY_TIMEOUT = int(os.getenv('QUERY_TIMEOUT',135)) # seconds
         self.QUEUE_WAIT = int(os.getenv('QUEUE_WAIT',5)) # seconds
-        self.USER_AGENT = os.getenv('USER_AGENT')
+        self.AWS_DEFAULT_REGION = os.getenv('AWS_DEFAULT_REGION', 'us-east-1')
+        self.CLOUDWATCH_RETENTION_DAYS = os.getenv('CLOUDWATCH_RETENTION_DAYS', 30)
+        self.WORKER_MAX_UPTIME = os.getenv('WORKER_MAX_UPTIME', 300) # seconds
 
         # Spider options
-        self.SPIDER_DEFAULT_CONCURRENCY = int(os.getenv('SPIDER_DEFAULT_CONCURRENCY',10))
         self.SPIDER_DAYS_PER_QUERY = int(os.getenv('SPIDER_DAYS_PER_QUERY',16))
-        self.SPIDER_UPDATE_FREQUENCY = int(os.getenv('SPIDER_UPDATE_FREQUENCY',900)) # seconds
 
         # Scraper options
-        self.SCRAPER_DEFAULT_CONCURRENCY = int(os.getenv('SCRAPER_DEFAULT_CONCURRENCY',10)) # must be multiple of 2
-        self.SCRAPER_WAIT_INTERVAL = int(os.getenv('SCRAPER_WAIT_INTERVAL',600)) # 10 mins
         self.MAX_SCRAPE_AGE = int(os.getenv('MAX_SCRAPE_AGE', 14)) # days
         self.MAX_SCRAPE_AGE_INACTIVE = int(os.getenv('MAX_SCRAPE_AGE_INACTIVE', 90)) # days
         self.RESCRAPE_COEFFICIENT = float(os.getenv('RESCRAPE_COEFFICIENT', self.MAX_SCRAPE_AGE / (365 * 4 + 1) ))
@@ -70,9 +70,7 @@ class Config:
         # Infrastructure identifiers
         self.MJCS_DATABASE_URL = os.getenv('MJCS_DATABASE_URL')
         self.CASE_DETAILS_BUCKET = os.getenv('CASE_DETAILS_BUCKET')
-        self.SPIDER_DYNAMODB_TABLE_NAME = os.getenv('SPIDER_DYNAMODB_TABLE_NAME')
-        self.SPIDER_RUNS_BUCKET_NAME = os.getenv('SPIDER_RUNS_BUCKET_NAME')
-        self.SPIDER_TASK_DEFINITION_ARN = os.getenv('SPIDER_TASK_DEFINITION_ARN')
+        self.SPIDER_QUEUE_NAME = os.getenv('SPIDER_QUEUE_NAME')
         self.SCRAPER_QUEUE_NAME = os.getenv('SCRAPER_QUEUE_NAME')
         self.PARSER_FAILED_QUEUE_NAME = os.getenv('PARSER_FAILED_QUEUE_NAME')
         self.PARSER_QUEUE_NAME = os.getenv('PARSER_QUEUE_NAME')
@@ -83,10 +81,10 @@ class Config:
 
         # SQLAlchemy database engine
         if self.__getattribute__('MJCS_DATABASE_URL'):
-            self.db_engine = create_engine(self.MJCS_DATABASE_URL)
+            self.db_engine = create_engine(self.MJCS_DATABASE_URL, future=True)
 
         # Create custom boto3 session to use aws_profile
-        self.boto3_session = boto3.session.Session(profile_name=self.aws_profile)
+        self.boto3_session = boto3.session.Session(profile_name=self.aws_profile, region_name=self.AWS_DEFAULT_REGION)
 
         # Generic boto3 resources/clients
         self.sqs = self.boto3_session.resource('sqs')
@@ -95,22 +93,31 @@ class Config:
         self.sns = self.boto3_session.resource('sns')
         self.lambda_ = self.boto3_session.client('lambda')
 
-        # Specific AWS objects
-        if self.__getattribute__('CASE_DETAILS_BUCKET'):
-            self.case_details_bucket = self.s3.Bucket(self.CASE_DETAILS_BUCKET)
-        if self.__getattribute__('SPIDER_DYNAMODB_TABLE_NAME'):
-            self.spider_table = self.dynamodb.Table(self.SPIDER_DYNAMODB_TABLE_NAME)
-        if self.__getattribute__('SPIDER_RUNS_BUCKET_NAME'):
-            self.spider_runs_bucket = self.s3.Bucket(self.SPIDER_RUNS_BUCKET_NAME)
-        if self.__getattribute__('SCRAPER_QUEUE_NAME'):
-            self.scraper_queue = self.sqs.get_queue_by_name(QueueName=self.SCRAPER_QUEUE_NAME)
-        if self.__getattribute__('PARSER_TRIGGER_ARN'):
-            self.parser_trigger = self.sns.Topic(self.PARSER_TRIGGER_ARN)
-        if self.__getattribute__('PARSER_FAILED_QUEUE_NAME'):
-            self.parser_failed_queue = self.sqs.get_queue_by_name(QueueName=self.PARSER_FAILED_QUEUE_NAME)
-        if self.__getattribute__('PARSER_QUEUE_NAME'):
-            self.parser_queue = self.sqs.get_queue_by_name(QueueName=self.PARSER_QUEUE_NAME)
-
         self.initialized = True
+
+    @property
+    def case_details_bucket(self):
+        return self.s3.Bucket(self.CASE_DETAILS_BUCKET)
+    
+    @property
+    def spider_queue(self):
+        return self.sqs.get_queue_by_name(QueueName=self.SPIDER_QUEUE_NAME)
+
+    @property
+    def scraper_queue(self):
+        return self.sqs.get_queue_by_name(QueueName=self.SCRAPER_QUEUE_NAME)
+        
+    @property
+    def parser_trigger(self):
+        return self.sns.Topic(self.PARSER_TRIGGER_ARN)
+    
+    @property
+    def parser_failed_queue(self):
+        return self.sqs.get_queue_by_name(QueueName=self.PARSER_FAILED_QUEUE_NAME)
+    
+    @property
+    def parser_queue(self):
+        return self.sqs.get_queue_by_name(QueueName=self.PARSER_QUEUE_NAME)
+
 
 config = Config()

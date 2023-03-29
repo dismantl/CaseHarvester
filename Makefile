@@ -1,38 +1,29 @@
-CODE_SRC=src
 PACKAGE_DIR=pkg
 LIB_DIR=lib
 DOCS_DIR=docs
 ENV_DIR=env
-SPIDER_DEPS=$(addprefix $(CODE_SRC)/,case_harvester.py \
-	$(addprefix mjcs/,__init__.py spider.py config.py util.py session.py models/*.py))
-SCRAPER_DEPS=$(addprefix $(CODE_SRC)/,case_harvester.py \
-	$(addprefix mjcs/,__init__.py scraper.py config.py util.py session.py models/*.py))
-PARSER_DEPS=$(addprefix $(CODE_SRC)/,parser/parser_lambda.py \
-	$(addprefix mjcs/,__init__.py config.py util.py parser/*.py models/*.py))
+SPIDER_DEPS=harvester.py \
+	$(addprefix mjcs/,__init__.py spider.py config.py util.py session.py models/case.py)
+SCRAPER_DEPS=harvester.py \
+	$(addprefix mjcs/,__init__.py scraper.py config.py util.py session.py \
+	$(addprefix models/,case.py scraper.py))
+NOTIFIER_LAMBDA_DEPS=$(addprefix lambda/notifier/,notifier_lambda.py requirements.txt)
+PARSER_DEPS=$(addprefix lambda/parser/,parser_lambda.py requirements.txt) \
+	$(addprefix mjcs/,__init__.py config.py util.py parser/*.py models/*.py)
 SECRETS_FILE=secrets.json
 STACK_PREFIX=caseharvester-stack
-AWS_REGION=us-east-1
+DEFAULT_AWS_REGION=us-east-1
 DB_NAME=mjcs
 AWS_PROFILE=default
 DOCKER_REPO_NAME=caseharvester
+STACKS=static docker-repo spider scraper parser orchestrator
 
 .PHONY: package package_parser deploy deploy_production \
-	$(addprefix deploy_,static docker-repo spider scraper parser) \
-	$(addsuffix _production,$(addprefix deploy_,static docker-repo spider scraper parser)) \
-	test clean clean_all list_exports init init_production parser_notification \
+	$(addprefix deploy_,$(STACKS)) \
+	$(addsuffix _production,$(addprefix deploy_,$(STACKS))) \
+	clean clean_all list_exports init init_production parser_notification \
 	parser_notification_production docker_image docker_image_production sync docs \
-	pause_scraper_service resume_scraper_service
-
-define package_f
-$(eval component = $(1))
-mkdir -p $(PACKAGE_DIR)/$(component)
-pip3 install -r $(CODE_SRC)/$(component)/requirements.txt -t $(PACKAGE_DIR)/$(component)/
-cp $(CODE_SRC)/$(component)/$(component)_lambda.py $(PACKAGE_DIR)/$(component)/
-cp -r $(CODE_SRC)/mjcs $(PACKAGE_DIR)/$(component)/
-find $(PACKAGE_DIR) -name *.pyc -delete
-find $(PACKAGE_DIR) -name __pycache__ -delete
-rm -rf include
-endef
+	package_parser package_notifier
 
 define deploy_stack_f
 $(eval component = $(1))
@@ -40,28 +31,29 @@ $(eval environment = $(2))
 $(eval env_long = $(subst prod,production,$(subst dev,development,$(environment))))
 $(eval include $(ENV_DIR)/base.env)
 $(eval include $(ENV_DIR)/$(env_long).env)
+mkdir -p cloudformation/output
 aws cloudformation package --template-file cloudformation/stack-$(component).yaml \
-	--output-template-file cloudformation/stack-$(component)-output.yaml \
-	--s3-bucket $(STACK_PREFIX)-$(component)-$(environment)
-aws cloudformation deploy --template-file cloudformation/stack-$(component)-output.yaml \
+	--output-template-file cloudformation/output/stack-$(component)-output.yaml \
+	--s3-bucket $(STACK_PREFIX)-$(component)-$(environment)-cf
+aws cloudformation deploy --template-file cloudformation/output/stack-$(component)-output.yaml \
 	--stack-name $(STACK_PREFIX)-$(component)-$(environment) \
 	--capabilities CAPABILITY_IAM \
 	--capabilities CAPABILITY_NAMED_IAM \
+	--region $(DEFAULT_AWS_REGION) \
 	--parameter-overrides \
 		EnvironmentType=$(environment) DatabaseName=$(DB_NAME) \
 		StaticStackName=$(STACK_PREFIX)-static-$(environment) \
 		DockerRepoStackName=$(STACK_PREFIX)-docker-repo-$(environment) \
+		SpiderStackName=$(STACK_PREFIX)-spider-$(environment) \
 		ScraperStackName=$(STACK_PREFIX)-scraper-$(environment) \
-		AWSRegion=$(AWS_REGION) \
 		DockerRepoName=$(environment)_$(DOCKER_REPO_NAME) \
-		UserAgent=$(USER_AGENT) \
 		$(shell jq -r '.$(env_long) as $$x|$$x|keys[]|. + "=" + $$x[.]' $(SECRETS_FILE))
 endef
 
 define create_stack_bucket_f
 $(eval component = $(1))
 $(eval environment = $(2))
-aws s3api create-bucket --bucket $(STACK_PREFIX)-$(component)-$(environment) --region $(AWS_REGION)
+aws s3api create-bucket --bucket $(STACK_PREFIX)-$(component)-$(environment)-cf --region $(DEFAULT_AWS_REGION)
 endef
 
 define add_parser_notification_f
@@ -79,7 +71,7 @@ endef
 define db_init_f
 $(eval environment = $(1))
 $(eval profile = $(or $(2),$(AWS_PROFILE),default))
-DEV_MODE=1 python3 $(CODE_SRC)/case_harvester.py --environment $(environment) \
+DEV_MODE=1 python3 harvester.py --environment $(environment) \
 	--profile $(profile) db_init --db-name $(DB_NAME) --secrets-file $(SECRETS_FILE)
 CASEHARVESTER_ENV=$(environment) alembic stamp head
 endef
@@ -101,42 +93,40 @@ endef
 
 define push_docker_image_f
 $(eval environment = $(1))
-$(shell aws ecr get-login --region $(AWS_REGION) --no-include-email)
-$(eval REPO_NAME = $(environment)_$(DOCKER_REPO_NAME))
 $(eval AWS_ACCOUNT_ID = $(shell aws sts get-caller-identity | grep Account | cut -d'"' -f4))
-find $(CODE_SRC) -name *.pyc -delete
-find $(CODE_SRC) -name __pycache__ -delete
-docker build -t $(REPO_NAME) .
-$(eval REPO_URL = $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(REPO_NAME))
+$(eval SUCCESS = $(shell aws ecr get-login-password --region $(DEFAULT_AWS_REGION) | docker login --username AWS --password-stdin $(AWS_ACCOUNT_ID).dkr.ecr.$(DEFAULT_AWS_REGION).amazonaws.com))
+echo $(SUCCESS)
+$(eval REPO_NAME = $(environment)_$(DOCKER_REPO_NAME))
+find . -name *.pyc -delete
+find . -name __pycache__ -delete
+docker build --platform=linux/amd64 -t $(REPO_NAME) .
+$(eval REPO_URL = $(AWS_ACCOUNT_ID).dkr.ecr.$(DEFAULT_AWS_REGION).amazonaws.com/$(REPO_NAME))
 docker tag $(REPO_NAME):latest $(REPO_URL):latest
 docker push $(REPO_URL)
 endef
 
-define pause_scraper_service_f
-$(eval environment = $(1))
-aws application-autoscaling register-scalable-target --service-namespace ecs \
-	--scalable-dimension ecs:service:DesiredCount --resource-id service/caseharvester_cluster_$(environment)/mjcs_scraper_service_$(environment) \
-	--suspended-state '{"DynamicScalingInSuspended":true,"DynamicScalingOutSuspended":true,"ScheduledScalingSuspended":true}'
-aws ecs update-service --cluster caseharvester_cluster_$(environment) --service mjcs_scraper_service_$(environment) \
-	--desired-count 0
-endef
-
-define resume_scraper_service_f
-$(eval environment = $(1))
-aws application-autoscaling register-scalable-target --service-namespace ecs \
-	--scalable-dimension ecs:service:DesiredCount --resource-id service/caseharvester_cluster_$(environment)/mjcs_scraper_service_$(environment) \
-	--suspended-state '{"DynamicScalingInSuspended":false,"DynamicScalingOutSuspended":false,"ScheduledScalingSuspended":false}'
-endef
-
-
-.package-parser: $(PARSER_DEPS) $(CODE_SRC)/parser/requirements.txt
-	$(call package_f,parser)
+.package-parser: $(PARSER_DEPS)
+	mkdir -p $(PACKAGE_DIR)/parser
+	pip3 install -r lambda/parser/requirements.txt -t $(PACKAGE_DIR)/parser/
+	cp lambda/parser/parser_lambda.py $(PACKAGE_DIR)/parser/
+	cp -r mjcs $(PACKAGE_DIR)/parser/
+	find $(PACKAGE_DIR) -name *.pyc -delete
+	find $(PACKAGE_DIR) -name __pycache__ -delete
+	rm -rf include
 	cp -r $(LIB_DIR)/psycopg2 $(PACKAGE_DIR)/parser/
+	touch $@
+
+.package-notifier: $(NOTIFIER_LAMBDA_DEPS)
+	mkdir -p $(PACKAGE_DIR)/notifier
+	pip3 install -r lambda/notifier/requirements.txt -t $(PACKAGE_DIR)/notifier/
+	cp lambda/notifier/notifier_lambda.py $(PACKAGE_DIR)/notifier/
+	find $(PACKAGE_DIR) -name *.pyc -delete
+	find $(PACKAGE_DIR) -name __pycache__ -delete
 	touch $@
 
 .create-stack-buckets:
 	$(foreach env,dev prod,\
-		$(foreach component,static docker-repo spider scraper parser,\
+		$(foreach component,$(STACKS),\
 			$(call create_stack_bucket_f,$(component),$(env))\
 		)\
 	)
@@ -192,6 +182,14 @@ endef
 	$(call add_parser_notification_f,prod)
 	touch $@
 
+.deploy-orchestrator-dev: .deploy-spider-dev .deploy-scraper-dev .package-notifier cloudformation/stack-orchestrator.yaml
+	$(call deploy_stack_f,orchestrator,dev)
+	touch $@
+
+.deploy-orchestrator-prod: .deploy-spider-prod .deploy-scraper-prod .package-notifier cloudformation/stack-orchestrator.yaml
+	$(call deploy_stack_f,orchestrator,prod)
+	touch $@
+
 .init-dev: .deploy-static-dev .deploy-spider-dev .deploy-scraper-dev .deploy-parser-dev $(SECRETS_FILE)
 	$(call db_init_f,development)
 	touch $@
@@ -214,7 +212,9 @@ docker_image_production:
 
 package_parser: .package-parser
 
-package: package_parser
+package_notifier: .package-notifier
+
+package: package_parser package_notifier
 
 deploy_static: .deploy-static-dev
 
@@ -226,7 +226,9 @@ deploy_scraper: .deploy-scraper-dev
 
 deploy_parser: .deploy-parser-dev
 
-deploy: deploy_static deploy_docker_repo deploy_scraper deploy_parser deploy_spider .push-docker-image-dev
+deploy_orchestrator: .deploy-orchestrator-dev
+
+deploy: deploy_static deploy_docker_repo deploy_scraper deploy_parser deploy_spider deploy_orchestrator .push-docker-image-dev
 
 deploy_static_production: .deploy-static-prod
 
@@ -238,8 +240,11 @@ deploy_scraper_production: .deploy-scraper-prod
 
 deploy_parser_production: .deploy-parser-prod
 
+deploy_orchestrator_production: .deploy-orchestrator-prod
+
 deploy_production: deploy_static_production deploy_docker_repo_production \
-		deploy_scraper_production deploy_parser_production deploy_spider_production .push-docker-image-prod
+		deploy_scraper_production deploy_parser_production deploy_spider_production \
+		deploy_orchestrator_production .push-docker-image-prod
 
 init: .init-dev
 
@@ -247,15 +252,6 @@ init_production: .init-prod
 
 list_exports:
 	aws cloudformation list-exports
-
-pause_scraper_service:
-	$(call pause_scraper_service_f,prod)
-
-resume_scraper_service:
-	$(call resume_scraper_service_f,prod)
-
-test:
-	pytest
 
 sync:
 	rsync -av . earthseed.acab.enterprises:CaseHarvester
@@ -268,7 +264,7 @@ docs:
 clean:
 	rm -rf $(PACKAGE_DIR)
 	rm -f .package-*
-	rm -f $(foreach component,static docker-repo spider scraper parser,cloudformation/stack-$(component)-output.yaml)
+	rm -rf cloudformation/output/*
 	rm -rf $(DOCS_DIR)
 
 clean_all: clean

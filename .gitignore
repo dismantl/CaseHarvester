@@ -4,12 +4,13 @@
 .package-*
 .push-docker-image-*
 setup.cfg
-pkg/
 docs/
-cloudformation/*-output.yaml
+pkg/
+cloudformation/output
 __pycache__
 *.pyc
 env/development.env
 env/production.env
 secrets.json
 .vscode
+.python-version

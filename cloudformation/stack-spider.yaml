@@ -2,23 +2,14 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
 Parameters:
-  DatabasePassword:
-    Type: String
-    NoEcho: True
-  DatabaseUsername:
-    Type: String
-    NoEcho: True
-  DatabaseName:
-    Type: String
-    Default: mjcs
   StaticStackName:
-    Description: Name of the static stack, for getting database and S3 bucket details
+    Description: Name of the static stack
     Type: String
   ScraperStackName:
-    Description: Name of the scraper stack, for getting scraper queue name
+    Description: Name of the scraper stack
     Type: String
   DockerRepoStackName:
-    Description: Name of the docker repo stack, for getting repository name
+    Description: Name of the docker repo stack
     Type: String
   EnvironmentType:
     Description: The environment type (prod or dev)
@@ -28,43 +19,19 @@ Parameters:
       - prod
       - dev
     ConstraintDescription: must be a prod or dev
-  AWSRegion:
-    Description: AWS Region
-    Type: String
-    Default: us-east-1
-  UserAgent:
-    Description: User Agent to use for requests to MJCS
-    Type: String
 
 Resources:
-  SpiderTable:
-    Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
+  SpiderQueue:
+    Type: AWS::SQS::Queue
     Properties:
-      TableName: !Sub caseharvester-spider-${EnvironmentType}
-      AttributeDefinitions:
-        - AttributeName: id
-          AttributeType: S
-        - AttributeName: timestamp
-          AttributeType: S
-      KeySchema:
-        - AttributeName: id
-          KeyType: HASH
-        - AttributeName: timestamp
-          KeyType: RANGE
-      BillingMode: PAY_PER_REQUEST
-  
-  SpiderRunsBucket:
-    Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
-    Properties:
-      AccessControl: Private
-      BucketName: !Sub mjcs-spider-runs-${EnvironmentType}
+      MessageRetentionPeriod: 1209600
+      VisibilityTimeout: 300
+      QueueName: !Sub caseharvester_spider_queue_${EnvironmentType}
       
-  SpiderTaskRole:
+  SpiderRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub mjcs_ecs_spider_task_role_${EnvironmentType}
+      RoleName: !Sub caseharvester_spider_role_${EnvironmentType}
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -72,314 +39,127 @@ Resources:
             Principal:
               Service:
                 - ecs-tasks.amazonaws.com
+                - ec2.amazonaws.com
             Action:
               - sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
-        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
-        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Policies:
+        - PolicyName: !Sub caseharvester_spider_permissions_${EnvironmentType}
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:PutRetentionPolicy
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - sqs:DeleteMessage
+                  - sqs:ReceiveMessage
+                  - sqs:SendMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:GetQueueUrl
+                Resource: !GetAtt SpiderQueue.Arn
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:GetQueueUrl
+                Resource:
+                  Fn::ImportValue: !Sub "${ScraperStackName}-ScraperQueueArn"
 
-  ManualSpiderTask:
+  SpiderInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref SpiderRole
+
+  SpiderInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub caseharvester_spider_security_group_${EnvironmentType}
+      GroupDescription: Controls access to Case Harvester spider instances
+      VpcId:
+        Fn::ImportValue: !Sub ${StaticStackName}-VPCId
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: Anywhere
+          FromPort: 22
+          ToPort: 22
+          IpProtocol: tcp
+
+  SpiderTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub caseharvester_spider_template_${EnvironmentType}
+      LaunchTemplateData:
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              DeleteOnTermination: true
+              Encrypted: false
+              VolumeSize: 8
+        IamInstanceProfile:
+          Arn: !GetAtt SpiderInstanceProfile.Arn
+        ImageId: ami-0e263cd9983d8519c
+        InstanceInitiatedShutdownBehavior: stop
+        InstanceType: t3a.nano
+        KeyName: dan_ojb
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: true
+            DeleteOnTermination: true
+            DeviceIndex: 0
+            SubnetId:
+              Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+            Groups:
+              - !Ref SpiderInstanceSecurityGroup
+
+  SpiderTask:
     Type: AWS::ECS::TaskDefinition
     Properties:
       ContainerDefinitions:
-        - Name: spider
+        - Name: !Sub caseharvester_spider_container_${EnvironmentType}
           Command:
             - python
             - -u
-            - case_harvester.py
+            - harvester.py
             - --environment
             - !Sub ${EnvironmentType}
             - spider
             - --help
           Environment:
-            - Name: MJCS_DATABASE_URL
-              Value: !Sub
-                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
-                - db_user: !Ref DatabaseUsername
-                  db_pw: !Ref DatabasePassword
-                  db_addr:
-                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
-                  db_name: !Ref DatabaseName
-            - Name: SCRAPER_QUEUE_NAME
-              Value:
-                Fn::ImportValue: !Sub ${ScraperStackName}-ScraperQueueName
-            - Name: SPIDER_DYNAMODB_TABLE_NAME
-              Value: !Ref SpiderTable
-            - Name: SPIDER_RUNS_BUCKET_NAME
-              Value: !Ref SpiderRunsBucket
-            - Name: USER_AGENT
-              Value: !Ref UserAgent
+            - Name: SPIDER_QUEUE_NAME
+              Value: !GetAtt SpiderQueue.QueueName
           Image: !Sub
-            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
+            - ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${repo_name}
             - repo_name:
                 Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
           LogConfiguration:
             LogDriver: awslogs
             Options:
               awslogs-create-group: true
-              awslogs-region: !Ref AWSRegion
-              awslogs-group: !Sub caseharvester-spider-manual-${EnvironmentType}
-              awslogs-stream-prefix: caseharvester-spider-manual-logs
+              awslogs-region: !Sub ${AWS::Region}
+              awslogs-group: !Sub caseharvester-spider-${EnvironmentType}
+              awslogs-stream-prefix: caseharvester-spider-logs
       RequiresCompatibilities:
         - FARGATE
-      Cpu: 1024
-      Memory: 4096
+      Cpu: '1024'
+      Memory: '4096'
       ExecutionRoleArn:
         Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
       NetworkMode: awsvpc
-      TaskRoleArn: !GetAtt SpiderTaskRole.Arn
-
-  DailySpiderTask:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      ContainerDefinitions:
-        - Name: spider
-          Command:
-            - python
-            - -u
-            - case_harvester.py
-            - --environment
-            - !Sub ${EnvironmentType}
-            - spider
-            - --start-days-ago
-            - "0"
-            - --end-days-ago
-            - "30"
-          Environment:
-            - Name: MJCS_DATABASE_URL
-              Value: !Sub
-                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
-                - db_user: !Ref DatabaseUsername
-                  db_pw: !Ref DatabasePassword
-                  db_addr:
-                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
-                  db_name: !Ref DatabaseName
-            - Name: SCRAPER_QUEUE_NAME
-              Value:
-                Fn::ImportValue: !Sub ${ScraperStackName}-ScraperQueueName
-            - Name: SPIDER_DYNAMODB_TABLE_NAME
-              Value: !Ref SpiderTable
-            - Name: SPIDER_RUNS_BUCKET_NAME
-              Value: !Ref SpiderRunsBucket
-            - Name: USER_AGENT
-              Value: !Ref UserAgent
-          Image: !Sub
-            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
-            - repo_name:
-                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-create-group: true
-              awslogs-region: !Ref AWSRegion
-              awslogs-group: !Sub caseharvester-spider-daily-${EnvironmentType}
-              awslogs-stream-prefix: caseharvester-spider-daily-logs
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: 1024
-      Memory: 2048
-      ExecutionRoleArn:
-        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
-      NetworkMode: awsvpc
-      TaskRoleArn: !GetAtt SpiderTaskRole.Arn
-
-  WeeklySpiderTask:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      ContainerDefinitions:
-        - Name: spider
-          Command:
-            - python
-            - -u
-            - case_harvester.py
-            - --environment
-            - !Sub ${EnvironmentType}
-            - spider
-            - --start-days-ago
-            - "31"
-            - --end-days-ago
-            - "182"
-          Environment:
-            - Name: MJCS_DATABASE_URL
-              Value: !Sub
-                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
-                - db_user: !Ref DatabaseUsername
-                  db_pw: !Ref DatabasePassword
-                  db_addr:
-                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
-                  db_name: !Ref DatabaseName
-            - Name: SCRAPER_QUEUE_NAME
-              Value:
-                Fn::ImportValue: !Sub ${ScraperStackName}-ScraperQueueName
-            - Name: SPIDER_DYNAMODB_TABLE_NAME
-              Value: !Ref SpiderTable
-            - Name: SPIDER_RUNS_BUCKET_NAME
-              Value: !Ref SpiderRunsBucket
-            - Name: USER_AGENT
-              Value: !Ref UserAgent
-          Image: !Sub
-            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
-            - repo_name:
-                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-create-group: true
-              awslogs-region: !Ref AWSRegion
-              awslogs-group: !Sub caseharvester-spider-weekly-${EnvironmentType}
-              awslogs-stream-prefix: caseharvester-spider-weekly-logs
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: 1024
-      Memory: 2048
-      ExecutionRoleArn:
-        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
-      NetworkMode: awsvpc
-      TaskRoleArn: !GetAtt SpiderTaskRole.Arn
-  
-  MonthlySpiderTask:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      ContainerDefinitions:
-        - Name: spider
-          Command:
-            - python
-            - -u
-            - case_harvester.py
-            - --environment
-            - !Sub ${EnvironmentType}
-            - spider
-            - --start-days-ago
-            - "183"
-            - --end-days-ago
-            - "365"
-          Environment:
-            - Name: MJCS_DATABASE_URL
-              Value: !Sub
-                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
-                - db_user: !Ref DatabaseUsername
-                  db_pw: !Ref DatabasePassword
-                  db_addr:
-                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
-                  db_name: !Ref DatabaseName
-            - Name: SCRAPER_QUEUE_NAME
-              Value:
-                Fn::ImportValue: !Sub ${ScraperStackName}-ScraperQueueName
-            - Name: SPIDER_DYNAMODB_TABLE_NAME
-              Value: !Ref SpiderTable
-            - Name: SPIDER_RUNS_BUCKET_NAME
-              Value: !Ref SpiderRunsBucket
-            - Name: USER_AGENT
-              Value: !Ref UserAgent
-          Image: !Sub
-            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
-            - repo_name:
-                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-create-group: true
-              awslogs-region: !Ref AWSRegion
-              awslogs-group: !Sub caseharvester-spider-monthly-${EnvironmentType}
-              awslogs-stream-prefix: caseharvester-spider-monthly-logs
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: 1024
-      Memory: 2048
-      ExecutionRoleArn:
-        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
-      NetworkMode: awsvpc
-      TaskRoleArn: !GetAtt SpiderTaskRole.Arn
-
-  DailySpiderRule:
-    Type: AWS::Events::Rule
-    Properties:
-      Name: !Sub daily_spider_${EnvironmentType}
-      Description: Spider for cases filed in the last month
-      ScheduleExpression: cron(0 4 * * ? *)  # midnight ET
-      Targets:
-        - Id: spider_ecs_task_target
-          Arn:
-            Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
-          RoleArn:
-            Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
-          EcsParameters:
-            LaunchType: FARGATE
-            TaskDefinitionArn: !Ref DailySpiderTask
-            TaskCount: 1
-            NetworkConfiguration:
-              AwsVpcConfiguration:
-                AssignPublicIp: ENABLED
-                SecurityGroups:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
-                Subnets:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
-  
-  WeeklySpiderRule:
-    Type: AWS::Events::Rule
-    Properties:
-      Name: !Sub weekly_spider_${EnvironmentType}
-      Description: Every week, spider for cases filed in the last 6 months
-      ScheduleExpression: cron(0 4 ? * SUN *)  # Sunday 00:00 ET
-      Targets:
-        - Id: spider_ecs_task_target
-          Arn:
-            Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
-          RoleArn:
-            Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
-          EcsParameters:
-            LaunchType: FARGATE
-            TaskDefinitionArn: !Ref WeeklySpiderTask
-            TaskCount: 1
-            NetworkConfiguration:
-              AwsVpcConfiguration:
-                AssignPublicIp: ENABLED
-                SecurityGroups:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
-                Subnets:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
-
-  MonthlySpiderRule:
-    Type: AWS::Events::Rule
-    Properties:
-      Name: !Sub monthly_spider_${EnvironmentType}
-      Description: Every month, spider for cases filed in the last year
-      ScheduleExpression: cron(0 4 1 * ? *)  # 1st of month 00:00 ET
-      Targets:
-        - Id: spider_ecs_task_target
-          Arn:
-            Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
-          RoleArn:
-            Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
-          EcsParameters:
-            LaunchType: FARGATE
-            TaskDefinitionArn: !Ref MonthlySpiderTask
-            TaskCount: 1
-            NetworkConfiguration:
-              AwsVpcConfiguration:
-                AssignPublicIp: ENABLED
-                SecurityGroups:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
-                Subnets:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
+      TaskRoleArn: !GetAtt SpiderRole.Arn
 
 Outputs:
-  SpiderDynamoDBTableName:
-    Description: Spider DynamoDB Table name
-    Value: !Ref SpiderTable
+  SpiderQueueName:
+    Description: Spider queue name
+    Value: !GetAtt SpiderQueue.QueueName
     Export:
-      Name: !Sub ${AWS::StackName}-SpiderDynamoDBTableName
-  SpiderRunsBucketName:
-    Description: Name of S3 bucket used to store spider run state
-    Value: !Ref SpiderRunsBucket
+      Name: !Sub ${AWS::StackName}-SpiderQueueName
+  SpiderLaunchTemplateId:
+    Description: Spider launch template ID
+    Value: !Ref SpiderTemplate
     Export:
-      Name: !Sub ${AWS::StackName}-SpiderRunsBucketName
-  SpiderTaskDefinitionArn:
-    Description: Full ARN of task definition for manual spider runs
-    Value: !Ref ManualSpiderTask
-    Export:
-      Name: !Sub ${AWS::StackName}-SpiderTaskDefinitionArn
+      Name: !Sub ${AWS::StackName}-SpiderLaunchTemplateId

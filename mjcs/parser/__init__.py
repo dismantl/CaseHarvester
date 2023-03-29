@@ -1,14 +1,14 @@
 from ..config import config
 from ..util import (NoItemsInQueue, db_session, get_detail_loc, send_to_queue)
 from ..models import Case
-from sqlalchemy import and_
+from sqlalchemy import and_, update, select
 import json
 import logging
 from os import getpid, cpu_count
 from contextlib import contextmanager
 from time import sleep
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('mjcs')
 
 class BaseParserError(Exception):
     pass
@@ -87,7 +87,11 @@ def parse_case(case_number, detail_loc=None):
             else:
                 logger.debug(f"Successfully parsed {case_number} as {category}")
                 with db_session() as db:
-                    db.query(Case).filter_by(case_number=case_number).update({'detail_loc': category})
+                    db.execute(
+                        update(Case)
+                        .filter_by(case_number=case_number)
+                        .values(detail_loc=category)
+                    )
                 return
         err = f'Failed to parse case number {case_number}'
         logger.debug(err)
@@ -114,7 +118,7 @@ class Parser:
             filter = and_(Case.last_parse == None, Case.last_scrape != None,
                 Case.detail_loc.in_([c for c,p in parsers]))
         with db_session() as db:
-            self.load_into_queue(db.query(Case.case_number, Case.detail_loc).distinct().filter(filter), config.parser_queue)
+            self.load_into_queue(db.scalars(select(Case.case_number, Case.detail_loc).distinct().where(filter)), config.parser_queue)
 
     def reparse(self, detail_loc=None):
         logger.info(f'Loading all cases of type {detail_loc if detail_loc else "ANY"} into parser queue')
@@ -125,7 +129,7 @@ class Parser:
             filter = and_(Case.last_scrape != None,
                 Case.detail_loc.in_([c for c,p in parsers]))
         with db_session() as db:
-            self.load_into_queue(db.query(Case.case_number, Case.detail_loc).distinct().filter(filter), config.parser_queue)
+            self.load_into_queue(db.scalars(select(Case.case_number, Case.detail_loc).distinct().where(filter)), config.parser_queue)
 
     def parse_from_queue(self, queue):
         from multiprocessing import Pool, set_start_method

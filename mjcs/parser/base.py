@@ -10,7 +10,7 @@ from datetime import datetime
 import inspect
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('mjcs')
 
 def consumer(func):
     func.consumer = True
@@ -62,8 +62,8 @@ class CaseDetailsParser(ABC):
 
     def update_last_parse(self, db):
         db.execute(
-            Case.__table__.update()\
-                .where(Case.case_number == self.case_number)\
+            Case.__table__.update()
+                .where(Case.case_number == self.case_number)
                 .values(last_parse = datetime.now(), active = self.is_active())
         )
 
@@ -88,7 +88,7 @@ class CaseDetailsParser(ABC):
         # Disable foreign key on delete cascade triggers for performance
         db.execute(text('SET session_replication_role = replica'))
         for _, cls in inspect.getmembers(inspect.getmodule(self), lambda obj: hasattr(obj, '__tablename__')):
-            db.execute(cls.__table__.delete()\
+            db.execute(cls.__table__.delete()
                 .where(cls.case_number == self.case_number))
         db.execute(text('SET session_replication_role = DEFAULT'))
 
@@ -439,7 +439,13 @@ class ChargeFinder(ABC):
 
     def find_charges(self, db, latest_version_charge_numbers):
         logger.debug(f'Finding old charges for {self.case_number}')
-        versions = db.query(Scrape).filter_by(case_number=self.case_number).filter(Scrape.s3_version_id != None).order_by(Scrape.timestamp.desc()).offset(1).all()
+        versions = db.execute(
+            select(Scrape)
+            .filter_by(case_number=self.case_number)
+            .where(Scrape.s3_version_id != None)
+            .order_by(Scrape.timestamp.desc())
+            .offset(1)
+        )
         
         expunged_charge_numbers = []
         for version in versions:

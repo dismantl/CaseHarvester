@@ -1,0 +1,307 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  StaticStackName:
+    Description: Name of the static stack
+    Type: String
+  SpiderStackName:
+    Description: Name of the spider stack
+    Type: String
+  ScraperStackName:
+    Description: Name of the scraper stack
+    Type: String
+  EnvironmentType:
+    Description: The environment type (prod or dev)
+    Type: String
+    Default: dev
+    AllowedValues:
+      - prod
+      - dev
+    ConstraintDescription: must be a prod or dev
+  OrchestratorInstanceIpAddress:
+    Type: String
+    Default: 10.0.0.254
+
+Resources:
+  OrchestratorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub caseharvester_orchestrator_role_${EnvironmentType}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Policies:
+        - PolicyName: !Sub caseharvester_orchestrator_permissions_${EnvironmentType}
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - events:EnableRule
+                  - events:DisableRule
+                Resource: !GetAtt StateChangeNotifierRule.Arn
+              - Effect: Allow
+                Action:
+                  - ec2:RunInstances
+                  - ec2:TerminateInstances
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                  - ec2:DescribeInstances
+                  - ec2:CreateTags
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ssm:PutParameter
+                  - ssm:GetParameter
+                Resource:
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SpiderCountParameter}
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ScraperCountParameter}
+              - Effect: Allow
+                Action:
+                  - cloudwatch:DescribeAlarms
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudwatch:EnableAlarmActions
+                  - cloudwatch:DisableAlarmActions
+                Resource:
+                  - !GetAtt SpiderQueueNotEmptyAlarm.Arn
+                  - !GetAtt ScraperQueueNotEmptyAlarm.Arn
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: "*"
+
+
+  SpiderCountParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub caseharvester_spider_count_${EnvironmentType}
+      Type: String
+      AllowedPattern: "^\\d+$"
+      Value: "0"
+  
+  ScraperCountParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub caseharvester_scraper_count_${EnvironmentType}
+      Type: String
+      AllowedPattern: "^\\d+$"
+      Value: "0"
+
+  OrchestratorInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref OrchestratorRole
+
+  OrchestratorInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub caseharvester_orchestrator_security_group_${EnvironmentType}
+      GroupDescription: Controls access to Case Harvester orchestrator
+      VpcId:
+        Fn::ImportValue: !Sub ${StaticStackName}-VPCId
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: Anywhere
+          FromPort: 22
+          ToPort: 22
+          IpProtocol: tcp
+        - CidrIp:
+            Fn::ImportValue: !Sub ${StaticStackName}-VPCCidr
+          Description: From VPC
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
+
+  OrchestratorInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            DeleteOnTermination: true
+            Encrypted: false
+            VolumeSize: 8
+      IamInstanceProfile: !Ref OrchestratorInstanceProfile
+      ImageId: ami-0fec2c2e2017f4e7b # Debian 11
+      InstanceInitiatedShutdownBehavior: stop
+      InstanceType: t3a.micro
+      KeyName: dan_ojb
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          PrivateIpAddress: !Ref OrchestratorInstanceIpAddress
+          DeleteOnTermination: true
+          DeviceIndex: "0"
+          SubnetId:
+            Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+          GroupSet:
+            - !Ref OrchestratorInstanceSecurityGroup
+      PropagateTagsToVolumeOnCreation: true
+      Tags:
+        - Key: Name
+          Value: !Sub Case Harvester Orchestrator ${EnvironmentType}
+
+  StateChangeNotifier:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub caseharvester_state_change_notifier_${EnvironmentType}
+      CodeUri: ../pkg/notifier
+      Handler: notifier_lambda.state_change_notifier
+      Environment:
+        Variables:
+          ORCHESTRATOR_IP_ADDRESS: !Ref OrchestratorInstanceIpAddress
+      MemorySize: 128
+      Runtime: python3.9
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+        SubnetIds:
+          - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+
+  StateChangeNotifierRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub caseharvester_state_change_notifier_rule_${EnvironmentType}
+      EventPattern:
+        source:
+          - aws.ec2
+        detail-type:
+          - EC2 Instance State-change Notification
+      Targets:
+        - Arn: !GetAtt StateChangeNotifier.Arn
+          Id: !Sub caseharvester_state_change_notifier_trigger_${EnvironmentType}
+  
+  StateChangeNotifierPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StateChangeNotifier
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt StateChangeNotifierRule.Arn
+
+  QueueNotEmptyNotifier:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub caseharvester_queue_not_empty_notifier_${EnvironmentType}
+      CodeUri: ../pkg/notifier
+      Handler: notifier_lambda.queue_not_empty_notifier
+      Environment:
+        Variables:
+          ORCHESTRATOR_IP_ADDRESS: !Ref OrchestratorInstanceIpAddress
+      MemorySize: 128
+      Runtime: python3.9
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+        SubnetIds:
+          - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+
+  QueueNotEmptyNotifierTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub caseharvester_queue_not_empty_notifier_topic_${EnvironmentType}
+      Subscription:
+        - Endpoint: !GetAtt StateChangeNotifier.Arn
+          Protocol: lambda
+
+  QueueNotEmptyNotifierPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StateChangeNotifier
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref QueueNotEmptyNotifierTopic
+
+  SpiderQueueNotEmptyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub caseharvester_spider_queue_not_empty_alarm_${EnvironmentType}
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Period: 60
+      Statistic: Average
+      Threshold: 1
+      Dimensions:
+        - Name: QueueName
+          Value:
+            Fn::ImportValue: !Sub ${SpiderStackName}-SpiderQueueName
+      AlarmActions:
+        - !Ref QueueNotEmptyNotifierTopic
+      OKActions:
+        - !Ref QueueNotEmptyNotifierTopic
+  
+  ScraperQueueNotEmptyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub caseharvester_scraper_queue_not_empty_alarm_${EnvironmentType}
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Period: 60
+      Statistic: Average
+      Threshold: 1
+      Dimensions:
+        - Name: QueueName
+          Value:
+            Fn::ImportValue: !Sub ${ScraperStackName}-ScraperQueueName
+      AlarmActions:
+        - !Ref QueueNotEmptyNotifierTopic
+      OKActions:
+        - !Ref QueueNotEmptyNotifierTopic
+
+  QueueNotEmptyNotifierTopicPermission:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudwatch.amazonaws.com
+            Action: sns:Publish
+            Resource: "*"
+      Topics:
+        - !Ref QueueNotEmptyNotifierTopic
+
+Outputs:
+  NotifierRuleName:
+    Description: State change notifier rule name
+    Value: !Ref StateChangeNotifierRule
+    Export:
+      Name: !Sub ${AWS::StackName}-NotifierRuleName
+  SpiderCountParameterName:
+    Description: Spider count parameter name
+    Value: !Ref SpiderCountParameter
+    Export:
+      Name: !Sub ${AWS::StackName}-SpiderCountParameterName
+  ScraperCountParameterName:
+    Description: Scraper count parameter name
+    Value: !Ref ScraperCountParameter
+    Export:
+      Name: !Sub ${AWS::StackName}-ScraperCountParameterName
+  SpiderQueueNotEmptyAlarmName:
+    Description: Spider queue not empty alarm name
+    Value: !Ref SpiderQueueNotEmptyAlarm
+    Export:
+      Name: !Sub ${AWS::StackName}-SpiderQueueNotEmptyAlarmName
+  ScraperQueueNotEmptyAlarmName:
+    Description: Scraper queue not empty alarm name
+    Value: !Ref ScraperQueueNotEmptyAlarm
+    Export:
+      Name: !Sub ${AWS::StackName}-ScraperQueueNotEmptyAlarmName

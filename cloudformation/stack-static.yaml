@@ -303,6 +303,16 @@ Outputs:
     Value: !GetAtt Database.Endpoint.Address
     Export:
       Name: !Sub ${AWS::StackName}-DatabaseHostname
+  VPCId:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Sub ${AWS::StackName}-VPCId
+  VPCCidr:
+    Description: VPC IP range
+    Value: !Ref VPCCidr
+    Export:
+      Name: !Sub ${AWS::StackName}-VPCCidr
   VPCDefaultSecurityGroupId:
     Description: VPC default security group ID
     Value: !GetAtt VPC.DefaultSecurityGroup

@@ -7,7 +7,7 @@ import sys
 import os
 
 # Add our source path to the search paths for modules
-src_path = os.path.join(os.path.dirname(__file__), '..', 'src')
+src_path = os.path.join(os.path.dirname(__file__), '..')
 sys.path.insert(0, src_path)
 
 # Import our models and database objects
@@ -89,4 +89,5 @@ for file in os.listdir(scripts_path):
         print(f'Running SQL initialization script {file}')
         with open(os.path.join(scripts_path, file), 'r') as script:
             commands = script.read()
-            my_config.db_engine.execute(text(commands))
+            with my_config.db_engine.begin() as conn:
+                conn.execute(text(commands))

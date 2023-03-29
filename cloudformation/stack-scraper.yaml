@@ -12,10 +12,10 @@ Parameters:
     Type: String
     Default: mjcs
   StaticStackName:
-    Description: Name of the static stack, for getting database and S3 bucket details
+    Description: Name of the static stack
     Type: String
   DockerRepoStackName:
-    Description: Name of the docker repo stack, for getting repository name
+    Description: Name of the docker repo stack
     Type: String
   EnvironmentType:
     Description: The environment type (prod or dev)
@@ -25,13 +25,6 @@ Parameters:
       - prod
       - dev
     ConstraintDescription: must be a prod or dev
-  AWSRegion:
-    Description: AWS Region
-    Type: String
-    Default: us-east-1
-  UserAgent:
-    Description: User Agent to use for requests to MJCS
-    Type: String
 
 Resources:
   ScraperQueue:
@@ -39,179 +32,108 @@ Resources:
     Properties:
       MessageRetentionPeriod: 1209600
       VisibilityTimeout: 300
-      QueueName: !Sub mjcs_scraper_queue_${EnvironmentType}
+      QueueName: !Sub caseharvester_scraper_queue_${EnvironmentType}
 
-  ScaperQueueNotEmptyAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: scraper_queue_not_empty_alarm
-      ComparisonOperator: GreaterThanOrEqualToThreshold
-      EvaluationPeriods: 1
-      MetricName: ApproximateNumberOfMessagesVisible
-      Namespace: AWS/SQS
-      Period: 60
-      Statistic: Average
-      Threshold: 1
-      Dimensions:
-        - Name: QueueName
-          Value: !GetAtt ScraperQueue.QueueName
-      AlarmActions:
-        - !Ref ScraperServiceScaleOutPolicy
-
-  ScaperQueueEmptyAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: scraper_queue_empty_alarm
-      ComparisonOperator: LessThanThreshold
-      EvaluationPeriods: 1
-      MetricName: ApproximateNumberOfMessagesVisible
-      Namespace: AWS/SQS
-      Period: 60
-      Statistic: Average
-      Threshold: 1
-      Dimensions:
-        - Name: QueueName
-          Value: !GetAtt ScraperQueue.QueueName
-      AlarmActions:
-        - !Ref ScraperServiceScaleInPolicy
-
-  ScraperTaskRole:
+  ScraperRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub mjcs_ecs_scraper_task_role_${EnvironmentType}
+      RoleName: !Sub caseharvester_scraper_role_${EnvironmentType}
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
           - Effect: Allow
+            Action: sts:AssumeRole
             Principal:
               Service:
                 - ecs-tasks.amazonaws.com
-            Action:
-              - sts:AssumeRole
+                - ec2.amazonaws.com
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
-        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Policies:
+        - PolicyName: !Sub caseharvester_scraper_permissions_${EnvironmentType}
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:PutRetentionPolicy
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - sqs:DeleteMessage
+                  - sqs:ReceiveMessage
+                  - sqs:SendMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:GetQueueUrl
+                Resource: !GetAtt ScraperQueue.Arn
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:GetObjectVersion
+                  - s3:ListBucket
+                Resource: 
+                  - Fn::ImportValue: !Sub "${StaticStackName}-CaseDetailsBucketArn"
+                  - !Sub
+                    - ${bucket}/*
+                    - bucket: {Fn::ImportValue: !Sub "${StaticStackName}-CaseDetailsBucketArn"}
 
-  ScraperService:
-    Type: AWS::ECS::Service
+  ScraperInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
     Properties:
-      ServiceName: !Sub mjcs_scraper_service_${EnvironmentType}
-      Cluster:
-        Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
-      DesiredCount: 1
-      LaunchType: FARGATE
-      NetworkConfiguration:
-        AwsvpcConfiguration:
-          AssignPublicIp: ENABLED
-          SecurityGroups:
-            - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
-          Subnets:
-            - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
-            - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
-      TaskDefinition: !Ref ScraperServiceTask
-  
-  ScraperServiceScalableTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
-    Properties:
-      MaxCapacity: 4
-      MinCapacity: 0
-      RoleARN: 
-        Fn::Sub: 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService'
-      ServiceNamespace: ecs
-      ScalableDimension: ecs:service:DesiredCount
-      ResourceId: !Sub service/caseharvester_cluster_${EnvironmentType}/mjcs_scraper_service_${EnvironmentType}
+      Path: /
+      Roles:
+        - !Ref ScraperRole
 
-  ScraperServiceScaleOutPolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+  ScraperInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
     Properties:
-      PolicyName: caseharvester-scraper-service-scale-out-policy
-      PolicyType: StepScaling
-      ScalingTargetId: !Ref ScraperServiceScalableTarget
-      StepScalingPolicyConfiguration:
-        AdjustmentType: ExactCapacity
-        StepAdjustments:
-          - MetricIntervalLowerBound: 0
-            MetricIntervalUpperBound: 500000
-            ScalingAdjustment: 1
-          - MetricIntervalLowerBound: 500000
-            MetricIntervalUpperBound: 1000000
-            ScalingAdjustment: 2
-          - MetricIntervalLowerBound: 1000000
-            MetricIntervalUpperBound: 1500000
-            ScalingAdjustment: 3
-          - MetricIntervalLowerBound: 1500000
-            ScalingAdjustment: 4
-  
-  ScraperServiceScaleInPolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: caseharvester-scraper-service-scale-in-policy
-      PolicyType: StepScaling
-      ScalingTargetId: !Ref ScraperServiceScalableTarget
-      StepScalingPolicyConfiguration:
-        AdjustmentType: ExactCapacity
-        StepAdjustments:
-          - MetricIntervalUpperBound: 0
-            ScalingAdjustment: 0
+      GroupName: !Sub caseharvester_scraper_security_group_${EnvironmentType}
+      GroupDescription: Controls access to Case Harvester scraper instances
+      VpcId:
+        Fn::ImportValue: !Sub ${StaticStackName}-VPCId
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: Anywhere
+          FromPort: 22
+          ToPort: 22
+          IpProtocol: tcp
 
-  ScraperServiceTask:
-    Type: AWS::ECS::TaskDefinition
+  ScraperTemplate:
+    Type: AWS::EC2::LaunchTemplate
     Properties:
-      ContainerDefinitions:
-        - Name: !Sub mjcs_scraper_container_${EnvironmentType}
-          Command:
-            - python
-            - -u
-            - case_harvester.py
-            - --environment
-            - !Sub ${EnvironmentType}
-            - scraper
-            - --service
-          Environment:
-            - Name: MJCS_DATABASE_URL
-              Value: !Sub
-                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
-                - db_user: !Ref DatabaseUsername
-                  db_pw: !Ref DatabasePassword
-                  db_addr:
-                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
-                  db_name: !Ref DatabaseName
-            - Name: SCRAPER_QUEUE_NAME
-              Value: !GetAtt ScraperQueue.QueueName
-            - Name: CASE_DETAILS_BUCKET
-              Value:
-                Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
-            - Name: USER_AGENT
-              Value: !Ref UserAgent
-          Image: !Sub
-            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
-            - repo_name:
-                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-create-group: true
-              awslogs-region: !Ref AWSRegion
-              awslogs-group: !Sub caseharvester-scraper-service-${EnvironmentType}
-              awslogs-stream-prefix: caseharvester-scraper-service-logs
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: 1024
-      Memory: 2048
-      ExecutionRoleArn:
-        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
-      NetworkMode: awsvpc
-      TaskRoleArn: !GetAtt ScraperTaskRole.Arn
+      LaunchTemplateName: !Sub caseharvester_scraper_template_${EnvironmentType}
+      LaunchTemplateData:
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              DeleteOnTermination: true
+              Encrypted: false
+              VolumeSize: 8
+        IamInstanceProfile:
+          Arn: !GetAtt ScraperInstanceProfile.Arn
+        ImageId: ami-06fed787a55a2864a
+        InstanceInitiatedShutdownBehavior: stop
+        InstanceType: t3a.nano
+        KeyName: dan_ojb
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: true
+            DeleteOnTermination: true
+            DeviceIndex: 0
+            SubnetId:
+              Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+            Groups:
+              - !Ref ScraperInstanceSecurityGroup
 
   DailyScraperTask:
     Type: AWS::ECS::TaskDefinition
     Properties:
       ContainerDefinitions:
-        - Name: !Sub mjcs_scraper_container_${EnvironmentType}
+        - Name: !Sub caseharvester_scraper_container_${EnvironmentType}
           Command:
             - python
             - -u
-            - case_harvester.py
+            - harvester.py
             - --environment
             - !Sub ${EnvironmentType}
             - scraper
@@ -219,43 +141,38 @@ Resources:
           Environment:
             - Name: MJCS_DATABASE_URL
               Value: !Sub
-                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
-                - db_user: !Ref DatabaseUsername
-                  db_pw: !Ref DatabasePassword
-                  db_addr:
+                - postgresql://${DatabaseUsername}:${DatabasePassword}@${db_addr}/${DatabaseName}
+                - db_addr:
                     Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
-                  db_name: !Ref DatabaseName
             - Name: SCRAPER_QUEUE_NAME
               Value: !GetAtt ScraperQueue.QueueName
             - Name: CASE_DETAILS_BUCKET
               Value:
                 Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
-            - Name: USER_AGENT
-              Value: !Ref UserAgent
           Image: !Sub
-            - ${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${repo_name}
+            - ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${repo_name}
             - repo_name:
                 Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
           LogConfiguration:
             LogDriver: awslogs
             Options:
               awslogs-create-group: true
-              awslogs-region: !Ref AWSRegion
+              awslogs-region: !Sub ${AWS::Region}
               awslogs-group: !Sub caseharvester-scraper-daily-${EnvironmentType}
               awslogs-stream-prefix: caseharvester-scraper-daily-logs
       RequiresCompatibilities:
         - FARGATE
-      Cpu: 1024
-      Memory: 4096
+      Cpu: '1024'
+      Memory: '4096'
       ExecutionRoleArn:
         Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
       NetworkMode: awsvpc
-      TaskRoleArn: !GetAtt ScraperTaskRole.Arn
+      TaskRoleArn: !GetAtt ScraperRole.Arn
 
   DailyScraperRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: !Sub daily_scraper_${EnvironmentType}
+      Name: !Sub caseharvester_daily_scraper_${EnvironmentType}
       Description: Daily rescrape cases based on case age
       ScheduleExpression: cron(0 22 * * ? *)  # 6pm ET
       Targets:
@@ -283,3 +200,13 @@ Outputs:
     Value: !GetAtt ScraperQueue.QueueName
     Export:
       Name: !Sub ${AWS::StackName}-ScraperQueueName
+  ScraperQueueArn:
+    Description: Scraper queue ARN
+    Value: !GetAtt ScraperQueue.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-ScraperQueueArn
+  ScraperLaunchTemplateId:
+    Description: Scraper launch template ID
+    Value: !Ref ScraperTemplate
+    Export:
+      Name: !Sub ${AWS::StackName}-ScraperLaunchTemplateId

@@ -295,7 +295,6 @@ class PGVParser(CaseDetailsParser):
         prev_obj = stmt
         while True:
             try:
-                # import pdb; pdb.set_trace()
                 t1 = self.immediate_sibling(prev_obj,'table')
                 separator = self.immediate_sibling(t1,'hr')
             except ParserError:

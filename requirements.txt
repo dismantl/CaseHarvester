@@ -1,14 +1,14 @@
-asks == 2.3.7
-anyio == 1.4.0
-trio == 0.13.0
-sqlalchemy >= 1.4.22
+sqlalchemy == 2.0.6
 psycopg2 >= 2.7.4
 boto3 >= 1.9.216
 beautifulsoup4 == 4.9.0
 lxml >= 4.2.1
 alembic >= 0.9.9
-pytest >= 3.5.0
 python-dotenv >= 0.8.2
 awscli >= 1.16.226
 multiprocessing_logging >= 0.3.1
-pypasser >= 0.0.5
+# pypasser >= 0.0.5
+requests == 2.28.2
+pypdf == 3.6.0
+watchtower == 3.0.1
+ec2_metadata == 2.11.0

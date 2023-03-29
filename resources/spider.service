@@ -1,0 +1,10 @@
+[Unit]
+Description=Case Harvester spider
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=+/root/CaseHarvester/harvester.py --environment production --cloudwatch caseharvester_spider_worker_prod spider --from-queue --record-metrics --shutdown
+
+[Install]
+WantedBy=multi-user.target

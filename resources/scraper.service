@@ -1,0 +1,10 @@
+[Unit]
+Description=Case Harvester scraper
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=+/root/CaseHarvester/harvester.py --environment production --cloudwatch caseharvester_scraper_worker_prod scraper --from-queue --record-metrics --shutdown
+
+[Install]
+WantedBy=multi-user.target
