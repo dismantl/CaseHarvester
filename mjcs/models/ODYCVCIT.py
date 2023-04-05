@@ -155,6 +155,7 @@ class ODYCVCITCourtSchedule(ODYCVCITCaseTable, TableBase):
     location = Column(String, enum=True)
     room = Column(String)
     result = Column(String, enum=True)
+    judge = Column(String)
 
     @hybrid_property
     def date_str(self):
@@ -197,9 +198,11 @@ class ODYCVCITCharge(ODYCVCITCaseTable, TableBase):
     plea = Column(String, enum=True)
     plea_date = Column(Date)
     _plea_date_str = Column('plea_date_str', String)
+    plea_judge = Column(String)
     disposition = Column(String, enum=True)
     disposition_date = Column(Date)
     _disposition_date_str = Column('disposition_date_str', String)
+    disposition_judge = Column(String)
     converted_disposition = Column(String)
     jail_start_date = Column(Date)
     _jail_start_date_str = Column('jail_start_date_str', String)
@@ -211,6 +214,7 @@ class ODYCVCITCharge(ODYCVCITCaseTable, TableBase):
     jail_suspended_months = Column(Integer)
     jail_suspended_days = Column(Integer)
     jail_suspended_hours = Column(Integer)
+    sentence_judge = Column(String)
 
     @hybrid_property
     def plea_date_str(self):
@@ -310,6 +314,7 @@ class ODYCVCITWarrant(ODYCVCITCaseTable, TableBase):
     last_status = Column(String, enum=True)
     status_date = Column(Date)
     _status_date_str = Column('status_date_str', String)
+    judge = Column(String)
 
     @hybrid_property
     def issue_date_str(self):
@@ -357,6 +362,7 @@ class ODYCVCITBondSetting(ODYCVCITCaseTable, TableBase):
     _bail_date_str = Column('bail_date_str', String)
     bail_setting_type = Column(String, enum=True)
     bail_amount = Column(Numeric)
+    judge = Column(String)
 
     @hybrid_property
     def bail_date_str(self):

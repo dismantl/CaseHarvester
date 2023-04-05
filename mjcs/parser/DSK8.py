@@ -32,6 +32,8 @@ class DSK8Parser(CaseDetailsParser, ChargeFinder):
 
         t1 = self.table_next_first_column_prompt(section_header,'Court System:')
         t2 = t1.find('table') # tables 2 and 3 are actually inside table 1
+        if not t2:
+            raise ParserError('Missing second case table')
         t3 = self.immediate_sibling(t2,'table')
 
         case.court_system = self.value_first_column(t1,'Court System:',remove_newlines=True)

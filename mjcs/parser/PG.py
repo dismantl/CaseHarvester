@@ -33,6 +33,8 @@ class PGParser(CaseDetailsParser, ChargeFinder):
         case = PG(case_number=self.case_number)
         case.court_system = self.value_combined_first_column(t1,'Court System:',remove_newlines=True)
         case_number = self.value_combined_first_column(t1,'Case Number:')
+        if case_number.replace('-','').replace(' ','') != self.case_number:
+            raise ParserError(f'Case number "{case_number}" in case details page does not match given: {self.case_number}')
         case.case_description = self.value_combined_first_column(t1,'Case Description:')
         case.case_type = self.value_combined_first_column(t1,'Case Type:',ignore_missing=True)
         case.filing_date_str = self.value_combined_first_column(t1,'Filing Date:',ignore_missing=True)

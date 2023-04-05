@@ -17,7 +17,9 @@ class DVParser(CaseDetailsParser):
         subheader.decompose()
         goback = soup.find('a',string='Go Back Now')
         if not goback:
-            raise ParserError('Missing expected "Go Back Now" link')
+            goback = soup.find('a',string='Go Back')
+            if not goback:
+                raise ParserError('Missing expected "Go Back Now" link')
         goback = goback.find_parent('div')
         goback.decompose()
 

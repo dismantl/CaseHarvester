@@ -281,18 +281,34 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
             prev_obj = row
             vals = row.find_all('span',class_='Value')
             schedule = ODYCVCITCourtSchedule(case_number=self.case_number)
-            schedule.event_type = self.format_value(vals[0].string)
-            self.mark_for_deletion(vals[0])
-            schedule.date_str = self.format_value(vals[1].string)
-            self.mark_for_deletion(vals[1])
-            schedule.time_str = self.format_value(vals[2].string)
-            self.mark_for_deletion(vals[2])
-            schedule.location = self.format_value(vals[3].string)
-            self.mark_for_deletion(vals[3])
-            schedule.room = self.format_value(vals[4].string)
-            self.mark_for_deletion(vals[4])
-            schedule.result = self.format_value(vals[5].string)
-            self.mark_for_deletion(vals[5])
+            try:
+                schedule.event_type = self.format_value(vals[0].string)
+                self.mark_for_deletion(vals[0])
+                schedule.date_str = self.format_value(vals[1].string)
+                self.mark_for_deletion(vals[1])
+                schedule.time_str = self.format_value(vals[2].string)
+                self.mark_for_deletion(vals[2])
+                schedule.judge = self.format_value(vals[3].string)
+                self.mark_for_deletion(vals[3])
+                schedule.location = self.format_value(vals[4].string)
+                self.mark_for_deletion(vals[4])
+                schedule.room = self.format_value(vals[5].string)
+                self.mark_for_deletion(vals[5])
+                schedule.result = self.format_value(vals[6].string)
+                self.mark_for_deletion(vals[6])
+            except IndexError:
+                schedule.event_type = self.format_value(vals[0].string)
+                self.mark_for_deletion(vals[0])
+                schedule.date_str = self.format_value(vals[1].string)
+                self.mark_for_deletion(vals[1])
+                schedule.time_str = self.format_value(vals[2].string)
+                self.mark_for_deletion(vals[2])
+                schedule.location = self.format_value(vals[3].string)
+                self.mark_for_deletion(vals[3])
+                schedule.room = self.format_value(vals[4].string)
+                self.mark_for_deletion(vals[4])
+                schedule.result = self.format_value(vals[5].string)
+                self.mark_for_deletion(vals[5])
             db.add(schedule)
 
     #########################################################
@@ -349,10 +365,20 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
         else:
             self.mark_for_deletion(subsection_header)
             t = self.immediate_sibling(subsection_header,'table')
-            charge.plea = self.value_multi_column(t,'Plea:',ignore_missing=True)
-            charge.plea_date_str = self.value_column(t,'Plea Date:',ignore_missing=True)
-            charge.disposition = self.value_multi_column(t,'Disposition:',ignore_missing=True)
-            charge.disposition_date_str = self.value_column(t,'Disposition Date:',ignore_missing=True)
+            prompt_span = t\
+                .find('span',class_='Prompt',string='Plea:')
+            if prompt_span:
+                prompt_row = prompt_span.find_parent('tr')
+                charge.plea = self.value_multi_column(prompt_row,'Plea:',ignore_missing=True)
+                charge.plea_date_str = self.value_column(prompt_row,'Plea Date:',ignore_missing=True)
+                charge.plea_judge = self.value_column(prompt_row, 'Judge:',ignore_missing=True)
+            disposition_span = t\
+                .find('span',class_='Prompt',string='Disposition:')
+            if disposition_span:
+                disposition_row = disposition_span.find_parent('tr')
+                charge.disposition = self.value_multi_column(disposition_row,'Disposition:',ignore_missing=True)
+                charge.disposition_date_str = self.value_column(disposition_row,'Disposition Date:',ignore_missing=True)
+                charge.disposition_judge = self.value_column(disposition_row, 'Judge:',ignore_missing=True)
 
         # Converted Disposition
         try:
@@ -373,8 +399,8 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
         else:
             self.mark_for_deletion(subsection_header)
             t = self.immediate_sibling(subsection_header,'table')
-            self.mark_for_deletion(t.find('span',class_='Prompt',string='Life:'))
-            self.mark_for_deletion(t.find('span',class_='Prompt',string='Death:'))
+            jail_life = self.value_multi_column(t,'Life:',boolean_value=True)
+            jail_death = self.value_multi_column(t,'Death:',boolean_value=True)
             charge.jail_start_date_str = self.value_multi_column(t,'Start Date:')
             self.mark_for_deletion(t.find('span',class_='Prompt',string='Cons/Conc:'))
             jail_row = self.row_label(t,'Jail Term:')
@@ -400,6 +426,16 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
                 self.mark_for_deletion(suspend_all_but_row.find('span',class_='Prompt',string='Mos:'))
                 self.mark_for_deletion(suspend_all_but_row.find('span',class_='Prompt',string='Days:'))
                 self.mark_for_deletion(suspend_all_but_row.find('span',class_='Prompt',string='Hours:'))
+        
+        # Sentence
+        try:
+            subsection_header = container.find('i',string='Sentence').find_parent('left')
+        except (ParserError, AttributeError):
+            pass
+        else:
+            self.mark_for_deletion(subsection_header)
+            t = self.immediate_sibling(subsection_header,'table')
+            charge.sentence_judge = self.value_multi_column(t,'Judge:')
 
         return charge
 
@@ -474,14 +510,26 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
             prev_obj = row
             vals = row.find_all('span',class_='Value')
             warrant = ODYCVCITWarrant(case_number=self.case_number)
-            warrant.warrant_type = self.format_value(vals[0].string)
-            self.mark_for_deletion(vals[0])
-            warrant.issue_date_str = self.format_value(vals[1].string)
-            self.mark_for_deletion(vals[1])
-            warrant.last_status = self.format_value(vals[2].string)
-            self.mark_for_deletion(vals[2])
-            warrant.status_date_str = self.format_value(vals[3].string)
-            self.mark_for_deletion(vals[3])
+            try:
+                warrant.warrant_type = self.format_value(vals[0].string)
+                self.mark_for_deletion(vals[0])
+                warrant.issue_date_str = self.format_value(vals[1].string)
+                self.mark_for_deletion(vals[1])
+                warrant.judge = self.format_value(vals[2].string)
+                self.mark_for_deletion(vals[2])
+                warrant.last_status = self.format_value(vals[3].string)
+                self.mark_for_deletion(vals[3])
+                warrant.status_date_str = self.format_value(vals[4].string)
+                self.mark_for_deletion(vals[4])
+            except IndexError:
+                warrant.warrant_type = self.format_value(vals[0].string)
+                self.mark_for_deletion(vals[0])
+                warrant.issue_date_str = self.format_value(vals[1].string)
+                self.mark_for_deletion(vals[1])
+                warrant.last_status = self.format_value(vals[2].string)
+                self.mark_for_deletion(vals[2])
+                warrant.status_date_str = self.format_value(vals[3].string)
+                self.mark_for_deletion(vals[3])
             db.add(warrant)
 
     #########################################################
@@ -524,13 +572,17 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
             section_header = self.first_level_header(soup,'Bond Setting Information')
         except ParserError:
             return
-        section_container = section_header.find_parent('div',class_='AltBodyWindow1')
+        try:
+            section_container = self.immediate_sibling(section_header,'div',class_='AltBodyWindow1')
+        except ParserError:
+            section_container = section_header.find_parent('div',class_='AltBodyWindow1')
         for span in section_container.find_all('span',class_='FirstColumnPrompt',string='Bail Date:'):
             t = span.find_parent('table')
             bond_setting = ODYCVCITBondSetting(case_number=self.case_number)
             bond_setting.bail_date_str = self.value_first_column(t,'Bail Date:')
             bond_setting.bail_setting_type = self.value_first_column(t,'Bail Setting Type:')
             bond_setting.bail_amount = self.value_first_column(t,'Bail Amount:',money=True)
+            bond_setting.judge = self.value_first_column(t,'Judge:',ignore_missing=True)
             db.add(bond_setting)
 
     #########################################################
