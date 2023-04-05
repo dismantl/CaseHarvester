@@ -122,6 +122,7 @@ class DSTRAFDisposition(DSTRAFCaseTable, TableBase):
     addiiton_para = Column(String)
     addition_code = Column(String)
     addition_amended_charge = Column(String)
+    notes = Column(String)
 
     @hybrid_property
     def sentence_date_str(self):
@@ -154,17 +155,17 @@ class DSTRAFDefendant(DSTRAFCaseTable, TableBase):
     
     id = Column(Integer, primary_key=True)
     name = Column(String, redacted=True)
-    race = Column(String, nullable=True, enum=True)
-    sex = Column(String, nullable=True)
-    height = Column(Integer, nullable=True)
-    weight = Column(Integer, nullable=True)
-    DOB = Column(Date, nullable=True, redacted=True)
-    _DOB_str = Column('DOB_str',String, nullable=True, redacted=True)
-    address_1 = Column(String, nullable=True, redacted=True)
-    address_2 = Column(String, nullable=True, redacted=True)
-    city = Column(String, nullable=True)
-    state = Column(String, nullable=True)
-    zip_code = Column(String, nullable=True)
+    race = Column(String, enum=True)
+    sex = Column(String)
+    height = Column(Integer)
+    weight = Column(Integer)
+    DOB = Column(Date, redacted=True)
+    _DOB_str = Column('DOB_str',String, redacted=True)
+    address_1 = Column(String, redacted=True)
+    address_2 = Column(String, redacted=True)
+    city = Column(String)
+    state = Column(String)
+    zip_code = Column(String)
 
     @hybrid_property
     def DOB_str(self):
@@ -180,13 +181,13 @@ class DSTRAFRelatedPerson(DSTRAFCaseTable, TableBase):
     dstraf = relationship('DSTRAF', backref='related_persons')
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=True)
-    connection = Column(String, nullable=True, enum=True)
-    address_1 = Column(String, nullable=True)
-    address_2 = Column(String, nullable=True)
-    city = Column(String, nullable=True)
-    state = Column(String, nullable=True)
-    zip_code = Column(String, nullable=True)
+    name = Column(String)
+    connection = Column(String, enum=True)
+    address_1 = Column(String)
+    address_2 = Column(String)
+    city = Column(String)
+    state = Column(String)
+    zip_code = Column(String)
 
 class DSTRAFEvent(DSTRAFCaseTable, TableBase):
     __tablename__ = 'dstraf_events'
@@ -194,10 +195,10 @@ class DSTRAFEvent(DSTRAFCaseTable, TableBase):
     dstraf = relationship('DSTRAF', backref='events')
 
     id = Column(Integer, primary_key=True)
-    event_name = Column(String, nullable=True, enum=True)
-    date = Column(Date, nullable=True)
-    _date_str = Column('date_str',String, nullable=True)
-    comment = Column(String, nullable=True)
+    event_name = Column(String, enum=True)
+    date = Column(Date)
+    _date_str = Column('date_str',String)
+    comment = Column(String)
 
     @hybrid_property
     def date_str(self):
@@ -213,13 +214,13 @@ class DSTRAFTrial(DSTRAFCaseTable, TableBase):
     dstraf = relationship('DSTRAF', backref='trials')
 
     id = Column(Integer, primary_key=True)
-    date = Column(Date, nullable=True)
-    _date_str = Column('date_str', String, nullable=True)
-    time = Column(Time, nullable=True)
-    _time_str = Column('time_str', String, nullable=True)
-    room = Column(String, nullable=True)
-    location = Column(String, nullable=True)
-    reason = Column(String,nullable=True)
+    date = Column(Date)
+    _date_str = Column('date_str', String)
+    time = Column(Time)
+    _time_str = Column('time_str', String)
+    room = Column(String)
+    location = Column(String)
+    reason = Column(String)
 
     @hybrid_property
     def date_str(self):

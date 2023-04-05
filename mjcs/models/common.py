@@ -17,6 +17,7 @@ def date_from_str(date_str):
     return None
 
 class MetaColumn(Column):
+    inherit_cache = True
     def __init__(self, *args, **kwargs):
         self.enum = kwargs.pop('enum', False)
         self.redacted = kwargs.pop('redacted', False)

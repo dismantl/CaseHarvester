@@ -53,12 +53,9 @@ Resources:
       Environment:
         Variables:
           MJCS_DATABASE_URL: !Sub
-            - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
-            - db_user: !Ref DatabaseUsername
-              db_pw: !Ref DatabasePassword
-              db_addr:
+            - postgresql://${DatabaseUsername}:${DatabasePassword}@${db_addr}/${DatabaseName}
+            - db_addr:
                 Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
-              db_name: !Ref DatabaseName
           CASE_DETAILS_BUCKET:
             Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
           PARSER_FAILED_QUEUE_NAME: !GetAtt ParserFailedQueue.QueueName

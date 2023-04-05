@@ -45,7 +45,7 @@ from .K import (K, KDefendant, KCharge,
 from .PG import (PG, PGCharge, PGDefendant, PGDefendantAlias, PGOtherParty, 
                  PGAttorney, PGCourtSchedule, PGDocket, PGPlaintiff)
 from .DV import DV, DVDefendant, DVHearing, DVEvent, DVDefendantAttorney
-from .MCCR import (MCCR, MCCRAttorney, MCCRCaseTable, MCCRCharge, MCCRCourtSchedule,
+from .MCCR import (MCCR, MCCRAttorney, MCCRCharge, MCCRCourtSchedule,
                    MCCRDefendant, MCCRDocket, MCCRBailBond, MCCRAudioMedia,
                    MCCRJudgment, MCCRProbationOfficer, MCCRAlias, MCCRBondRemitter,
                    MCCRDistrictCourtNumber, MCCRTrackingNumber, MCCRDWIMonitor)
@@ -54,3 +54,7 @@ from .MCCI import (MCCI, MCCIAttorney, MCCICourtSchedule, MCCIDefendant, MCCIDoc
                    MCCIAlias, MCCIWard, MCCIAudioMedia, MCCIGarnishee, MCCIResidentAgent)
 from .PGV import (PGV, PGVDefendant, PGVPlaintiff, PGVOtherParty, PGVAttorney, 
                   PGVJudgment, PGVDocket, PGVCourtSchedule, PGVDefendantAlias)
+from .ODYCOSA import (ODYCOSA, ODYCOSAAttorney, ODYCOSADocument, ODYCOSAJudgment,
+                      ODYCOSAInvolvedParty, ODYCOSAReferenceNumber, ODYCOSACourtSchedule)
+from .ODYCOA import (ODYCOA, ODYCOAAttorney, ODYCOADocument, ODYCOAJudgment,
+                      ODYCOAInvolvedParty, ODYCOAReferenceNumber, ODYCOACourtSchedule)

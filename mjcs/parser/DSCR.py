@@ -13,8 +13,11 @@ class DSCRParser(CaseDetailsParser, ChargeFinder):
     def header(self, soup):
         header = soup.find('div',class_='Header')
         header.decompose()
-        subheader = soup.find('a',string='Go Back Now').find_parent('div')
-        subheader.decompose()
+        goback = soup.find('a',string='Go Back Now')
+        if not goback:
+            raise ParserError('Missing expected "Go Back Now" link')
+        goback = goback.find_parent('div')
+        goback.decompose()
 
     def footer(self, soup):
         footer = soup.find('div',class_='InfoStatement',string=re.compile('This is an electronic case record'))
@@ -76,6 +79,18 @@ class DSCRParser(CaseDetailsParser, ChargeFinder):
             section_header = self.first_level_header(soup,'Charge and Disposition Information')
         except ParserError:
             return
+        
+        try:
+            container = self.immediate_sibling(section_header, 'div', class_='AltBodyWindow1')
+            if list(container.stripped_strings)[0] == 'Case transferred to Circuit Court. See Circuit Court case.':
+                self.mark_for_deletion(container)
+                charge = DSCRCharge(case_number=self.case_number)
+                charge.notes = 'Case transferred to Circuit Court. See Circuit Court case.'
+                db.add(charge)
+                return
+        except ParserError:
+            pass
+
         info_charge_statement = self.info_charge_statement(section_header)
 
         prev_obj = info_charge_statement

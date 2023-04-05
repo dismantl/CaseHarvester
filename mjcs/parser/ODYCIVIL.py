@@ -3,7 +3,7 @@ from ..models import (ODYCIVIL, ODYCIVILReferenceNumber, ODYCIVILCause,
                        ODYCIVILAlias, ODYCIVILAttorney, ODYCIVILJudgment, 
                        ODYCIVILJudgmentStatus, ODYCIVILJudgmentComment, ODYCIVILCourtSchedule, ODYCIVILWarrant,
                        ODYCIVILDocument, ODYCIVILService, ODYCIVILBondSetting, ODYCIVILBailBond, ODYCIVILDisposition)
-from .base import CaseDetailsParser, consumer, ParserError
+from .base import CaseDetailsParser, consumer, ParserError, reference_number_re
 import re
 from bs4 import BeautifulSoup, SoupStrainer
 import logging
@@ -30,6 +30,8 @@ class ODYCIVILParser(CaseDetailsParser):
         header = soup.find('div',class_='Header')
         header.decompose()
         subheader = soup.find('div',class_='Subheader')
+        if not subheader:
+            raise ParserError('Missing subheader')
         subheader.decompose()
 
     def footer(self, soup):
@@ -47,13 +49,15 @@ class ODYCIVILParser(CaseDetailsParser):
         case.court_system = self.value_first_column(case_info_table,'Court System:',remove_newlines=True)
         case.location = self.value_first_column(case_info_table,'Location:')
         case_number = self.value_first_column(case_info_table,'Case Number:')
-        if self.case_number.lower() != case_number.replace('-','').lower():
+        if self.case_number.lower() != case_number.replace('-','').replace('.','').replace('`','').lower():
             raise ParserError('Case number "%s" in case details page does not match given: %s' % (case_number, self.case_number))
         case.case_title = self.value_first_column(case_info_table,'Title:')
         case.case_type = self.value_first_column(case_info_table,'Case Type:')
         case.filing_date_str = self.value_first_column(case_info_table,'Filing Date:')
         case.case_status = self.value_first_column(case_info_table,'Case Status:')
         self.case_status = case.case_status
+        case.magistrate = self.value_first_column(case_info_table, 'Magistrate:', ignore_missing=True)
+        case.judicial_officer = self.value_first_column(case_info_table, 'Judicial Officer:', ignore_missing=True)
         db.add(case)
 
     #########################################################
@@ -83,14 +87,16 @@ class ODYCIVILParser(CaseDetailsParser):
                 except ParserError:
                     break
                 prev_obj = row
-                self.mark_for_deletion(row)
                 vals = row.find_all('span',class_='Value')
                 db.flush()
                 remedy = ODYCIVILCauseRemedy(case_number=self.case_number)
                 remedy.cause_id = cause.id
                 remedy.remedy_type = self.format_value(vals[0].string)
+                self.mark_for_deletion(vals[0])
                 remedy.amount = self.format_value(vals[1].string,money=True)
+                self.mark_for_deletion(vals[1])
                 remedy.comment = self.format_value(vals[2].string)
+                self.mark_for_deletion(vals[2])
                 db.add(remedy)
 
     #########################################################
@@ -104,7 +110,7 @@ class ODYCIVILParser(CaseDetailsParser):
             return
 
         prev_obj = section_header
-        prompt_re = re.compile(r'^([\w \'\-/]+)\s*:?\s*$')
+        prompt_re = re.compile(reference_number_re)
         empty_re = re.compile(r'^\s*:\s*$')
         while True:
             try:
@@ -132,9 +138,8 @@ class ODYCIVILParser(CaseDetailsParser):
             section_header = self.first_level_header(soup, 'Involved Parties Information')
         except ParserError:
             return
-        self.consume_parties(db, section_header)
 
-    def consume_parties(self, db, prev_obj):
+        prev_obj = section_header
         plaintiff_id = None
         defendant_id = None
         while True:
@@ -321,15 +326,22 @@ class ODYCIVILParser(CaseDetailsParser):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             schedule = ODYCIVILCourtSchedule(case_number=self.case_number)
             schedule.event_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             schedule.date_str = self.format_value(vals[1].string)
+            self.mark_for_deletion(vals[1])
             schedule.time_str = self.format_value(vals[2].string)
-            schedule.location = self.format_value(vals[3].string)
-            schedule.room = self.format_value(vals[4].string)
-            schedule.result = self.format_value(vals[5].string)
+            self.mark_for_deletion(vals[2])
+            schedule.judge = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[3])
+            schedule.location = self.format_value(vals[4].string)
+            self.mark_for_deletion(vals[4])
+            schedule.room = self.format_value(vals[5].string)
+            self.mark_for_deletion(vals[5])
+            schedule.result = self.format_value(vals[6].string)
+            self.mark_for_deletion(vals[6])
             db.add(schedule)
     
     #########################################################
@@ -409,6 +421,7 @@ class ODYCIVILParser(CaseDetailsParser):
                     j.judgment_event_type = self.value_multi_column(t,'Judgment Event Type:')
                 except ParserError:
                     j.judgment_event_type = self.value_first_column(t,'Judgment Event Type:')
+                j.judge = self.value_multi_column(t, 'Judge:',ignore_missing=True)
                 j.judgment_for = self.value_multi_column(t,'Judgment For:',ignore_missing=True)
                 j.possession = self.value_multi_column(t,'Possession:',ignore_missing=True,boolean_value=True)
                 j.premise_description = self.value_multi_column(t,'Premise Description:',ignore_missing=True)
@@ -422,6 +435,7 @@ class ODYCIVILParser(CaseDetailsParser):
                 j.judgment = self.value_multi_column(t,'Judgment:',ignore_missing=True)
                 j.appeal_bond_amount = self.value_multi_column(t,'Appeal Bond Amount:',ignore_missing=True,money=True)
                 j.court_costs = self.value_multi_column(t,'Court Costs:',money=True,ignore_missing=True)
+                j.attorney_fee = self.value_multi_column(t,'Attorney Fees:',money=True,ignore_missing=True)
                 j.party = self.value_first_column(t,'Party:',ignore_missing=True)
                 j.comment = self.value_first_column_table(t,'Comment:',ignore_missing=True)
                 if not j.comment:
@@ -462,6 +476,7 @@ class ODYCIVILParser(CaseDetailsParser):
                     j.judgment_description = self.format_value(judgment_description.string)
                 j.judgment_type = 'Monetary'
                 j.judgment_event_type = self.value_first_column(t,'Judgment Event Type:')
+                j.judge = self.value_multi_column(t, 'Judge:',ignore_missing=True)
                 j.postjudgment_interest = self.value_multi_column(t,'PostJudgment Interest:',ignore_missing=True)
                 if not j.postjudgment_interest:
                     j.postjudgment_interest = self.value_multi_column(t,'Post-Judgment Interest:',ignore_missing=True)
@@ -485,6 +500,7 @@ class ODYCIVILParser(CaseDetailsParser):
                 j.judgment_ordered_date_str = self.value_multi_column(t,'Judgment Ordered Date:')
                 j.judgment_entry_date_str = self.value_multi_column(t,'Judgment Entry Date:')
                 j.judgment_expiration_date_str = self.value_multi_column(t,'Judgment Expiration Date:',ignore_missing=True)
+                j.judgment_details = self.value_multi_column(t,'Judgment Details:',ignore_missing=True)
                 j.interest_rate_details = self.value_multi_column(t,'Interest Rate Details:',ignore_missing=True)
             elif t.find('span',class_='Value',string='Property'):
                 judgment = t.find('span',class_='Value',string='Property')
@@ -496,12 +512,15 @@ class ODYCIVILParser(CaseDetailsParser):
                     j.judgment_description = self.format_value(judgment_description.string)
                 j.judgment_type = 'Property'
                 j.judgment_event_type = self.value_multi_column(t,'Judgment Event Type:')
+                j.judge = self.value_multi_column(t,'Judge:',ignore_missing=True)
+                j.judgment_expiration_date_str = self.value_multi_column(t,'Judgment Expiration Date:',ignore_missing=True)
                 awarded_to_span = t.find('span', class_='Prompt', string='Awarded To:')
-                self.mark_for_deletion(awarded_to_span)
-                awarded_to_val = self.immediate_sibling(awarded_to_span.find_parent('td'), 'td')
-                self.mark_for_deletion(awarded_to_val)
-                j.awarded_to = self.format_value(list(awarded_to_val.stripped_strings)[0])
-                j.property_value = self.value_multi_column(t,'Property Value:',money=True)
+                if awarded_to_span:
+                    self.mark_for_deletion(awarded_to_span)
+                    awarded_to_val = self.immediate_sibling(awarded_to_span.find_parent('td'), 'td')
+                    self.mark_for_deletion(awarded_to_val)
+                    j.awarded_to = self.format_value(list(awarded_to_val.stripped_strings)[0])
+                j.property_value = self.value_multi_column(t,'Property Value:',money=True,ignore_missing=True)
                 j.damages = self.value_multi_column(t,'Damages:',money=True,ignore_missing=True)
                 j.property_description = self.value_multi_column(t,'Property Description:',ignore_missing=True)
                 if not j.property_description:
@@ -524,13 +543,18 @@ class ODYCIVILParser(CaseDetailsParser):
                     j.judgment_description = self.format_value(judgment_description.string)
                 j.judgment_type = 'Non Monetary'
                 j.judgment_event_type = self.value_first_column(t,'Judgment Event Type:')
+                j.judge = self.value_multi_column(t,'Judge:',ignore_missing=True)
                 j.judgment_against = self.value_multi_column(t,'Judgment Against:')
                 j.judgment_in_favor_of = self.value_multi_column(t,'Judgment in Favor of:')
                 j.judgment_ordered_date_str = self.value_multi_column(t,'Judgment Ordered Date:')
                 j.judgment_entry_date_str = self.value_multi_column(t,'Judgment Entered Date:')
+                j.judgment_expiration_date_str = self.value_multi_column(t,'Judgment Expiration Date:')
+                j.comment = self.value_multi_column(t,'Judgment Comments:',ignore_missing=True)
+                j.judgment_details = self.value_multi_column(t,'Judgment Details:',ignore_missing=True)
                 j.trial_judgment_against_plaintiff = self.value_multi_column(t,'Trial Judgment Against a Plaintiff:',ignore_missing=True)
             elif t.find('span', class_='FirstColumnPrompt', string='Judgment Event Type:'):
                 j.judgment_event_type = self.value_first_column(t,'Judgment Event Type:')
+                j.judge = self.value_first_column(t,'Judge:')
                 j.party = self.value_first_column(t,'Party:',ignore_missing=True)
 
             db.add(j)
@@ -548,12 +572,18 @@ class ODYCIVILParser(CaseDetailsParser):
                     except ParserError:
                         break
                     prev_obj = row
-                    self.mark_for_deletion(row)
                     vals = row.find_all('span',class_='Value')
                     js = ODYCIVILJudgmentStatus(case_number=self.case_number)
                     js.judgment_id = j.id
                     js.judgment_status = self.format_value(vals[0].string)
+                    self.mark_for_deletion(vals[0])
                     js.judgment_date_str = self.format_value(vals[1].string)
+                    self.mark_for_deletion(vals[1])
+                    try:
+                        js.comment = self.format_value(vals[2].string)
+                        self.mark_for_deletion(vals[2])
+                    except IndexError:
+                        pass
                     db.add(js)
 
     #########################################################
@@ -575,13 +605,18 @@ class ODYCIVILParser(CaseDetailsParser):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             warrant = ODYCIVILWarrant(case_number=self.case_number)
             warrant.warrant_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             warrant.issue_date_str = self.format_value(vals[1].string)
-            warrant.last_status = self.format_value(vals[2].string)
-            warrant.status_date_str = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[1])
+            warrant.judge = self.format_value(vals[2].string)
+            self.mark_for_deletion(vals[2])
+            warrant.last_status = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[3])
+            warrant.status_date_str = self.format_value(vals[4].string)
+            self.mark_for_deletion(vals[4])
             db.add(warrant)
 
     #########################################################
@@ -594,25 +629,15 @@ class ODYCIVILParser(CaseDetailsParser):
         except ParserError:
             return
 
-        prev_obj = section_header
-        while True:
-            try:
-                t = self.immediate_sibling(prev_obj,'table')
-                separator = self.immediate_sibling(t,'hr')
-            except ParserError:
-                try:
-                    # Sometimes there is a blank table in between entries
-                    _ = self.immediate_sibling(prev_obj,'table')
-                    t = self.immediate_sibling(_,'table')
-                    separator = self.immediate_sibling(t,'hr')
-                except ParserError:
-                    break
-            prev_obj = separator
-            b = ODYCIVILBondSetting(case_number=self.case_number)
-            b.bail_date_str = self.value_first_column(t,'Bail Date:')
-            b.bail_setting_type = self.value_first_column(t,'Bail Setting Type:')
-            b.bail_amount = self.value_first_column(t,'Bail Amount:',money=True)
-            db.add(b)
+        container = self.immediate_sibling(section_header, 'div', class_='AltBodyWindow1')
+        for t in container.find_all('table'):
+            if len(list(t.stripped_strings)) > 0:
+                b = ODYCIVILBondSetting(case_number=self.case_number)
+                b.bail_date_str = self.value_first_column(t,'Bail Date:')
+                b.bail_setting_type = self.value_first_column(t,'Bail Setting Type:')
+                b.bail_amount = self.value_first_column(t,'Bail Amount:',money=True)
+                b.judge = self.value_first_column(t,'Judge:',ignore_missing=True)
+                db.add(b)
 
     #########################################################
     # BAIL BOND INFORMATION
@@ -633,13 +658,16 @@ class ODYCIVILParser(CaseDetailsParser):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             b = ODYCIVILBailBond(case_number=self.case_number)
             b.bond_type = self.format_value(vals[0].string)
-            b.bond_amount_set = self.format_value(vals[1].string)
+            self.mark_for_deletion(vals[0])
+            b.bond_amount_set = self.format_value(vals[1].string,money=True)
+            self.mark_for_deletion(vals[1])
             b.bond_status_date_str = self.format_value(vals[2].string)
+            self.mark_for_deletion(vals[2])
             b.bond_status = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[3])
             db.add(b)
 
     #########################################################
@@ -687,9 +715,10 @@ class ODYCIVILParser(CaseDetailsParser):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             service = ODYCIVILService(case_number=self.case_number)
             service.service_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             service.issued_date_str = self.format_value(vals[1].string,money=True)
+            self.mark_for_deletion(vals[1])
             db.add(service)

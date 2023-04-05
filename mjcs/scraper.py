@@ -11,7 +11,6 @@ import json
 import time
 import requests
 from datetime import datetime, timedelta
-from ec2_metadata import ec2_metadata
 from sqlalchemy import and_, or_, text, select, func
 from bs4 import BeautifulSoup
 
@@ -61,6 +60,7 @@ class Scraper:
     @property
     def instance_id(self):
         if not hasattr(self, '_instance_id'):
+            from ec2_metadata import ec2_metadata
             self._instance_id = ec2_metadata.instance_id
         return self._instance_id
 

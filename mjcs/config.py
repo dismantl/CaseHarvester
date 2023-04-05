@@ -56,7 +56,6 @@ class Config:
         self.QUEUE_WAIT = int(os.getenv('QUEUE_WAIT',5)) # seconds
         self.AWS_DEFAULT_REGION = os.getenv('AWS_DEFAULT_REGION', 'us-east-1')
         self.CLOUDWATCH_RETENTION_DAYS = os.getenv('CLOUDWATCH_RETENTION_DAYS', 30)
-        self.WORKER_MAX_UPTIME = os.getenv('WORKER_MAX_UPTIME', 300) # seconds
 
         # Spider options
         self.SPIDER_DAYS_PER_QUERY = int(os.getenv('SPIDER_DAYS_PER_QUERY',16))

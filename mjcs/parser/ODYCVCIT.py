@@ -3,7 +3,7 @@ from ..models import (ODYCVCIT, ODYCVCITReferenceNumber, ODYCVCITDefendant,
                      ODYCVCITCourtSchedule, ODYCVCITCharge, ODYCVCITProbation,
                      ODYCVCITRestitution, ODYCVCITWarrant, ODYCVCITBailBond,
                      ODYCVCITBondSetting, ODYCVCITDocument, ODYCVCITService)
-from .base import CaseDetailsParser, consumer, ParserError, ChargeFinder
+from .base import CaseDetailsParser, consumer, ParserError, ChargeFinder, reference_number_re
 import re
 from bs4 import BeautifulSoup, SoupStrainer
 import inspect
@@ -27,6 +27,8 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
         header = soup.find('div',class_='Header')
         header.decompose()
         subheader = soup.find('div',class_='Subheader')
+        if not subheader:
+            raise ParserError('Missing subheader')
         subheader.decompose()
 
     def footer(self, soup):
@@ -71,7 +73,7 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = t
-            prompt_re = re.compile(r'^([\w \'\-/]+)\s*:?\s*$')
+            prompt_re = re.compile(reference_number_re)
             prompt_span = t.find('span',class_='FirstColumnPrompt',string=prompt_re)
             if not prompt_span:
                 break
@@ -277,15 +279,20 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             schedule = ODYCVCITCourtSchedule(case_number=self.case_number)
             schedule.event_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             schedule.date_str = self.format_value(vals[1].string)
+            self.mark_for_deletion(vals[1])
             schedule.time_str = self.format_value(vals[2].string)
+            self.mark_for_deletion(vals[2])
             schedule.location = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[3])
             schedule.room = self.format_value(vals[4].string)
+            self.mark_for_deletion(vals[4])
             schedule.result = self.format_value(vals[5].string)
+            self.mark_for_deletion(vals[5])
             db.add(schedule)
 
     #########################################################
@@ -465,13 +472,16 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             warrant = ODYCVCITWarrant(case_number=self.case_number)
             warrant.warrant_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             warrant.issue_date_str = self.format_value(vals[1].string)
+            self.mark_for_deletion(vals[1])
             warrant.last_status = self.format_value(vals[2].string)
+            self.mark_for_deletion(vals[2])
             warrant.status_date_str = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[3])
             db.add(warrant)
 
     #########################################################
@@ -493,13 +503,16 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             bail_bond = ODYCVCITBailBond(case_number=self.case_number)
             bail_bond.bond_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             bail_bond.bond_amount_posted = self.format_value(vals[1].string,money=True)
+            self.mark_for_deletion(vals[1])
             bail_bond.bond_status_date_str = self.format_value(vals[2].string)
+            self.mark_for_deletion(vals[2])
             bail_bond.bond_status = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[3])
             db.add(bail_bond)
 
     #########################################################
@@ -564,9 +577,10 @@ class ODYCVCITParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             service = ODYCVCITService(case_number=self.case_number)
             service.service_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             service.issued_date_str = self.format_value(vals[1].string,money=True)
+            self.mark_for_deletion(vals[1])
             db.add(service)

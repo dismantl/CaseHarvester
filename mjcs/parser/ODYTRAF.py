@@ -2,7 +2,7 @@ from ..models import (ODYTRAF, ODYTRAFReferenceNumber, ODYTRAFDefendant,
                      ODYTRAFInvolvedParty, ODYTRAFAttorney, ODYTRAFCourtSchedule,
                      ODYTRAFCharge, ODYTRAFWarrant, ODYTRAFBailBond,
                      ODYTRAFBondSetting, ODYTRAFDocument, ODYTRAFAlias, ODYTRAFService)
-from .base import CaseDetailsParser, consumer, ParserError, ChargeFinder
+from .base import CaseDetailsParser, consumer, ParserError, ChargeFinder, reference_number_re
 import re
 from bs4 import BeautifulSoup, SoupStrainer
 
@@ -29,6 +29,8 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
         header = soup.find('div',class_='Header')
         header.decompose()
         subheader = soup.find('div',class_='Subheader')
+        if not subheader:
+            raise ParserError('Missing subheader')
         subheader.decompose()
 
     def footer(self, soup):
@@ -60,6 +62,7 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
         self.mark_for_deletion(case_info_table.find('span',class_='Prompt',string='Officer Name:'))
         case.case_status = self.value_first_column(case_info_table,'Case Status:')
         self.case_status = case.case_status
+        case.judicial_officer = self.value_first_column(case_info_table,'Judicial Officer:',ignore_missing=True)
         db.add(case)
 
     #########################################################
@@ -79,7 +82,7 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = t
-            prompt_re = re.compile(r'^([\w \'\-/]+)\s*:?\s*$')
+            prompt_re = re.compile(reference_number_re)
             prompt_span = t.find('span',class_='FirstColumnPrompt',string=prompt_re)
             if not prompt_span:
                 break
@@ -290,15 +293,22 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             schedule = ODYTRAFCourtSchedule(case_number=self.case_number)
             schedule.event_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             schedule.date_str = self.format_value(vals[1].string)
+            self.mark_for_deletion(vals[1])
             schedule.time_str = self.format_value(vals[2].string)
-            schedule.location = self.format_value(vals[3].string)
-            schedule.room = self.format_value(vals[4].string)
-            schedule.result = self.format_value(vals[5].string)
+            self.mark_for_deletion(vals[2])
+            schedule.judge = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[3])
+            schedule.location = self.format_value(vals[4].string)
+            self.mark_for_deletion(vals[4])
+            schedule.room = self.format_value(vals[5].string)
+            self.mark_for_deletion(vals[5])
+            schedule.result = self.format_value(vals[6].string)
+            self.mark_for_deletion(vals[6])
             db.add(schedule)
 
     #########################################################
@@ -318,6 +328,13 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
                 container = self.immediate_sibling(prev_obj,'div',class_='AltBodyWindow1')
             except ParserError:
                 break
+            if list(container.stripped_strings) == ['Case transferred to Circuit Court. See Circuit Court case.']:
+                db.add(ODYTRAFCharge(
+                    case_number=self.case_number,
+                    notes='Case transferred to Circuit Court. See Circuit Court case.'
+                ))
+                self.mark_for_deletion(container)
+                return
             if not container.find('span',class_='Prompt',string='Charge No:'):
                 break
             try:
@@ -375,9 +392,11 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
             t2 = self.immediate_sibling(t1,'table')
             charge.plea = self.value_multi_column(t2,'Plea:')
             charge.plea_date_str = self.value_column(t2,'Plea Date:')
+            charge.plea_judge = self.value_column(t2,'Judge:', ignore_missing=True)
             t3 = self.immediate_sibling(t2,'table')
             charge.disposition = self.value_multi_column(t3,'Disposition:')
             charge.disposition_date_str = self.value_column(t3,'Disposition Date:')
+            charge.disposition_judge = self.value_column(t3,'Judge:',ignore_missing=True)
 
         # Converted Disposition
         try:
@@ -447,6 +466,16 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
                 charge.jail_suspend_all_but_days = self.value_column(suspend_all_but_row,'Days:')
                 charge.jail_suspend_all_but_hours = self.value_column(suspend_all_but_row,'Hours:')
 
+        # Sentence
+        try:
+            subsection_header = container.find('i',string='Sentence').find_parent('left')
+        except (ParserError, AttributeError):
+            pass
+        else:
+            self.mark_for_deletion(subsection_header)
+            t = self.immediate_sibling(subsection_header,'table')
+            charge.sentence_judge = self.value_multi_column(t,'Judge:')
+
         return charge
 
     #########################################################
@@ -468,13 +497,18 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             warrant = ODYTRAFWarrant(case_number=self.case_number)
             warrant.warrant_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             warrant.issue_date_str = self.format_value(vals[1].string)
-            warrant.last_status = self.format_value(vals[2].string)
-            warrant.status_date_str = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[1])
+            warrant.judge = self.format_value(vals[2].string)
+            self.mark_for_deletion(vals[2])
+            warrant.last_status = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[3])
+            warrant.status_date_str = self.format_value(vals[4].string)
+            self.mark_for_deletion(vals[4])
             db.add(warrant)
 
     #########################################################
@@ -496,13 +530,16 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             bail_bond = ODYTRAFBailBond(case_number=self.case_number)
             bail_bond.bond_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             bail_bond.bond_amount_set = self.format_value(vals[1].string,money=True)
+            self.mark_for_deletion(vals[1])
             bail_bond.bond_status_date_str = self.format_value(vals[2].string)
+            self.mark_for_deletion(vals[2])
             bail_bond.bond_status = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[3])
             db.add(bail_bond)
 
     #########################################################
@@ -521,6 +558,7 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
             bond_setting.bail_date_str = self.value_first_column(t,'Bail Date:')
             bond_setting.bail_setting_type = self.value_first_column(t,'Bail Setting Type:')
             bond_setting.bail_amount = self.value_first_column(t,'Bail Amount:',money=True)
+            bond_setting.judge = self.value_first_column(t, 'Judge:', ignore_missing=True)
             db.add(bond_setting)
 
     #########################################################
@@ -561,10 +599,12 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             service = ODYTRAFService(case_number=self.case_number)
             service.service_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             service.requested_by = self.format_value(vals[1].string)
+            self.mark_for_deletion(vals[1])
             service.issued_date_str = self.format_value(vals[2].string,money=True)
+            self.mark_for_deletion(vals[2])
             db.add(service)

@@ -13,8 +13,11 @@ class DSTRAFParser(CaseDetailsParser):
     def header(self, soup):
         header = soup.find('div',class_='Header')
         header.decompose()
-        subheader = soup.find('a',string='Go Back Now').find_parent('div')
-        subheader.decompose()
+        goback = soup.find('a',string='Go Back Now')
+        if not goback:
+            raise ParserError('Missing expected "Go Back Now" link')
+        goback = goback.find_parent('div')
+        goback.decompose()
 
     def footer(self, soup):
         footer = soup.find('div',class_='InfoStatement',string=re.compile('This is an electronic case record'))
@@ -82,7 +85,7 @@ class DSTRAFParser(CaseDetailsParser):
     @consumer
     def disposition(self, db, soup):
         try:
-            section_header = self.second_level_header(soup,'Disposition Information')
+            section_header = self.second_level_header(soup,r'^Disposition Information')
         except ParserError:
             return
 
@@ -143,6 +146,26 @@ class DSTRAFParser(CaseDetailsParser):
             d.addition_amended_charge = self.value_first_column(details_table,'Amended Charge:')
         
         db.add(d)
+
+    #########################################################
+    # CHARGE AND DISPOSITION INFORMATION
+    #########################################################
+    @consumer
+    def charge_and_disposition(self, db, soup):
+        try:
+            section_header = self.first_level_header(soup,'Charge and Disposition Information')
+        except ParserError:
+            return
+        
+        try:
+            container = self.immediate_sibling(section_header, 'div', class_='AltBodyWindow1')
+            if list(container.stripped_strings)[0] == 'Case transferred to Circuit Court. See Circuit Court case.':
+                self.mark_for_deletion(container)
+                disposition = DSTRAFDisposition(case_number=self.case_number)
+                disposition.notes = 'Case transferred to Circuit Court. See Circuit Court case.'
+                db.add(disposition)
+        except ParserError:
+            pass
 
     #########################################################
     # DEFENDENT INFORMATION

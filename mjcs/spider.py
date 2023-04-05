@@ -5,7 +5,6 @@ from .session import MjcsSession, RequestTimeout, Forbidden
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from sqlalchemy import select
-from ec2_metadata import ec2_metadata
 import xml.etree.ElementTree as ElementTree
 import json
 import logging
@@ -58,6 +57,7 @@ class Spider:
     @property
     def instance_id(self):
         if not hasattr(self, '_instance_id'):
+            from ec2_metadata import ec2_metadata
             self._instance_id = ec2_metadata.instance_id
         return self._instance_id
 

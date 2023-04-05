@@ -4,7 +4,7 @@ from ..models import (ODYCRIM, ODYCRIMReferenceNumber, ODYCRIMDefendant,
                      ODYCRIMRestitution, ODYCRIMWarrant, ODYCRIMBailBond,
                      ODYCRIMBondSetting, ODYCRIMDocument, ODYCRIMService,
                      ODYCRIMSexOffenderRegistration)
-from .base import CaseDetailsParser, consumer, ParserError, ChargeFinder
+from .base import CaseDetailsParser, consumer, ParserError, ChargeFinder, reference_number_re
 import re
 from bs4 import BeautifulSoup, SoupStrainer
 import inspect
@@ -31,6 +31,8 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
         header = soup.find('div',class_='Header')
         header.decompose()
         subheader = soup.find('div',class_='Subheader')
+        if not subheader:
+            raise ParserError('Missing subheader')
         subheader.decompose()
 
     def footer(self, soup):
@@ -56,6 +58,7 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
         case.case_status = self.value_first_column(case_info_table,'Case Status:')
         self.case_status = case.case_status
         case.tracking_numbers = self.value_first_column(case_info_table,r'Tracking Number\(s\):')
+        case.judicial_officer = self.value_first_column(case_info_table, 'Judicial Officer:', ignore_missing=True)
         db.add(case)
 
     #########################################################
@@ -75,7 +78,7 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = t
-            prompt_re = re.compile(r'^([\w \'\-/#]+)\s*:?\s*$')
+            prompt_re = re.compile(reference_number_re)
             prompt_span = t.find('span',class_='FirstColumnPrompt',string=prompt_re)
             if not prompt_span:
                 break
@@ -146,24 +149,22 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
                         break
 
                     if 'Race:' in t.stripped_strings or 'DOB:' in t.stripped_strings:
-                        demographics_table = t
-                        party.race = self.value_first_column(demographics_table,'Race:')
-                        party.sex = self.value_column(demographics_table,'Sex:')
-                        party.height = self.value_column(demographics_table,'Height:')
-                        party.weight = self.value_column(demographics_table,'Weight:',numeric=True)
-                        party.hair_color = self.value_first_column(demographics_table,'HairColor:')
-                        party.eye_color = self.value_column(demographics_table,'EyeColor:')
-                        party.DOB_str = self.value_first_column(demographics_table,'DOB:',ignore_missing=True)
+                        party.race = self.value_first_column(t,'Race:')
+                        party.sex = self.value_column(t,'Sex:')
+                        party.height = self.value_column(t,'Height:')
+                        party.weight = self.value_column(t,'Weight:',numeric=True)
+                        party.hair_color = self.value_first_column(t,'HairColor:')
+                        party.eye_color = self.value_column(t,'EyeColor:')
+                        party.DOB_str = self.value_first_column(t,'DOB:',ignore_missing=True)
                     elif 'Address:' in t.stripped_strings:
-                        address_table = t
-                        rows = address_table.find_all('tr')
-                        party.address_1 = self.value_first_column(address_table,'Address:')
+                        rows = t.find_all('tr')
+                        party.address_1 = self.value_first_column(t,'Address:')
                         if len(rows) == 3:
                             party.address_2 = self.format_value(rows[1].find('span',class_='Value').string)
                             self.mark_for_deletion(rows[1])
-                        party.city = self.value_first_column(address_table,'City:')
-                        party.state = self.value_column(address_table,'State:')
-                        party.zip_code = self.value_column(address_table,'Zip Code:',ignore_missing=True)
+                        party.city = self.value_first_column(t,'City:')
+                        party.state = self.value_column(t,'State:')
+                        party.zip_code = self.value_column(t,'Zip Code:',ignore_missing=True)
                     elif 'Removal Date:' in t.stripped_strings:
                         party.removal_date_str = self.value_first_column(t,'Removal Date:')
                     elif 'Appearance Date:' in t.stripped_strings:
@@ -278,15 +279,22 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             schedule = ODYCRIMCourtSchedule(case_number=self.case_number)
             schedule.event_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             schedule.date_str = self.format_value(vals[1].string)
+            self.mark_for_deletion(vals[1])
             schedule.time_str = self.format_value(vals[2].string)
-            schedule.location = self.format_value(vals[3].string)
-            schedule.room = self.format_value(vals[4].string)
-            schedule.result = self.format_value(vals[5].string)
+            self.mark_for_deletion(vals[2])
+            schedule.judge = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[3])
+            schedule.location = self.format_value(vals[4].string)
+            self.mark_for_deletion(vals[4])
+            schedule.room = self.format_value(vals[5].string)
+            self.mark_for_deletion(vals[5])
+            schedule.result = self.format_value(vals[6].string)
+            self.mark_for_deletion(vals[6])
             db.add(schedule)
 
     #########################################################
@@ -306,6 +314,13 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
                 container = self.immediate_sibling(prev_obj,'div',class_='AltBodyWindow1')
             except ParserError:
                 break
+            if list(container.stripped_strings) == ['Case transferred to Circuit Court. See Circuit Court case.']:
+                db.add(ODYCRIMCharge(
+                    case_number=self.case_number,
+                    notes='Case transferred to Circuit Court. See Circuit Court case.'
+                ))
+                self.mark_for_deletion(container)
+                return
             if not container.find('span',class_='Prompt',string='Charge No:'):
                 break
             prev_obj = container
@@ -343,10 +358,20 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
         else:
             self.mark_for_deletion(subsection_header)
             t = self.immediate_sibling(subsection_header,'table')
-            charge.plea = self.value_multi_column(t,'Plea:',ignore_missing=True)
-            charge.plea_date_str = self.value_column(t,'Plea Date:',ignore_missing=True)
-            charge.disposition = self.value_multi_column(t,'Disposition:',ignore_missing=True)
-            charge.disposition_date_str = self.value_column(t,'Disposition Date:',ignore_missing=True)
+            prompt_span = t\
+                .find('span',class_='Prompt',string='Plea:')
+            if prompt_span:
+                prompt_row = prompt_span.find_parent('tr')
+                charge.plea = self.value_multi_column(prompt_row,'Plea:',ignore_missing=True)
+                charge.plea_date_str = self.value_column(prompt_row,'Plea Date:',ignore_missing=True)
+                charge.plea_judge = self.value_column(prompt_row, 'Judge:',ignore_missing=True)
+            disposition_span = t\
+                .find('span',class_='Prompt',string='Disposition:')
+            if disposition_span:
+                disposition_row = disposition_span.find_parent('tr')
+                charge.disposition = self.value_multi_column(disposition_row,'Disposition:',ignore_missing=True)
+                charge.disposition_date_str = self.value_column(disposition_row,'Disposition Date:',ignore_missing=True)
+                charge.disposition_judge = self.value_column(disposition_row, 'Judge:',ignore_missing=True)
 
         # Converted Disposition
         try:
@@ -397,6 +422,16 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
                 charge.jail_suspend_all_but_months = self.value_column(suspend_all_but_row,'Mos:')
                 charge.jail_suspend_all_but_days = self.value_column(suspend_all_but_row,'Days:')
                 charge.jail_suspend_all_but_hours = self.value_column(suspend_all_but_row,'Hours:')
+        
+        # Sentence
+        try:
+            subsection_header = container.find('i',string='Sentence').find_parent('left')
+        except (ParserError, AttributeError):
+            pass
+        else:
+            self.mark_for_deletion(subsection_header)
+            t = self.immediate_sibling(subsection_header,'table')
+            charge.sentence_judge = self.value_multi_column(t,'Judge:')
         
         return charge
 
@@ -494,13 +529,18 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             warrant = ODYCRIMWarrant(case_number=self.case_number)
             warrant.warrant_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             warrant.issue_date_str = self.format_value(vals[1].string)
-            warrant.last_status = self.format_value(vals[2].string)
-            warrant.status_date_str = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[1])
+            warrant.judge = self.format_value(vals[2].string)
+            self.mark_for_deletion(vals[2])
+            warrant.last_status = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[3])
+            warrant.status_date_str = self.format_value(vals[4].string)
+            self.mark_for_deletion(vals[4])
             db.add(warrant)
 
     #########################################################
@@ -522,13 +562,16 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             bail_bond = ODYCRIMBailBond(case_number=self.case_number)
             bail_bond.bond_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             bail_bond.bond_amount_posted = self.format_value(vals[1].string,money=True)
+            self.mark_for_deletion(vals[1])
             bail_bond.bond_status_date_str = self.format_value(vals[2].string)
+            self.mark_for_deletion(vals[2])
             bail_bond.bond_status = self.format_value(vals[3].string)
+            self.mark_for_deletion(vals[3])
             db.add(bail_bond)
 
     #########################################################
@@ -540,13 +583,14 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
             section_header = self.first_level_header(soup,'Bond Setting Information')
         except ParserError:
             return
-        section_container = section_header.find_parent('div',class_='AltBodyWindow1')
+        section_container = self.immediate_sibling(section_header, 'div',class_='AltBodyWindow1')
         for span in section_container.find_all('span',class_='FirstColumnPrompt',string='Bail Date:'):
             t = span.find_parent('table')
             bond_setting = ODYCRIMBondSetting(case_number=self.case_number)
             bond_setting.bail_date_str = self.value_first_column(t,'Bail Date:')
             bond_setting.bail_setting_type = self.value_first_column(t,'Bail Setting Type:')
             bond_setting.bail_amount = self.value_first_column(t,'Bail Amount:',money=True)
+            bond_setting.judge = self.value_first_column(t, 'Judge:')
             db.add(bond_setting)
 
     #########################################################
@@ -593,9 +637,10 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
             except ParserError:
                 break
             prev_obj = row
-            self.mark_for_deletion(row)
             vals = row.find_all('span',class_='Value')
             service = ODYCRIMService(case_number=self.case_number)
             service.service_type = self.format_value(vals[0].string)
+            self.mark_for_deletion(vals[0])
             service.issued_date_str = self.format_value(vals[1].string,money=True)
+            self.mark_for_deletion(vals[1])
             db.add(service)

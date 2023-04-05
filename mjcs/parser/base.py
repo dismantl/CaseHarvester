@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup, SoupStrainer
 from ..util import db_session
 from ..models import Case, Scrape
 from ..config import config
-from . import ParserError, UnparsedDataError
+from . import ParserError, UnparsedDataError, BaseParserError
 import re
 from sqlalchemy.sql import select, text
 from datetime import datetime
@@ -11,6 +11,8 @@ import inspect
 import logging
 
 logger = logging.getLogger('mjcs')
+
+reference_number_re = r'^([\w \'\-/#\.]+)\s*:?\s*$'
 
 def consumer(func):
     func.consumer = True
@@ -22,10 +24,13 @@ class CaseDetailsParser(ABC):
     def __init__(self, case_number, html):
         # <body> should only have a single child div that holds the data
         self.case_number = case_number
-        strainer = SoupStrainer('div')
+        strainer = SoupStrainer('div', {'class': 'BodyWindow'})
         self.soup = BeautifulSoup(html,'html.parser',parse_only=strainer)
         if len(self.soup.contents) != 1 or not self.soup.div:
-            raise ParserError("Unexpected HTML format", self.soup)
+            strainer = SoupStrainer('div')
+            self.soup = BeautifulSoup(html,'html.parser',parse_only=strainer)
+            if len(self.soup.contents) != 1 or not self.soup.div:
+                raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
         self.case_status = None
 
@@ -41,10 +46,11 @@ class CaseDetailsParser(ABC):
             self.finalize(db)
 
     def mark_for_deletion(self, obj):
-        for marked in self.marked_for_deletion:
-            if obj is marked:  # compare for identity, not equality (https://www.crummy.com/software/BeautifulSoup/bs4/doc/#comparing-objects-for-equality)
-                return
-        self.marked_for_deletion.append(obj)
+        if obj != None:
+            for marked in self.marked_for_deletion:
+                if obj is marked:  # compare for identity, not equality (https://www.crummy.com/software/BeautifulSoup/bs4/doc/#comparing-objects-for-equality)
+                    return
+            self.marked_for_deletion.append(obj)
 
     def consume_all(self, db):
         for attr in dir(self):
@@ -439,7 +445,7 @@ class ChargeFinder(ABC):
 
     def find_charges(self, db, latest_version_charge_numbers):
         logger.debug(f'Finding old charges for {self.case_number}')
-        versions = db.execute(
+        versions = db.scalars(
             select(Scrape)
             .filter_by(case_number=self.case_number)
             .where(Scrape.s3_version_id != None)
@@ -469,9 +475,13 @@ class ChargeFinder(ABC):
                     charge_number = int(re.sub('[ \t]+','',charge_number))
                     if charge_number in missing_charge_numbers and charge_number not in expunged_charge_numbers:
                         expunged_charge_numbers.append(charge_number)
-                        new_charge = self.parse_charge(span.find_parent('div',class_='AltBodyWindow1'))
-                        new_charge.expunged = True
-                        db.add(new_charge)
+                        try:
+                            new_charge = self.parse_charge(span.find_parent('div',class_='AltBodyWindow1'))
+                        except BaseParserError:
+                            pass
+                        else:
+                            new_charge.expunged = True
+                            db.add(new_charge)
     
     def extract_charge_numbers(self, soup):
         charge_numbers = []

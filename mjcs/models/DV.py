@@ -79,7 +79,7 @@ class DVHearing(DVCaseTable, TableBase):
     id = Column(Integer, primary_key=True)
     hearing_date = Column(Date)
     _hearing_date_str = Column('hearing_date_str',String)
-    hearing_time = Column(Time, nullable=True)
+    hearing_time = Column(Time)
     _hearing_time_str = Column('hearing_time_str', String)
     room = Column(String)
     location = Column(String, enum=True)

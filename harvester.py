@@ -19,6 +19,7 @@ import watchtower
 from ec2_metadata import ec2_metadata
 from sqlalchemy import create_engine
 from sqlalchemy.sql import text
+from multiprocessing import set_start_method
 
 logger = logging.getLogger('mjcs')
 
@@ -192,7 +193,7 @@ def run_scraper(args):
                     os.remove(args.log)
                 subprocess.run(["shutdown", "now"])
     else:
-        raise Exception("Must specify --case, --from-queue, --stale, --stale-count, --launch-instances, or --terminate-instances.")
+        raise Exception("Must specify --case, --from-queue, --stale, or --stale-count.")
 
 def run_parser(args):
     parser = Parser(args.ignore_errors, args.parallel)
@@ -200,13 +201,15 @@ def run_parser(args):
     if args.failed_queue:
         parser.parse_from_queue(config.parser_failed_queue)
     elif args.queue:
-        parser.parse_from_queue(config.parser_queue)
+        parser.parse_from_queue(config.parser_queue, parse_as=args.type)
     elif args.case:
-        parser.parse_case(args.case, args.type)
+        parser.parse_case(args.case, parse_as=args.type)
     elif args.unparsed:
-        parser.parse_unparsed()
+        parser.parse_unparsed(args.type)
+    elif args.stale:
+        parser.parse_stale(args.type)
     elif args.reparse:
-        parser.reparse()
+        parser.reparse(args.type)
 
 def export_tables(args):
     case_models = get_case_model_list(models)
@@ -242,6 +245,8 @@ def export_tables(args):
             """)
 
 if __name__ == '__main__':
+    set_start_method('fork')
+
     parser = argparse.ArgumentParser(
         description="Run Case Harvester to spider, scrape, or parse cases from "
             "the Maryland Judiciary Case Search",
@@ -316,12 +321,13 @@ if __name__ == '__main__':
 
     parser_parser = subparsers.add_parser('parser',
         help="Parse unparsed details from cases downloaded from the Maryland Judiciary Case Search")
-    parser_parser.add_argument('--type', '-t', choices=['ODYTRAF','ODYCRIM','ODYCIVIL','ODYCVCIT','DSCR','DSK8','DSCIVIL','CC','DSTRAF','DSCP','K','PG','DV','MCCI','PGV','MCCR'],
+    parser_parser.add_argument('--type', '-t', choices=['ODYTRAF','ODYCRIM','ODYCIVIL','ODYCVCIT','DSCR','DSK8','DSCIVIL','CC','DSTRAF','DSCP','K','PG','DV','MCCI','PGV','MCCR','ODYCOSA','ODYCOA'],
         help="Force parsing as this case type")
     parser_parser.add_argument('--ignore-errors', action='store_true', default=False,
         help="Ignore parsing errors")
     parser_parser.add_argument('--queue', action='store_true',
-        help="Parse cases in the general parser queue")
+        help="Parse cases in the general parser queue (optionally \
+            specifying --type)")
     parser_parser.add_argument('--failed-queue', action='store_true',
         help="Parse cases in the parser failed queue")
     parser_parser.add_argument('--parallel', '-p', action='store_true', default=False,
@@ -331,6 +337,9 @@ if __name__ == '__main__':
         help="Print debug information")
     parser_parser.add_argument('--unparsed', '-u', action='store_true',
         help="Parse cases from the database that have not been successfully parsed (optionally \
+            specifying --type), loading them into the parser queue")
+    parser_parser.add_argument('--stale', action='store_true',
+        help="Parse cases from the database that have last_parse < last_scrape (optionally \
             specifying --type), loading them into the parser queue")
     parser_parser.add_argument('--reparse', '-r', action='store_true',
         help="Reparse all or a specific type (using --type) of case, loading them into the parser queue")
@@ -378,4 +387,6 @@ if __name__ == '__main__':
 
     if hasattr(args, 'func'):
         args.func(args)
+    
+    logging.shutdown()
     print("Goodbye!")

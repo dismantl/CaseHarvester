@@ -13,8 +13,11 @@ class PGVParser(CaseDetailsParser):
     def header(self, soup):
         header = soup.find('div',class_='Header')
         header.decompose()
-        subheader = soup.find('a',string='Go Back Now').find_parent('div')
-        subheader.decompose()
+        goback = soup.find('a',string='Go Back Now')
+        if not goback:
+            raise ParserError('Missing expected "Go Back Now" link')
+        goback = goback.find_parent('div')
+        goback.decompose()
 
     def footer(self, soup):
         footer = soup.find('div',class_='InfoStatement',string=re.compile('This is an electronic case record'))

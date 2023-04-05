@@ -1,4 +1,4 @@
-from ..models import (MCCR, MCCRAttorney, MCCRCaseTable, MCCRCharge, MCCRCourtSchedule,
+from ..models import (MCCR, MCCRAttorney, MCCRCharge, MCCRCourtSchedule,
                       MCCRDefendant, MCCRDocket, MCCRBailBond, MCCRAudioMedia,
                       MCCRJudgment, MCCRProbationOfficer, MCCRAlias, MCCRBondRemitter,
                       MCCRDistrictCourtNumber, MCCRTrackingNumber, MCCRDWIMonitor)
