@@ -31,6 +31,7 @@ import (
 )
 
 const (
+	MaxRetryAttempts                 = 5
 	RebootTimerDuration              = 5 * time.Minute
 	CheckCountTimerDuration          = 15 * time.Second
 	RefreshInstanceDataTimerDuration = 5 * time.Minute
@@ -507,6 +508,7 @@ func (orchestrator *Orchestrator) startInstance(instanceId string) {
 	})
 	if err != nil {
 		log.Error().Err(err).Str("instanceId", instanceId).Msg("Failed to start instance")
+		return
 	}
 	if response.StartingInstances[0].CurrentState.Name != ec2types.InstanceStateNamePending {
 		log.Warn().Str("instanceId", instanceId).Msgf(
@@ -597,7 +599,10 @@ func main() {
 	if err := viper.ReadInConfig(); err != nil {
 		log.Fatal().Err(err).Msg("Error reading config: %w")
 	}
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion("us-east-1"),
+		config.WithRetryMaxAttempts(MaxRetryAttempts),
+	)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load default AWS config")
 	}
