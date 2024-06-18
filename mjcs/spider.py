@@ -1,17 +1,19 @@
-from .config import config
-from .util import send_to_queue, db_session, split_date_range, RepeatedTimer
-from .models import Case
-from .session import MjcsSession, RequestTimeout, Forbidden
-from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
-from sqlalchemy import select
-import xml.etree.ElementTree as ElementTree
 import json
 import logging
-import string
-import requests
 import re
+import string
+import xml.etree.ElementTree as ElementTree
+from datetime import datetime, timedelta
+
 import boto3
+import requests
+from bs4 import BeautifulSoup
+from sqlalchemy import select
+
+from .config import config
+from .models import Case
+from .session import Forbidden, MjcsSession, RequestTimeout
+from .util import RepeatedTimer, db_session, send_to_queue, split_date_range
 
 logger = logging.getLogger('mjcs')
 
@@ -220,7 +222,8 @@ class SearchNode:
         try:
             root = ElementTree.fromstring(response.text)
         except ElementTree.ParseError as e:
-            logger.warning(f'Failed to parse XML: {e}')
+            if 'DATA NOT FOUND' not in response.text:
+                logger.warning(f'Failed to parse XML: {e}')
             return 0
 
         rows = [[element.text for element in row] for row in root]

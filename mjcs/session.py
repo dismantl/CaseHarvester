@@ -1,11 +1,16 @@
-from .config import config
-import logging
-import requests
 import json
+import logging
 import time
+
+import requests
+import urllib3
 from bs4 import BeautifulSoup
 
+from .config import config
+
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0'
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger('mjcs')
 
