@@ -40,6 +40,7 @@ class Config:
             from dotenv import load_dotenv # imported here so we don't have to package dotenv with lambda functions
             env_dir = os.path.join(os.path.dirname(__file__), '..', 'env')
             load_dotenv(dotenv_path=os.path.join(env_dir,'base.env'))
+            load_dotenv(dotenv_path=os.path.join(env_dir,'2captcha.env'))
             if environment == 'dev' or environment == 'development':
                 load_dotenv(dotenv_path=os.path.join(env_dir,'development.env'))
             elif environment == 'prod' or environment == 'production':
@@ -56,6 +57,10 @@ class Config:
         self.QUEUE_WAIT = int(os.getenv('QUEUE_WAIT',5)) # seconds
         self.AWS_DEFAULT_REGION = os.getenv('AWS_DEFAULT_REGION', 'us-east-1')
         self.CLOUDWATCH_RETENTION_DAYS = os.getenv('CLOUDWATCH_RETENTION_DAYS', 30)
+
+        # Proxy/bypass options
+        self.CAPTCHA_PROXY = os.getenv('CAPTCHA_PROXY')
+        self.CAPTCHA_KEY = os.getenv('CAPTCHA_KEY')
 
         # Spider options
         self.SPIDER_DAYS_PER_QUERY = int(os.getenv('SPIDER_DAYS_PER_QUERY',16))

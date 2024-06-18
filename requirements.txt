@@ -7,7 +7,6 @@ alembic >= 0.9.9
 python-dotenv >= 0.8.2
 awscli >= 1.16.226
 multiprocessing_logging >= 0.3.1
-# pypasser >= 0.0.5
 requests == 2.28.2
 pypdf == 3.6.0
 watchtower == 3.0.1
