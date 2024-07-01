@@ -290,7 +290,8 @@ class SearchNode:
         try:
             response = session.request(
                 method='GET',
-                url = f'{config.MJCS_BASE_URL}/inquirySearch.jis'
+                url = f'{config.MJCS_BASE_URL}/inquiry-search.jsp',
+                headers = {'Referer': f'{config.MJCS_BASE_URL}/'}
             )
         except requests.Timeout:
             raise RequestTimeout
@@ -325,7 +326,8 @@ class SearchNode:
             response = session.request(
                 method='POST',
                 url=f'{config.MJCS_BASE_URL}/inquirySearch.jis',
-                data=query_params
+                data=query_params,
+                headers = {'Referer': f'{config.MJCS_BASE_URL}/inquiry-search.jsp'}
             )
         except requests.Timeout:
             raise RequestTimeout

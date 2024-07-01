@@ -11,7 +11,7 @@ __pycache__
 *.pyc
 env/development.env
 env/production.env
-env/2captcha.env
+env/proxy.env
 secrets.json
 .vscode
 .python-version

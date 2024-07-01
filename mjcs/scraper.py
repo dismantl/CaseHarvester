@@ -222,7 +222,8 @@ class Scraper:
         try:
             response = self.session.request(
                 method='GET',
-                url = f'{config.MJCS_BASE_URL}/inquirySearchParam.jis'
+                url = f'{config.MJCS_BASE_URL}/inquiry-search.jsp',
+                headers = {'Referer': f'{config.MJCS_BASE_URL}/'}
             )
         except requests.Timeout:
             raise RequestTimeout

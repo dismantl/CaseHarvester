@@ -1,14 +1,12 @@
 import json
 import logging
 import time
-
+from collections import OrderedDict
 import requests
 import urllib3
 from bs4 import BeautifulSoup
 
 from .config import config
-
-USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0'
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -27,59 +25,80 @@ class MjcsSession:
     
     def new_session(self):
         self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': USER_AGENT,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br, zstd',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Origin': config.MJCS_BASE_URL,
-            'Referer': f'{config.MJCS_BASE_URL}/casesearch',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'same-origin',
-            'Sec-Fetch-User': '?1',
-            'Connection': 'keep-alive',
+        self.session.headers = OrderedDict({
+            'Sec-Ch-Device-Memory': '8',
+            'Sec-Ch-Ua': '"Microsoft Edge";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Arch': '"x86"',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Sec-Ch-Ua-Model': '""',
+            'Sec-Ch-Ua-Full-Version-List': '"Microsoft Edge";v="125.0.2535.92", "Chromium";v="125.0.6422.142", "Not.A/Brand";v="24.0.0.0"',
             'Upgrade-Insecure-Requests': '1',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 Edg/125.0.0.0',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-User': '?1',
+            'Sec-Fetch-Dest': 'document',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Priority': 'u=0, i',
         })
-        self.session.proxies.update({'http': config.CAPTCHA_PROXY})
+        self.session.proxies.update({
+            'http': f'http://{config.PROXY}',
+            'https': f'http://{config.PROXY}',
+        })
 
     def request(self, *args, i=1, **kwargs):
         if i > 3:
-            raise Exception('Too many recursed requests')
+            raise Exception('Too many repeated requests')
         self.requests += 1
-        response = self.session.request(
-            *args, 
-            **kwargs,
-            timeout=config.QUERY_TIMEOUT,
-            verify=False
-        )
+        try:
+            response = self.session.request(
+                *args, 
+                **kwargs,
+                stream=True,
+                timeout=config.QUERY_TIMEOUT,
+                verify=False
+            )
 
-        if ((response.history and response.history[0].status_code == 302 and
-                    response.history[0].headers['location'] == f'{config.MJCS_BASE_URL}/inquiry-index.jsp')
-                or "Acceptance of the following agreement is" in response.text):
-            logger.debug("Renewing session...")
-            self.renew()
+            if ((response.history and response.history[0].status_code == 302 and
+                        response.history[0].headers['location'] == f'{config.MJCS_BASE_URL}/inquiry-index.jsp')
+                    or "Acceptance of the following agreement is" in response.text):
+                logger.debug("Renewing session...")
+                self.renew()
+                return self.request(*args, i=i+1, **kwargs)
+            elif response.status_code == 403:
+                logger.debug("Forbidden, datadome is big mad...")
+                self.new_session()
+                return self.request(*args, i=i+1, **kwargs)
+            return response
+        except requests.Timeout:
+            logger.debug('Timeout, trying again...')
             return self.request(*args, i=i+1, **kwargs)
-        elif response.status_code == 403:
-            logger.debug("Forbidden, bypassing datadome...")
-            self.bypass_datadome()
-            return self.request(*args, i=i+1, **kwargs)
-        return response
 
     def renew(self):
         self.requests += 1
         response = self.session.request(
             'GET',
-            f'{config.MJCS_BASE_URL}/inquiry-index.jsp'
+            f'{config.MJCS_BASE_URL}/',
+            verify=False
         )
         soup = BeautifulSoup(response.text, 'html.parser')
         disclaimer_token = soup.find('input',{'name':'disclaimer'}).get('value')
 
         self.requests += 1
+        self.session.headers.update({
+            'Cache-Control': 'max-age=0',
+            'Origin': config.MJCS_SITE,
+            'Sec-Fetch-Site': 'same-origin',
+        })
         response = self.session.request(
             'POST',
             f'{config.MJCS_BASE_URL}/processDisclaimer.jis',
-            data = {'disclaimer': disclaimer_token}
+            data = {'disclaimer': disclaimer_token},
+            headers = {'Referer': f'{config.MJCS_BASE_URL}/'},
+            verify=False
         )
         if (response.status_code != 200 or 
                 (response.history and response.history[0].status_code == 302 and
@@ -88,46 +107,3 @@ class MjcsSession:
             err = f"Failed to authenticate with MJCS: code = {response.status_code}, body = {response.text}"
             logger.error(err)
             raise Exception(err)
-
-    def bypass_datadome(self):
-        self.requests += 1
-        url = f'{config.MJCS_BASE_URL}/casesearch'
-        response = self.session.request('GET', url)
-
-        dd = response.text.split('dd=')[1].split('</script')[0]
-        dd = json.loads(dd.replace("'", '"'))
-        cid = response.headers.get('Set-Cookie').split('datadome=')[1].split(';')[0]
-        captcha_url = (
-            f"https://geo.captcha-delivery.com/captcha/?"
-            f"initialCid={dd['cid']}&hash={dd['hsh']}&"
-            f"cid={cid}&t={dd['t']}&referer={url}&"
-            f"s={dd['s']}&e={dd['e']}"
-        )
-
-        response = requests.post("https://2captcha.com/in.php?", data={
-            "key": config.CAPTCHA_KEY,
-            "method": "datadome",
-            "captcha_url": captcha_url,
-            "pageurl": url,
-            "json": 1,
-            "userAgent": USER_AGENT,
-            "proxy": config.CAPTCHA_PROXY,
-            "proxytype": "http",
-        })
-        request_id = response.json()["request"]
-
-        attempts = 0
-        while True:
-            attempts += 1
-            response = requests.get(f"https://2captcha.com/res.php?key={config.CAPTCHA_KEY}&action=get&json=1&id={request_id}").json()
-            if response["request"] == "CAPCHA_NOT_READY":
-                if attempts > 10:
-                    raise RequestTimeout("2captcha timed out")
-                time.sleep(5)
-            elif "ERROR" in response["request"]:
-                raise Exception(f"2captcha error: {response['request']}")
-            else:
-                break
-        
-        cookie_value = response["request"].split(";")[0].split("=")[1]
-        self.session.cookies.set("datadome", cookie_value)
