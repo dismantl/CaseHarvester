@@ -17,7 +17,9 @@ class ODYCOSAParser(CaseDetailsParser):
         strainer = SoupStrainer('div',class_='BodyWindow')
         self.soup = BeautifulSoup(html,'html.parser',parse_only=strainer)
         if len(self.soup.contents) != 1 or not self.soup.div:
-            raise ParserError("Unexpected HTML format", self.soup)
+            self.soup = BeautifulSoup(html,'html.parser').find('div',class_='BodyWindow')
+            if not self.soup or not self.soup.contents:
+                raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
 
     def header(self, soup):
@@ -101,7 +103,10 @@ class ODYCOSAParser(CaseDetailsParser):
             try:
                 subsection_header = self.immediate_sibling(prev_obj,'h5')
             except ParserError:
-                break
+                try:
+                    subsection_header = self.immediate_sibling(prev_obj,'h6')
+                except ParserError:
+                    break
             self.mark_for_deletion(subsection_header)
             prev_obj = subsection_header
             party = ODYCOSAInvolvedParty(case_number=self.case_number)
@@ -152,12 +157,20 @@ class ODYCOSAParser(CaseDetailsParser):
             # Attorneys
             while True:
                 try:
+                    separator = self.immediate_sibling(prev_obj,'br')
+                    prev_obj = separator
+                except ParserError:
+                    pass
+                try:
                     subsection_header = self.immediate_sibling(prev_obj,'table')
                     subsection_table = self.immediate_sibling(subsection_header,'table')
                 except ParserError:
                     break
                 prev_obj = subsection_table
-                subsection_name = subsection_header.find('h5').string
+                try:
+                    subsection_name = subsection_header.find('h5').string
+                except:
+                    subsection_name = subsection_header.find('h6').string
                 self.mark_for_deletion(subsection_header)
                 if 'Attorney(s) for the' in subsection_name:
                     for span in subsection_table.find_all('span',class_='FirstColumnPrompt',string='Name:'):

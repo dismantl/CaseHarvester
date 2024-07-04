@@ -55,6 +55,7 @@ class Scraper:
         self.scrapes = 0
         self.last_scrape_count = 0
         self.last_request_count = 0
+        self.last_forbidden_count = 0
         self.metrics = []
     
     @property
@@ -80,6 +81,10 @@ class Scraper:
         delta_requests = new_request_count - self.last_request_count
         self.last_request_count = new_request_count
 
+        new_forbidden_count = self.session.forbiddens
+        delta_forbiddens = new_forbidden_count - self.last_forbidden_count
+        self.last_forbidden_count = new_forbidden_count
+
         dimensions = [
             {
                 'Name': 'InstanceId',
@@ -102,6 +107,12 @@ class Scraper:
                 'Dimensions': dimensions,
                 'Timestamp': now,
                 'Value': delta_requests
+            },
+            {
+                'MetricName': 'ForbiddenRequests',
+                'Dimensions': dimensions,
+                'Timestamp': now,
+                'Value': delta_forbiddens
             }
         ]
         
@@ -183,7 +194,7 @@ class Scraper:
         
         logger.info(f"Submitted a total of {total} cases for rescraping")
 
-    def scrape_from_queue(self, record_metrics=False):
+    def scrape_from_queue(self, record_metrics=False, forever=False):
         if record_metrics:
             timer = RepeatedTimer(60, self.record_metrics)
             timer.start()
@@ -205,13 +216,16 @@ class Scraper:
                         item.delete()
                 else:
                     logger.info('No items in scraper queue.')
-                    break
+                    if not forever:
+                        break
+                    time.sleep(5 * 60)
         finally:
             if record_metrics:
                 timer.stop()
                 self.record_metrics()
                 self.report()
             logger.info(f'Number of requests: {self.session.requests}')
+            logger.info(f'Number of forbidden requests: {self.session.forbiddens}')
             logger.info(f'Number of scrapes: {self.scrapes}')
 
     def scrape_case(self, case_number, detail_loc=None):
@@ -293,8 +307,7 @@ class Scraper:
             raise Forbidden
         elif response.status_code != 200:
             raise FailedScrapeUnknownError(f'{response.status_code}: {response.text}')
-        elif (re.search(r'<span class="error">\s*<br>CaseSearch will only display results',response.text) or
-                re.search(r'Case Search will only return results that exactly match',response.text)):
+        elif re.search(r'CaseSearch will only display results',response.text):
             raise FailedScrapeNotFound
         elif 'Sorry, but your query has timed out after 2 minute' in response.text:
             raise FailedScrapeTimeout

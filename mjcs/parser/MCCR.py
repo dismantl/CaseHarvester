@@ -155,7 +155,7 @@ class MCCRParser(CaseDetailsParser, ChargeFinder):
         try:
             attorneys_table = soup.find('h6',string='Attorney(s) for the Defendant')\
                                   .find_parent('table')
-            subsection_header = self.sixth_level_header(attorneys_table,'Attorney\(s\) for the Defendant')
+            subsection_header = self.sixth_level_header(attorneys_table,r'Attorney\(s\) for the Defendant')
         except (ParserError, AttributeError):
             return
         

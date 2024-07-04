@@ -22,7 +22,9 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
         strainer = SoupStrainer('div',class_='BodyWindow')
         self.soup = BeautifulSoup(html,'html.parser',parse_only=strainer)
         if len(self.soup.contents) != 1 or not self.soup.div:
-            raise ParserError("Unexpected HTML format", self.soup)
+            self.soup = BeautifulSoup(html,'html.parser').find('div',class_='BodyWindow')
+            if not self.soup or not self.soup.contents:
+                raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
 
     def header(self, soup):
@@ -125,10 +127,19 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
             try:
                 subsection_header = self.immediate_sibling(prev_obj,'h5')
             except ParserError:
-                break
-            self.mark_for_deletion(subsection_header)
-            party_type = self.format_value(subsection_header.string)
-            prev_obj = subsection_header
+                try:
+                    subsection_header = self.immediate_sibling(prev_obj,'table')
+                except ParserError:
+                    break
+                if not subsection_header.find('h6'):
+                    break
+                party_type = self.format_value(subsection_header.text)
+                self.mark_for_deletion(subsection_header)
+                prev_obj = subsection_header
+            else:
+                party_type = self.format_value(subsection_header.string)
+                self.mark_for_deletion(subsection_header)
+                prev_obj = subsection_header
             
             try:
                 name_table = self.table_next_first_column_prompt(subsection_header,'Name:')
@@ -192,12 +203,19 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
                 # Aliases and Attorneys
                 while True:
                     try:
+                        separator = self.immediate_sibling(prev_obj,'br')
+                        prev_obj = separator
+                    except ParserError:
+                        pass
+                    try:
                         subsection_header = self.immediate_sibling(prev_obj,'table')
                         subsection_table = self.immediate_sibling(subsection_header,'table')
                     except ParserError:
                         break
-                    prev_obj = subsection_table
-                    subsection_name = subsection_header.find('h5').string
+                    try:
+                        subsection_name = subsection_header.find('h5').string
+                    except:
+                        subsection_name = subsection_header.find('h6').string
                     self.mark_for_deletion(subsection_header)
                     if subsection_name == 'Aliases':
                         for span in subsection_table.find_all('span',class_='FirstColumnPrompt'):
@@ -264,6 +282,9 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
                                 attorney.state = self.value_column(city_row,'State:')
                                 attorney.zip_code = self.value_column(city_row,'Zip Code:')
                             db.add(attorney)
+                    else:
+                        break
+                    prev_obj = subsection_table
 
             if not party or type(party) != ODYTRAFDefendant:  # Defendant section doesn't separate parties with <hr>
                 separator = self.immediate_sibling(prev_obj,'hr')
@@ -603,8 +624,12 @@ class ODYTRAFParser(CaseDetailsParser, ChargeFinder):
             service = ODYTRAFService(case_number=self.case_number)
             service.service_type = self.format_value(vals[0].string)
             self.mark_for_deletion(vals[0])
-            service.requested_by = self.format_value(vals[1].string)
-            self.mark_for_deletion(vals[1])
-            service.issued_date_str = self.format_value(vals[2].string,money=True)
-            self.mark_for_deletion(vals[2])
+            if len(vals) == 2:
+                service.issued_date_str = self.format_value(vals[1].string,money=True)
+                self.mark_for_deletion(vals[1])
+            else:
+                service.requested_by = self.format_value(vals[1].string)
+                self.mark_for_deletion(vals[1])
+                service.issued_date_str = self.format_value(vals[2].string,money=True)
+                self.mark_for_deletion(vals[2])
             db.add(service)

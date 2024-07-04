@@ -16,7 +16,7 @@ DEFAULT_AWS_REGION=us-east-1
 DB_NAME=mjcs
 AWS_PROFILE=default
 DOCKER_REPO_NAME=caseharvester
-STACKS=static docker-repo spider scraper parser orchestrator
+STACKS=static docker-repo spider scraper parser recurring
 
 .PHONY: package package_parser deploy deploy_production \
 	$(addprefix deploy_,$(STACKS)) \
@@ -47,7 +47,8 @@ aws cloudformation deploy --template-file cloudformation/output/stack-$(componen
 		SpiderStackName=$(STACK_PREFIX)-spider-$(environment) \
 		ScraperStackName=$(STACK_PREFIX)-scraper-$(environment) \
 		DockerRepoName=$(environment)_$(DOCKER_REPO_NAME) \
-		$(shell jq -r '.$(env_long) as $$x|$$x|keys[]|. + "=" + $$x[.]' $(SECRETS_FILE))
+		$(shell jq -r '.$(env_long) as $$x|$$x|keys[]|. + "=" + $$x[.]' $(SECRETS_FILE)) \
+		DatabaseUrl=$(MJCS_DATABASE_URL)
 endef
 
 define create_stack_bucket_f
@@ -64,8 +65,8 @@ aws cloudformation list-exports | awk '\
 	/$(STACK_PREFIX)-parser-$(environment)-ParserArn/ { getline; parser_arn=$$2 };\
 	END { print bucket, parser_arn }' | \
 	xargs printf "aws s3api put-bucket-notification-configuration --bucket %s \
-	--notification-configuration \'{\"LambdaFunctionConfigurations\": \
-	[{\"LambdaFunctionArn\":\"%s\",\"Events\":[\"s3:ObjectCreated:*\"]}]}\'" | bash
+	--notification-configuration '{\"LambdaFunctionConfigurations\": \
+	[{\"LambdaFunctionArn\":\"%s\",\"Events\":[\"s3:ObjectCreated:*\"]}]}'" | bash
 endef
 
 define db_init_f
@@ -182,12 +183,8 @@ endef
 	$(call add_parser_notification_f,prod)
 	touch $@
 
-.deploy-orchestrator-dev: .deploy-spider-dev .deploy-scraper-dev .package-notifier cloudformation/stack-orchestrator.yaml
-	$(call deploy_stack_f,orchestrator,dev)
-	touch $@
-
-.deploy-orchestrator-prod: .deploy-spider-prod .deploy-scraper-prod .package-notifier cloudformation/stack-orchestrator.yaml
-	$(call deploy_stack_f,orchestrator,prod)
+.deploy-recurring-prod: .deploy-static-prod cloudformation/stack-recurring.yaml $(SECRETS_FILE)
+	$(call deploy_stack_f,recurring,prod)
 	touch $@
 
 .init-dev: .deploy-static-dev .deploy-spider-dev .deploy-scraper-dev .deploy-parser-dev $(SECRETS_FILE)
@@ -226,9 +223,7 @@ deploy_scraper: .deploy-scraper-dev
 
 deploy_parser: .deploy-parser-dev
 
-deploy_orchestrator: .deploy-orchestrator-dev
-
-deploy: deploy_static deploy_docker_repo deploy_scraper deploy_parser deploy_spider deploy_orchestrator .push-docker-image-dev
+deploy: deploy_static deploy_docker_repo deploy_scraper deploy_parser deploy_spider .push-docker-image-dev
 
 deploy_static_production: .deploy-static-prod
 
@@ -240,11 +235,11 @@ deploy_scraper_production: .deploy-scraper-prod
 
 deploy_parser_production: .deploy-parser-prod
 
-deploy_orchestrator_production: .deploy-orchestrator-prod
+deploy_recurring_production: .deploy-recurring-prod
 
 deploy_production: deploy_static_production deploy_docker_repo_production \
 		deploy_scraper_production deploy_parser_production deploy_spider_production \
-		deploy_orchestrator_production .push-docker-image-prod
+		deploy_recurring_production .push-docker-image-prod
 
 init: .init-dev
 

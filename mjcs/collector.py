@@ -2,7 +2,7 @@ from .models import Case
 from .util import db_session, send_to_queue
 from .config import config
 from pypdf import PdfReader
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import select
 import json
 import re
@@ -10,8 +10,7 @@ import io
 import requests
 import logging
 
-MDEC_URL = 'https://mdcourts.gov/data/case'
-BALT_URL = 'https://mdcourts.gov/data/nonmdec/bccases'
+MDEC_URL = 'https://www.mdcourts.gov/data/case'
 
 logger = logging.getLogger('mjcs')
 invalid_court_patterns = [
@@ -65,30 +64,42 @@ class Collector:
         self.cases = {}
 
     def collect_case_numbers(self, target_date=None):
-        target_date = target_date or datetime.now().date()
-        response = requests.get(f'{self.url}/file{target_date.strftime("%Y-%m-%d")}.pdf')
-        pdfio = io.BytesIO(response.content)
-        reader = PdfReader(pdfio)
-        with db_session() as db:
-            for i, page in enumerate(reader.pages):
-                logger.info(f'Parsing page {i+1}')
-                page.extract_text(visitor_text = self.parse_pdf_text)
-            logger.info(f'Found {len(self.cases)} case numbers, submitting to database')
+        dates = [target_date] if target_date else [datetime.now().date() - timedelta(days=i) for i in range(0, 8)]
+        for date in dates:
+            url = f'{self.url}/file{date.strftime("%Y-%m-%d")}.pdf'
+            response = requests.get(url)
+            if not response.ok:
+                logger.warn(f'Failed to download PDF from {url}')
+                continue
+            logger.info(f'Downloaded PDF from {url}')
+            pdfio = io.BytesIO(response.content)
+            reader = PdfReader(pdfio)
+            with db_session() as db:
+                for i, page in enumerate(reader.pages):
+                    # logger.info(f'Parsing page {i+1}')
+                    page.extract_text(visitor_text = self.parse_pdf_text)
+                logger.info(f'Found {len(self.cases)} total case numbers, checking which are new')
 
-            # See which cases need to be added to DB
-            existing_cases = db.scalars(
-                select(Case.case_number)
-                .where(Case.case_number.in_(self.cases.keys()))
-            ).all()
-            new_case_numbers = set(self.cases.keys()) - set(existing_cases)
-            new_cases = [self.cases[x] for x in new_case_numbers]
+                # See which cases need to be added to DB
+                existing_cases = db.scalars(
+                    select(Case.case_number)
+                    .where(Case.case_number.in_(self.cases.keys()))
+                ).all()
+                new_case_numbers = set(self.cases.keys()) - set(existing_cases)
+                if not new_case_numbers:
+                    logger.info('No new cases found')
+                    continue
 
-            # Save new cases to database
-            db.add_all(new_cases)
+                new_cases = [self.cases[x] for x in new_case_numbers]
+                logger.info(f'Found {len(new_cases)} new cases, submitting to database')
 
-            # Then send them to the scraper queue
-            messages = [json.dumps({'case_number': case_number}) for case_number in self.cases.keys()]
-            send_to_queue(config.scraper_queue, messages)
+                # Save new cases to database
+                db.add_all(new_cases)
+
+                # Then send them to the scraper queue
+                logger.info('Sending new cases to scraper queue')
+                messages = [json.dumps({'case_number': case_number}) for case_number in new_case_numbers]
+                send_to_queue(config.scraper_queue, messages)
 
     def parse_pdf_text(self, text, cm, tm, font_dict, font_size):
         if not text.strip():
@@ -162,17 +173,4 @@ class MDECCollector(Collector):
             mdec_header_row_y,
             mdec_court_row_y,
             mdec_date_format
-        )
-
-
-class BaltCityCollector(Collector):
-    def __init__(self):
-        super(BaltCityCollector, self).__init__(
-            BALT_URL,
-            bc_first_column_x,
-            bc_third_column_x,
-            bc_fourth_column_x,
-            bc_header_row_y,
-            bc_court_row_y,
-            bc_date_format
         )

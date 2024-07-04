@@ -14,9 +14,6 @@ Parameters:
   StaticStackName:
     Description: Name of the static stack, for getting database and S3 bucket details
     Type: String
-  DockerRepoStackName:
-    Description: Name of the docker repo stack, for getting repository name
-    Type: String
   EnvironmentType:
     Description: The environment type (prod or dev)
     Type: String
@@ -25,9 +22,13 @@ Parameters:
       - prod
       - dev
     ConstraintDescription: must be a prod or dev
+  DatabaseUrl:
+    Description: The URL of the database
+    Type: String
 
 Conditions:
   CreateProdResources: !Equals [!Ref EnvironmentType, prod]
+  EmptyDatabaseUrl: !Equals [!Ref DatabaseUrl, '']
 
 Resources:
   Parser:
@@ -46,16 +47,20 @@ Resources:
       CodeUri: ../pkg/parser
       MemorySize: 300
       Timeout: 900
-      ReservedConcurrentExecutions: !If [CreateProdResources, 250, !Ref "AWS::NoValue"]
+      ReservedConcurrentExecutions:
+        !If [CreateProdResources, 250, !Ref 'AWS::NoValue']
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt ParserFailedQueue.Arn
       Environment:
         Variables:
-          MJCS_DATABASE_URL: !Sub
-            - postgresql://${DatabaseUsername}:${DatabasePassword}@${db_addr}/${DatabaseName}
-            - db_addr:
-                Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+          MJCS_DATABASE_URL: !If
+            - EmptyDatabaseUrl
+            - !Sub
+              - postgresql://${DatabaseUsername}:${DatabasePassword}@${db_addr}/${DatabaseName}
+              - db_addr:
+                  Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+            - !Ref DatabaseUrl
           CASE_DETAILS_BUCKET:
             Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
           PARSER_FAILED_QUEUE_NAME: !GetAtt ParserFailedQueue.QueueName
@@ -96,183 +101,12 @@ Resources:
   ParserQueue:
     Type: AWS::SQS::Queue
     Properties:
-      MessageRetentionPeriod: 1209600  # 14 days
-      VisibilityTimeout: 5400  # 6x lambda timeout (1.5 hr)
+      MessageRetentionPeriod: 1209600 # 14 days
+      VisibilityTimeout: 5400 # 6x lambda timeout (1.5 hr)
       QueueName: !Sub caseharvester_parser_queue_${EnvironmentType}
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt ParserFailedQueue.Arn
         maxReceiveCount: 5
-
-  MonthlyExportTaskRole:
-    Type: AWS::IAM::Role
-    Condition: CreateProdResources
-    Properties:
-      RoleName: caseharvester_ecs_export_task_role
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - ecs-tasks.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonS3FullAccess
-
-  MonthlyExportTask:
-    Type: AWS::ECS::TaskDefinition
-    Condition: CreateProdResources
-    Properties:
-      ContainerDefinitions:
-        - Name: caseharvester_export_container
-          Command:
-            - python
-            - -u
-            - harvester.py
-            - --environment
-            - production
-            - export-tables
-            - --redacted
-          Environment:
-            - Name: MJCS_DATABASE_URL
-              Value: !Sub
-                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
-                - db_user: !Ref DatabaseUsername
-                  db_pw: !Ref DatabasePassword
-                  db_addr:
-                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
-                  db_name: !Ref DatabaseName
-          Image: !Sub
-            - ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${repo_name}
-            - repo_name:
-                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-create-group: true
-              awslogs-region: !Sub ${AWS::Region}
-              awslogs-group: caseharvester-export-monthly
-              awslogs-stream-prefix: caseharvester-export-monthly-logs
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: 256
-      Memory: 512
-      ExecutionRoleArn:
-        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
-      NetworkMode: awsvpc
-      TaskRoleArn: !GetAtt MonthlyExportTaskRole.Arn
-
-  MonthlyExport:
-    Type: AWS::Events::Rule
-    Condition: CreateProdResources
-    Properties:
-      Name: !Sub monthly_export_${EnvironmentType}
-      Description: Export tables to S3
-      ScheduleExpression: cron(0 0 1 * ? *)
-      Targets:
-        - Id: export_ecs_task_target
-          Arn:
-            Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
-          RoleArn:
-            Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
-          EcsParameters:
-            LaunchType: FARGATE
-            TaskDefinitionArn: !Ref MonthlyExportTask
-            TaskCount: 1
-            NetworkConfiguration:
-              AwsVpcConfiguration:
-                AssignPublicIp: ENABLED
-                SecurityGroups:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
-                Subnets:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
-
-  QuarterlyReparseTaskRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub caseharvester_ecs_reparse_task_role_${EnvironmentType}
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - ecs-tasks.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
-
-  QuarterlyReparseTask:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      ContainerDefinitions:
-        - Name: caseharvester_reparse_container
-          Command:
-            - python
-            - -u
-            - harvester.py
-            - --environment
-            - production
-            - parser
-            - --reparse
-          Environment:
-            - Name: MJCS_DATABASE_URL
-              Value: !Sub
-                - postgresql://${db_user}:${db_pw}@${db_addr}/${db_name}
-                - db_user: !Ref DatabaseUsername
-                  db_pw: !Ref DatabasePassword
-                  db_addr:
-                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
-                  db_name: !Ref DatabaseName
-            - Name: PARSER_QUEUE_NAME
-              Value: !GetAtt ParserQueue.QueueName
-          Image: !Sub
-            - ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${repo_name}
-            - repo_name:
-                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-create-group: true
-              awslogs-region: !Sub ${AWS::Region}
-              awslogs-group: caseharvester-reparse-quarterly
-              awslogs-stream-prefix: caseharvester-reparse-quarterly-logs
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: 2048
-      Memory: 12288
-      ExecutionRoleArn:
-        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
-      NetworkMode: awsvpc
-      TaskRoleArn: !GetAtt QuarterlyReparseTaskRole.Arn
-
-  QuarterlyReparse:
-    Type: AWS::Events::Rule
-    Properties:
-      Name: !Sub quarterly_reparse_${EnvironmentType}
-      Description: Reparse all cases
-      ScheduleExpression: cron(0 12 16 FEB,MAY,AUG,NOV ? *)
-      Targets:
-        - Id: reparse_ecs_task_target
-          Arn:
-            Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
-          RoleArn:
-            Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
-          EcsParameters:
-            LaunchType: FARGATE
-            TaskDefinitionArn: !Ref QuarterlyReparseTask
-            TaskCount: 1
-            NetworkConfiguration:
-              AwsVpcConfiguration:
-                AssignPublicIp: ENABLED
-                SecurityGroups:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
-                Subnets:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
 
 Outputs:
   ParserArn:

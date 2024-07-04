@@ -25,6 +25,12 @@ Parameters:
       - prod
       - dev
     ConstraintDescription: must be a prod or dev
+  DatabaseUrl:
+    Description: The URL of the database
+    Type: String
+
+Conditions:
+  EmptyDatabaseUrl: !Equals [!Ref DatabaseUrl, '']
 
 Resources:
   ScraperQueue:
@@ -33,166 +39,6 @@ Resources:
       MessageRetentionPeriod: 1209600
       VisibilityTimeout: 300
       QueueName: !Sub caseharvester_scraper_queue_${EnvironmentType}
-
-  ScraperRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub caseharvester_scraper_role_${EnvironmentType}
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Action: sts:AssumeRole
-            Principal:
-              Service:
-                - ecs-tasks.amazonaws.com
-                - ec2.amazonaws.com
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
-      Policies:
-        - PolicyName: !Sub caseharvester_scraper_permissions_${EnvironmentType}
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:PutRetentionPolicy
-                Resource: "*"
-              - Effect: Allow
-                Action:
-                  - sqs:DeleteMessage
-                  - sqs:ReceiveMessage
-                  - sqs:SendMessage
-                  - sqs:GetQueueAttributes
-                  - sqs:GetQueueUrl
-                Resource: !GetAtt ScraperQueue.Arn
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:GetObjectVersion
-                  - s3:ListBucket
-                Resource: 
-                  - Fn::ImportValue: !Sub "${StaticStackName}-CaseDetailsBucketArn"
-                  - !Sub
-                    - ${bucket}/*
-                    - bucket: {Fn::ImportValue: !Sub "${StaticStackName}-CaseDetailsBucketArn"}
-
-  ScraperInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Path: /
-      Roles:
-        - !Ref ScraperRole
-
-  ScraperInstanceSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: !Sub caseharvester_scraper_security_group_${EnvironmentType}
-      GroupDescription: Controls access to Case Harvester scraper instances
-      VpcId:
-        Fn::ImportValue: !Sub ${StaticStackName}-VPCId
-      SecurityGroupIngress:
-        - CidrIp: 0.0.0.0/0
-          Description: Anywhere
-          FromPort: 22
-          ToPort: 22
-          IpProtocol: tcp
-
-  ScraperTemplate:
-    Type: AWS::EC2::LaunchTemplate
-    Properties:
-      LaunchTemplateName: !Sub caseharvester_scraper_template_${EnvironmentType}
-      LaunchTemplateData:
-        BlockDeviceMappings:
-          - DeviceName: /dev/xvda
-            Ebs:
-              DeleteOnTermination: true
-              Encrypted: false
-              VolumeSize: 8
-        IamInstanceProfile:
-          Arn: !GetAtt ScraperInstanceProfile.Arn
-        ImageId: ami-06fed787a55a2864a
-        InstanceInitiatedShutdownBehavior: stop
-        InstanceType: t3a.nano
-        KeyName: dan_ojb
-        NetworkInterfaces:
-          - AssociatePublicIpAddress: true
-            DeleteOnTermination: true
-            DeviceIndex: 0
-            SubnetId:
-              Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
-            Groups:
-              - !Ref ScraperInstanceSecurityGroup
-
-  DailyScraperTask:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      ContainerDefinitions:
-        - Name: !Sub caseharvester_scraper_container_${EnvironmentType}
-          Command:
-            - python
-            - -u
-            - harvester.py
-            - --environment
-            - !Sub ${EnvironmentType}
-            - scraper
-            - --stale
-          Environment:
-            - Name: MJCS_DATABASE_URL
-              Value: !Sub
-                - postgresql://${DatabaseUsername}:${DatabasePassword}@${db_addr}/${DatabaseName}
-                - db_addr:
-                    Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
-            - Name: SCRAPER_QUEUE_NAME
-              Value: !GetAtt ScraperQueue.QueueName
-            - Name: CASE_DETAILS_BUCKET
-              Value:
-                Fn::ImportValue: !Sub ${StaticStackName}-CaseDetailsBucketName
-          Image: !Sub
-            - ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${repo_name}
-            - repo_name:
-                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-create-group: true
-              awslogs-region: !Sub ${AWS::Region}
-              awslogs-group: !Sub caseharvester-scraper-daily-${EnvironmentType}
-              awslogs-stream-prefix: caseharvester-scraper-daily-logs
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: '1024'
-      Memory: '4096'
-      ExecutionRoleArn:
-        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
-      NetworkMode: awsvpc
-      TaskRoleArn: !GetAtt ScraperRole.Arn
-
-  DailyScraperRule:
-    Type: AWS::Events::Rule
-    Properties:
-      Name: !Sub caseharvester_daily_scraper_${EnvironmentType}
-      Description: Daily rescrape cases based on case age
-      ScheduleExpression: cron(0 22 * * ? *)  # 6pm ET
-      Targets:
-        - Id: scraper_ecs_task_target
-          Arn:
-            Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
-          RoleArn:
-            Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
-          EcsParameters:
-            LaunchType: FARGATE
-            TaskDefinitionArn: !Ref DailyScraperTask
-            TaskCount: 1
-            NetworkConfiguration:
-              AwsVpcConfiguration:
-                AssignPublicIp: ENABLED
-                SecurityGroups:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
-                Subnets:
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
-                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
 
 Outputs:
   ScraperQueueName:
@@ -205,8 +51,3 @@ Outputs:
     Value: !GetAtt ScraperQueue.Arn
     Export:
       Name: !Sub ${AWS::StackName}-ScraperQueueArn
-  ScraperLaunchTemplateId:
-    Description: Scraper launch template ID
-    Value: !Ref ScraperTemplate
-    Export:
-      Name: !Sub ${AWS::StackName}-ScraperLaunchTemplateId

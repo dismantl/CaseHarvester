@@ -12,7 +12,7 @@ import logging
 
 logger = logging.getLogger('mjcs')
 
-reference_number_re = r'^([\w \'\-/#\.]+)\s*:?\s*$'
+reference_number_re = r'^([\w \'\-/#\.]+)\s*:?:?\s*$'
 
 def consumer(func):
     func.consumer = True
@@ -22,22 +22,26 @@ class CaseDetailsParser(ABC):
     inactive_statuses = []
 
     def __init__(self, case_number, html):
-        # <body> should only have a single child div that holds the data
         self.case_number = case_number
-        strainer = SoupStrainer('div', {'class': 'BodyWindow'})
+        strainer = SoupStrainer('div', class_='BodyWindow')
         self.soup = BeautifulSoup(html,'html.parser',parse_only=strainer)
         if len(self.soup.contents) != 1 or not self.soup.div:
-            strainer = SoupStrainer('div')
-            self.soup = BeautifulSoup(html,'html.parser',parse_only=strainer)
-            if len(self.soup.contents) != 1 or not self.soup.div:
-                raise ParserError("Unexpected HTML format", self.soup)
+            self.soup = BeautifulSoup(html,'html.parser').find('div',class_='BodyWindow')
+            if not self.soup or not self.soup.contents:
+                strainer = SoupStrainer('div')
+                self.soup = BeautifulSoup(html,'html.parser',parse_only=strainer)
+                if len(self.soup.contents) != 1 or not self.soup.div:
+                    raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
         self.case_status = None
 
     def parse(self):
         # All parsing is done within a single database transaction, so no partial data is added or destroyed
         with db_session() as db:
-            self.header(self.soup)
+            try:
+                self.header(self.soup)
+            except:
+                pass # New MDEC site doesn't have the old header, so ignore errors
             self.delete_previous(db)
             self.case(db, self.soup)
             db.flush() # so related subtables can satisfy foreign key constraint
@@ -317,10 +321,13 @@ class CaseDetailsParser(ABC):
                 return None
             raise ParserError('Unable to find first column prompt %s' % first_column_prompt)
         self.mark_for_deletion(prompt_span)
-        value_span = prompt_span\
-            .find_parent('td')\
-            .find_next_sibling('td')\
-            .find('span',class_='Value')
+        try:
+            value_span = prompt_span\
+                .find_parent('td')\
+                .find_next_sibling('td')\
+                .find('span',class_='Value')
+        except AttributeError:
+            raise ParserError('Unable to find value for first column prompt %s' % first_column_prompt)
         if value_span:
             self.mark_for_deletion(value_span)
             return self.format_value(value_span.string, **format_args)
@@ -387,10 +394,13 @@ class CaseDetailsParser(ABC):
                 return None
             raise ParserError('Unable to find column prompt %s' % prompt)
         self.mark_for_deletion(prompt_span)
-        value_span = prompt_span\
-            .find_parent('td')\
-            .find_next_sibling('td')\
-            .find('span',class_='Value')
+        try:
+            value_span = prompt_span\
+                .find_parent('td')\
+                .find_next_sibling('td')\
+                .find('span',class_='Value')
+        except AttributeError:
+            raise ParserError('Unable to find value for column prompt %s' % prompt)
         if value_span:
             self.mark_for_deletion(value_span)
             return self.format_value(value_span.string, **format_args)

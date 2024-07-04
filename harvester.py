@@ -6,7 +6,7 @@ from mjcs.spider import generate_spider_slices, Spider
 from mjcs.scraper import Scraper, RequestTimeout, Forbidden
 from mjcs.parser import Parser
 from mjcs.util import db_session, get_case_model_list
-from mjcs.collector import MDECCollector, BaltCityCollector
+from mjcs.collector import MDECCollector
 import boto3
 from datetime import datetime, timedelta
 import os
@@ -118,20 +118,13 @@ def write_env_file(env_long, env_short, exports, db_name, username, password):
         f.write(f'MJCS_DATABASE_URL={db_url}\n')
         f.write(f"CASE_DETAILS_BUCKET={get_export_val(exports,env_short,'CaseDetailsBucketName')}\n")
         f.write(f"SPIDER_QUEUE_NAME={get_export_val(exports,env_short,'SpiderQueueName')}\n")
-        f.write(f"SPIDER_LAUNCH_TEMPLATE_ID={get_export_val(exports,env_short,'SpiderLaunchTemplateId')}\n")
         f.write(f"SCRAPER_QUEUE_NAME={get_export_val(exports,env_short,'ScraperQueueName')}\n")
-        f.write(f"SCRAPER_LAUNCH_TEMPLATE_ID={get_export_val(exports,env_short,'ScraperLaunchTemplateId')}\n")
         f.write(f"PARSER_FAILED_QUEUE_NAME={get_export_val(exports,env_short,'ParserFailedQueueName')}\n")
         f.write(f"PARSER_QUEUE_NAME={get_export_val(exports,env_short,'ParserQueueName')}\n")
         f.write(f"PARSER_TRIGGER_ARN={get_export_val(exports,env_short,'ParserTriggerArn')}\n")
         f.write(f"VPC_SUBNET_1_ID={get_export_val(exports,env_short,'VPCPublicSubnet1Id')}\n")
         f.write(f"VPC_SUBNET_2_ID={get_export_val(exports,env_short,'VPCPublicSubnet2Id')}\n")
         f.write(f"ECS_CLUSTER_ARN={get_export_val(exports,env_short,'ECSClusterArn')}\n")
-        f.write(f"NOTIFIER_RULE_NAME={get_export_val(exports,env_short,'NotifierRuleName')}\n")
-        f.write(f"SPIDER_COUNT_PARAMETER_NAME={get_export_val(exports,env_short,'SpiderCountParameterName')}\n")
-        f.write(f"SCRAPER_COUNT_PARAMETER_NAME={get_export_val(exports,env_short,'ScraperCountParameterName')}\n")
-        f.write(f"SPIDER_QUEUE_NOT_EMPTY_ALARM_NAME={get_export_val(exports,env_short,'SpiderQueueNotEmptyAlarmName')}\n")
-        f.write(f"SCRAPER_QUEUE_NOT_EMPTY_ALARM_NAME={get_export_val(exports,env_short,'ScraperQueueNotEmptyAlarmName')}\n")
     # re-load config
     config.initialize_from_environment(env_long)
 
@@ -150,26 +143,16 @@ def run_spider(args):
         logger.info(f'{socket.gethostname()} spidering from queue')
         spider = Spider()
         try:
-            spider.spider_from_queue(record_metrics=args.record_metrics)
+            spider.spider_from_queue(record_metrics=args.record_metrics, forever=args.forever)
         except (RequestTimeout, Forbidden) as e:
             logger.warning(f'Caught {type(e).__name__} error: {e}')
-        finally:
-            if args.shutdown:
-                logger.info('Shutting down the system.')
-                if hasattr(args, 'log') and args.log:
-                    os.remove(args.log)
-                subprocess.run(["shutdown", "now"])
     elif args.start_date:    
         generate_spider_slices(args.start_date, args.end_date or datetime.now(), args.court, args.site)
     else:
         raise Exception("Must specify search criteria, --launch-instances, --terminate-instances, or --from-queue")
 
 def run_collector(args):
-    if args.list == 'MDEC':
-        collector = MDECCollector()
-    elif args.list == 'BaltimoreCity':
-        collector = BaltCityCollector()
-    collector.collect_case_numbers(args.date)
+    MDECCollector().collect_case_numbers(args.date)
 
 def run_scraper(args):
     scraper = Scraper()
@@ -183,15 +166,9 @@ def run_scraper(args):
     elif args.from_queue:
         logger.info(f'{socket.gethostname()} scraping from queue')
         try:
-            scraper.scrape_from_queue(record_metrics=args.record_metrics)
+            scraper.scrape_from_queue(record_metrics=args.record_metrics, forever=args.forever)
         except (RequestTimeout, Forbidden) as e:
             logger.warning(f'Caught {type(e).__name__} error: {e}')
-        finally:
-            if args.shutdown:
-                logger.info('Shutting down the system.')
-                if hasattr(args, 'log') and args.log:
-                    os.remove(args.log)
-                subprocess.run(["shutdown", "now"])
     else:
         raise Exception("Must specify --case, --from-queue, --stale, or --stale-count.")
 
@@ -280,18 +257,16 @@ if __name__ == '__main__':
         help="Print debug information")
     parser_spider.add_argument('--from-queue', action='store_true',
         help="Spider MJCS with queries from the spider queue")
-    parser_spider.add_argument('--shutdown', action='store_true',
-        help="Shutdown machine after rate limit (must be run as root)")
+    parser_spider.add_argument('--forever', action='store_true',
+        help="Don't exit if spider queue is empty, keep checking")
     parser_spider.add_argument('--record-metrics', action='store_true',
         help="Send metrics to Cloudwatch every minute")
     parser_spider.set_defaults(func=run_spider)
 
     parser_collector = subparsers.add_parser('collector',
         help="Collect case numbers from PDFs posted daily by the Judiciary")
-    parser_collector.add_argument('--list', '-l', required=True, choices=['MDEC', 'BaltimoreCity'],
-        help="Which PDF list to parse")
     parser_collector.add_argument('--date', '-d', type=valid_date,
-        help="Collect case numbers from this date (defaults to today)")
+        help="Collect case numbers from this date (defaults to past week)")
     parser_collector.set_defaults(func=run_collector)
 
     parser_scraper = subparsers.add_parser('scraper',
@@ -313,8 +288,8 @@ if __name__ == '__main__':
         help="Include inactive cases when rescraping")
     parser_scraper.add_argument('--from-queue', action='store_true',
         help="Scrape cases from the scraper queue")
-    parser_scraper.add_argument('--shutdown', action='store_true',
-        help="Shutdown machine after rate limit (must be run as root)")
+    parser_scraper.add_argument('--forever', action='store_true',
+        help="Don't exit if scraper queue is empty, keep checking")
     parser_scraper.add_argument('--record-metrics', action='store_true',
         help="Send metrics to Cloudwatch every minute")
     parser_scraper.set_defaults(func=run_scraper)

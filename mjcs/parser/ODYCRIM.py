@@ -24,7 +24,9 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
         strainer = SoupStrainer('div',class_='BodyWindow')
         self.soup = BeautifulSoup(html,'html.parser',parse_only=strainer)
         if len(self.soup.contents) != 1 or not self.soup.div:
-            raise ParserError("Unexpected HTML format", self.soup)
+            self.soup = BeautifulSoup(html,'html.parser').find('div',class_='BodyWindow')
+            if not self.soup or not self.soup.contents:
+                raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
 
     def header(self, soup):
@@ -116,10 +118,20 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
             try:
                 subsection_header = self.immediate_sibling(prev_obj,'h5')
             except ParserError:
-                break
-            self.mark_for_deletion(subsection_header)
-            prev_obj = subsection_header
-            party_type = self.format_value(subsection_header.string)
+                try:
+                    subsection_header = self.immediate_sibling(prev_obj,'table')
+                except ParserError:
+                    break
+                if not subsection_header.find('h6'):
+                    break
+                party_type = self.format_value(subsection_header.text)
+                self.mark_for_deletion(subsection_header)
+                prev_obj = subsection_header
+            else:
+                party_type = self.format_value(subsection_header.string)
+                self.mark_for_deletion(subsection_header)
+                prev_obj = subsection_header
+            
             # Attorneys for defendants and plaintiffs are listed in two different ways
             if party_type == 'Attorney for Defendant' and defendant_id:
                 party = ODYCRIMAttorney(case_number=self.case_number)
@@ -183,12 +195,19 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
             # Aliases and Attorneys
             while True:
                 try:
+                    separator = self.immediate_sibling(prev_obj,'br')
+                    prev_obj = separator
+                except ParserError:
+                    pass
+                try:
                     subsection_header = self.immediate_sibling(prev_obj,'table')
                     subsection_table = self.immediate_sibling(subsection_header,'table')
                 except ParserError:
                     break
-                prev_obj = subsection_table
-                subsection_name = subsection_header.find('h5').string
+                try:
+                    subsection_name = subsection_header.find('h5').string
+                except:
+                    subsection_name = subsection_header.find('h6').string
                 self.mark_for_deletion(subsection_header)
                 if subsection_name == 'Aliases':
                     for span in subsection_table.find_all('span',class_='FirstColumnPrompt'):
@@ -255,6 +274,9 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
                             attorney.state = self.value_column(city_row,'State:')
                             attorney.zip_code = self.value_column(city_row,'Zip Code:')
                         db.add(attorney)
+                else:
+                    break
+                prev_obj = subsection_table
 
             if type(party) != ODYCRIMDefendant:  # Defendant section doesn't separate parties with <hr>
                 separator = self.immediate_sibling(prev_obj,'hr')
@@ -340,6 +362,10 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
             prev_obj = container
             new_charge = self.parse_charge(container)
             new_charges.append(new_charge)
+            try:
+                prev_obj = self.immediate_sibling(prev_obj,'hr')
+            except ParserError:
+                pass
 
         for new_charge in new_charges:
             db.add(new_charge)
@@ -576,7 +602,10 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
             section_header = self.first_level_header(soup,'Bail Bond Information')
         except ParserError:
             return
-        section_container = self.immediate_sibling(section_header,'div',class_='AltBodyWindow1')
+        try:
+            section_container = self.immediate_sibling(section_header,'div',class_='AltBodyWindow1')
+        except ParserError:
+            section_container = self.immediate_sibling(section_header,'table')
         header_row = section_container.find('tr')
         self.mark_for_deletion(header_row)
         prev_obj = header_row
@@ -607,15 +636,32 @@ class ODYCRIMParser(CaseDetailsParser, ChargeFinder):
             section_header = self.first_level_header(soup,'Bond Setting Information')
         except ParserError:
             return
-        section_container = self.immediate_sibling(section_header, 'div',class_='AltBodyWindow1')
-        for span in section_container.find_all('span',class_='FirstColumnPrompt',string='Bail Date:'):
-            t = span.find_parent('table')
-            bond_setting = ODYCRIMBondSetting(case_number=self.case_number)
-            bond_setting.bail_date_str = self.value_first_column(t,'Bail Date:')
-            bond_setting.bail_setting_type = self.value_first_column(t,'Bail Setting Type:')
-            bond_setting.bail_amount = self.value_first_column(t,'Bail Amount:',money=True)
-            bond_setting.judge = self.value_first_column(t, 'Judge:')
-            db.add(bond_setting)
+        try:
+            section_container = self.immediate_sibling(section_header, 'div',class_='AltBodyWindow1')
+        except ParserError:
+            prev_obj = section_header
+            while True:
+                try:
+                    t = self.immediate_sibling(prev_obj,'table')
+                    if not t.text:
+                        t = self.immediate_sibling(t,'table')
+                    hr = self.immediate_sibling(t,'hr')
+                except ParserError:
+                    break
+                prev_obj = hr
+                self.bond_setting_item(db, t)
+        else:
+            for span in section_container.find_all('span',class_='FirstColumnPrompt',string='Bail Date:'):
+                t = span.find_parent('table')
+                self.bond_setting_item(db, t)
+    
+    def bond_setting_item(self, db, t):
+        bond_setting = ODYCRIMBondSetting(case_number=self.case_number)
+        bond_setting.bail_date_str = self.value_first_column(t,'Bail Date:')
+        bond_setting.bail_setting_type = self.value_first_column(t,'Bail Setting Type:')
+        bond_setting.bail_amount = self.value_first_column(t,'Bail Amount:',money=True)
+        bond_setting.judge = self.value_first_column(t, 'Judge:')
+        db.add(bond_setting)
 
     #########################################################
     # DOCUMENT INFORMATION

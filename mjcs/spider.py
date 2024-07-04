@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import string
+import time
 import xml.etree.ElementTree as ElementTree
 from datetime import datetime, timedelta
 
@@ -49,9 +50,11 @@ class CompletedSearchNoResults(Exception):
 class Spider:
     def __init__(self):
         self.requests = 0
+        self.forbiddens = 0
         self.queries = 0
         self.new_cases = 0
         self.last_request_count = 0
+        self.last_forbidden_count = 0
         self.last_query_count = 0
         self.last_new_case_count = 0
         self.metrics = []
@@ -83,6 +86,10 @@ class Spider:
         delta_new_cases = new_new_case_count - self.last_new_case_count
         self.last_new_case_count = new_new_case_count
 
+        new_forbidden_count = self.session.forbiddens
+        delta_forbiddens = new_forbidden_count - self.last_forbidden_count
+        self.last_forbidden_count = new_forbidden_count
+
         dimensions = [
             {
                 'Name': 'InstanceId',
@@ -99,6 +106,12 @@ class Spider:
                 'Dimensions': dimensions,
                 'Timestamp': now,
                 'Value': delta_requests
+            },
+            {
+                'MetricName': 'SpiderForbiddens',
+                'Dimensions': dimensions,
+                'Timestamp': now,
+                'Value': delta_forbiddens
             },
             {
                 'MetricName': 'SpiderQueries',
@@ -120,7 +133,7 @@ class Spider:
             MetricData=self.metrics
         )
 
-    def spider_from_queue(self, record_metrics=False, skip_search_errors=True):
+    def spider_from_queue(self, record_metrics=False, skip_search_errors=True, forever=False):
         if record_metrics:
             timer = RepeatedTimer(60, self.record_metrics)
             timer.start()
@@ -149,7 +162,9 @@ class Spider:
                         self.queries += 1
                 else:
                     logger.info('No items in spider queue.')
-                    break
+                    if not forever:
+                        break
+                    time.sleep(5 * 60)
         finally:
             if record_metrics:
                 timer.stop()
@@ -157,6 +172,8 @@ class Spider:
                 self.report()
             logger.info(f'Number of queries: {self.queries}')
             logger.info(f'Number of new case numbers: {self.new_cases}')
+            logger.info(f'Number of requests: {self.session.requests}')
+            logger.info(f'Number of forbidden responses: {self.session.forbiddens}')
 
 
 def generate_spider_slices(range_start_date, range_end_date=datetime.now(), court=None, site=None):
@@ -206,7 +223,10 @@ class SearchNode:
         id = f'{id}/{self.search_string}'
         return id
 
-    def search(self, session):
+    def search(self, session, i=1):
+        if i > 2:
+            logger.error('Too many retried searches after XML parsing error')
+            return 0
         try:
             response = self.__get_results(session)
         except FailedSearchTimeout:
@@ -224,6 +244,7 @@ class SearchNode:
         except ElementTree.ParseError as e:
             if 'DATA NOT FOUND' not in response.text:
                 logger.warning(f'Failed to parse XML: {e}')
+                return self.search(session, i+1)
             return 0
 
         rows = [[element.text for element in row] for row in root]

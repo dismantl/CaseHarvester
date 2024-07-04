@@ -1,0 +1,185 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  DatabasePassword:
+    Type: String
+    NoEcho: True
+  DatabaseUsername:
+    Type: String
+    NoEcho: True
+  DatabaseName:
+    Type: String
+    Default: mjcs
+  StaticStackName:
+    Description: Name of the static stack, for getting database and S3 bucket details
+    Type: String
+  DockerRepoStackName:
+    Description: Name of the docker repo stack
+    Type: String
+  EnvironmentType:
+    Description: The environment type (prod or dev)
+    Type: String
+    Default: dev
+    AllowedValues:
+      - prod
+      - dev
+    ConstraintDescription: must be a prod or dev
+  DatabaseUrl:
+    Description: The URL of the database
+    Type: String
+
+Conditions:
+  CreateProdResources: !Equals [!Ref EnvironmentType, prod]
+  EmptyDatabaseUrl: !Equals [!Ref DatabaseUrl, '']
+
+Resources:
+  MonthlyExportTaskRole:
+    Type: AWS::IAM::Role
+    Condition: CreateProdResources
+    Properties:
+      RoleName: caseharvester_ecs_export_task_role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+  MonthlyExportTask:
+    Type: AWS::ECS::TaskDefinition
+    Condition: CreateProdResources
+    Properties:
+      ContainerDefinitions:
+        - Name: caseharvester_export_container
+          Command:
+            - python
+            - -u
+            - harvester.py
+            - --environment
+            - production
+            - export-tables
+            - --redacted
+          Environment:
+            - Name: MJCS_DATABASE_URL
+              Value: !If
+                - EmptyDatabaseUrl
+                - !Sub
+                  - postgresql://${DatabaseUsername}:${DatabasePassword}@${db_addr}/${DatabaseName}
+                  - db_addr:
+                      Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+                - !Ref DatabaseUrl
+          Image: !Sub
+            - ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${repo_name}
+            - repo_name:
+                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-region: !Sub ${AWS::Region}
+              awslogs-group: caseharvester-export-monthly
+              awslogs-stream-prefix: caseharvester-export-monthly-logs
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 256
+      Memory: 512
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+      NetworkMode: awsvpc
+      TaskRoleArn: !GetAtt MonthlyExportTaskRole.Arn
+
+  MonthlyExport:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub monthly_export_prod
+      Description: Export tables to S3
+      ScheduleExpression: cron(0 0 1 * ? *)
+      Targets:
+        - Id: export_ecs_task_target
+          Arn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
+          RoleArn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+          EcsParameters:
+            LaunchType: FARGATE
+            TaskDefinitionArn: !Ref MonthlyExportTask
+            TaskCount: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: ENABLED
+                SecurityGroups:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+                Subnets:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id
+
+  DailyCollectorTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: caseharvester_collector_container
+          Command:
+            - python
+            - -u
+            - harvester.py
+            - --environment
+            - production
+            - collector
+          Environment:
+            - Name: MJCS_DATABASE_URL
+              Value: !If
+                - EmptyDatabaseUrl
+                - !Sub
+                  - postgresql://${DatabaseUsername}:${DatabasePassword}@${db_addr}/${DatabaseName}
+                  - db_addr:
+                      Fn::ImportValue: !Sub ${StaticStackName}-DatabaseHostname
+                - !Ref DatabaseUrl
+          Image: !Sub
+            - ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${repo_name}
+            - repo_name:
+                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-region: !Sub ${AWS::Region}
+              awslogs-group: caseharvester-collector
+              awslogs-stream-prefix: caseharvester-collector-logs
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 256
+      Memory: 512
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+      NetworkMode: awsvpc
+
+  DailyCollector:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub daily_collector_prod
+      Description: Get list of new case numbers
+      ScheduleExpression: cron(0 12 * * ? *)
+      Targets:
+        - Id: collector_ecs_task_target
+          Arn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ECSClusterArn
+          RoleArn:
+            Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
+          EcsParameters:
+            LaunchType: FARGATE
+            TaskDefinitionArn: !Ref DailyCollectorTask
+            TaskCount: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: ENABLED
+                SecurityGroups:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCDefaultSecurityGroupId
+                Subnets:
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
+                  - Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet2Id

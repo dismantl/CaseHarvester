@@ -23,7 +23,9 @@ class ODYCIVILParser(CaseDetailsParser):
         strainer = SoupStrainer('div',class_='BodyWindow')
         self.soup = BeautifulSoup(html,'html.parser',parse_only=strainer)
         if len(self.soup.contents) != 1 or not self.soup.div:
-            raise ParserError("Unexpected HTML format", self.soup)
+            self.soup = BeautifulSoup(html,'html.parser').find('div',class_='BodyWindow')
+            if not self.soup or not self.soup.contents:
+                raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
 
     def header(self, soup):
@@ -69,16 +71,32 @@ class ODYCIVILParser(CaseDetailsParser):
             section_header = self.first_level_header(soup, 'Causes Information')
         except ParserError:
             return
-        container = self.immediate_sibling(section_header,'div',class_='AltBodyWindow1')
-        for claim_first_span in container.find_all('span', class_='Prompt', string='File Date:'):
-            claim_table = claim_first_span.find_parent('table')
+        try:
+            container = self.immediate_sibling(section_header,'div',class_='AltBodyWindow1')
+        except ParserError:
+            prev_obj = section_header
+            while True:
+                try:
+                    t1 = self.immediate_sibling(prev_obj,'table')
+                    t2 = self.immediate_sibling(t1,'table')
+                    hr = self.immediate_sibling(t2,'hr')
+                except ParserError:
+                    break
+                prev_obj = hr
+                self.cause(db, t1, t2)
+        else:
+            for claim_first_span in container.find_all('span', class_='Prompt', string='File Date:'):
+                claim_table = claim_first_span.find_parent('table')
+                self.cause(db, claim_table, claim_table)
+
+    def cause(self, db, t1, t2):
             cause = ODYCIVILCause(case_number=self.case_number)
-            cause.file_date_str = self.value_multi_column(claim_table,'File Date:')
-            cause.cause_description = self.value_multi_column(claim_table,'Cause Description')
-            cause.filed_by = self.value_multi_column(claim_table,'Filed By:')
-            cause.filed_against = self.value_multi_column(claim_table,'Filed Against:')
+            cause.file_date_str = self.value_multi_column(t1,'File Date:')
+            cause.cause_description = self.value_multi_column(t1,'Cause Description')
+            cause.filed_by = self.value_multi_column(t1,'Filed By:')
+            cause.filed_against = self.value_multi_column(t1,'Filed Against:')
             db.add(cause)
-            header_row = claim_table.find('th',class_='tableHeader',string='Remedy Type').find_parent('tr')
+            header_row = t2.find('th',class_='tableHeader',string='Remedy Type').find_parent('tr')
             self.mark_for_deletion(header_row)
             prev_obj = header_row
             while True:
@@ -148,19 +166,23 @@ class ODYCIVILParser(CaseDetailsParser):
             try:
                 subsection_header = self.immediate_sibling(prev_obj,'h5')
             except ParserError:
-                try:  # sometimes there are parties that are minors and so their info is not included, but they can still have attorneys and aliases
-                    t = self.immediate_sibling(prev_obj,'table')
+                try:
+                    subsection_header = self.immediate_sibling(prev_obj,'table')
                 except ParserError:
                     break
-                if not list(t.stripped_strings):
+                if not list(subsection_header.stripped_strings):  # sometimes there are parties that are minors and so their info is not included, but they can still have attorneys and aliases
                     party_type = None
-                    prev_obj = t
+                    prev_obj = subsection_header
+                elif subsection_header.find('h6'):
+                    party_type = self.format_value(subsection_header.text)
+                    self.mark_for_deletion(subsection_header)
+                    prev_obj = subsection_header
                 else:
                     break
             else:
+                party_type = self.format_value(subsection_header.string)
                 self.mark_for_deletion(subsection_header)
                 prev_obj = subsection_header
-                party_type = self.format_value(subsection_header.string)
 
             if party_type == 'Attorney for Defendant' and defendant_id:
                 party = ODYCIVILAttorney(case_number=self.case_number)
@@ -221,12 +243,19 @@ class ODYCIVILParser(CaseDetailsParser):
             # Aliases and Attorneys
             while True:
                 try:
+                    separator = self.immediate_sibling(prev_obj,'br')
+                    prev_obj = separator
+                except ParserError:
+                    pass
+                try:
                     subsection_header = self.immediate_sibling(prev_obj,'table')
                     subsection_table = self.immediate_sibling(subsection_header,'table')
                 except ParserError:
                     break
-                prev_obj = subsection_table
-                subsection_name = subsection_header.find('h5').string
+                try:
+                    subsection_name = subsection_header.find('h5').string
+                except:
+                    subsection_name = subsection_header.find('h6').string
                 self.mark_for_deletion(subsection_header)
                 if subsection_name == 'Aliases':
                     for span in subsection_table.find_all('span',class_='FirstColumnPrompt'):
@@ -300,7 +329,15 @@ class ODYCIVILParser(CaseDetailsParser):
                             attorney.state = self.value_column(city_row,'State:')
                             attorney.zip_code = self.value_column(city_row,'Zip Code:')
                         db.add(attorney)
+                else:
+                    break
+                prev_obj = subsection_table
 
+            try:
+                separator = self.immediate_sibling(prev_obj,'br')
+                prev_obj = separator
+            except ParserError:
+                pass
             try:
                 separator = self.immediate_sibling(prev_obj,'hr')
             except ParserError:
@@ -371,10 +408,12 @@ class ODYCIVILParser(CaseDetailsParser):
             section = self.immediate_sibling(section_header,'div',class_='AltBodyWindow1')
             self.judgment(db, section)
             
-            if section.find('h5', string='Case Judgment Comment History'):
-                section_header = section.find('h5', string='Case Judgment Comment History')
-                self.mark_for_deletion(section_header)
-                table = self.immediate_sibling(section_header, 'table')
+            subsection_header = section.find('h5', string='Case Judgment Comment History')
+            if not subsection_header:
+                subsection_header = section.find('h6', string='Case Judgment Comment History')
+            if subsection_header:
+                self.mark_for_deletion(subsection_header)
+                table = self.immediate_sibling(subsection_header, 'table')
                 for row in table.find_all('tr'):
                     self.mark_for_deletion(row)
                     jc = ODYCIVILJudgmentComment(case_number=self.case_number)
@@ -395,10 +434,12 @@ class ODYCIVILParser(CaseDetailsParser):
                             setattr(jc, label, self.format_value(val))
                     db.add(jc)
             
-            if section.find('h5', string='Case Disposition History'):
-                section_header = section.find('h5', string='Case Disposition History')
-                self.mark_for_deletion(section_header)
-                table = self.immediate_sibling(section_header, 'table')
+            subsection_header = section.find('h5', string='Case Disposition History')
+            if not subsection_header:
+                subsection_header = section.find('h6', string='Case Disposition History')
+            if subsection_header:
+                self.mark_for_deletion(subsection_header)
+                table = self.immediate_sibling(subsection_header, 'table')
                 for row in table.find_all('tr'):
                     self.mark_for_deletion(row)
                     d = ODYCIVILDisposition(case_number=self.case_number)

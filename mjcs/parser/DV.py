@@ -10,7 +10,8 @@ class DVParser(CaseDetailsParser):
 
     def header(self, soup):
         header = soup.find('div',class_='Header')
-        header.decompose()
+        if header:
+            header.decompose()
         subheader = soup.find('div',class_='Subheader')
         if not subheader:
             raise ParserError('Missing subheader')
@@ -36,6 +37,8 @@ class DVParser(CaseDetailsParser):
         case = DV(case_number=self.case_number)
         case.court_system = self.value_combined_first_column(t1,'Court System:',remove_newlines=True)
         case_number = self.value_combined_first_column(t1,'Case Number:')
+        if not case_number:
+            raise ParserError('Missing case number')
         if case_number.replace('-','') != self.case_number:
             raise ParserError('Case number "%s" in case details page does not match given: %s' % (case_number, self.case_number))
         case.case_status = self.value_column(t1,'Case Status:')

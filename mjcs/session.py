@@ -22,6 +22,7 @@ class MjcsSession:
     def __init__(self):
         self.new_session()
         self.requests = 0
+        self.forbiddens = 0
     
     def new_session(self):
         self.session = requests.Session()
@@ -50,8 +51,8 @@ class MjcsSession:
         })
 
     def request(self, *args, i=1, **kwargs):
-        if i > 3:
-            raise Exception('Too many repeated requests')
+        if i > 12:
+            raise Exception('Too many retried requests')
         self.requests += 1
         try:
             response = self.session.request(
@@ -69,12 +70,20 @@ class MjcsSession:
                 self.renew()
                 return self.request(*args, i=i+1, **kwargs)
             elif response.status_code == 403:
+                self.forbiddens += 1
                 logger.debug("Forbidden, datadome is big mad...")
+                time.sleep(5)
                 self.new_session()
                 return self.request(*args, i=i+1, **kwargs)
             return response
-        except requests.Timeout:
-            logger.debug('Timeout, trying again...')
+        except (requests.Timeout,
+                requests.exceptions.SSLError,
+                requests.exceptions.ChunkedEncodingError,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.ProxyError
+                ) as e:
+            logger.debug(f'{type(e).__name__} error, trying again...')
+            time.sleep(10)
             return self.request(*args, i=i+1, **kwargs)
 
     def renew(self):

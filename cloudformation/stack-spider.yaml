@@ -27,7 +27,7 @@ Resources:
       MessageRetentionPeriod: 1209600
       VisibilityTimeout: 300
       QueueName: !Sub caseharvester_spider_queue_${EnvironmentType}
-      
+
   SpiderRole:
     Type: AWS::IAM::Role
     Properties:
@@ -47,12 +47,12 @@ Resources:
       Policies:
         - PolicyName: !Sub caseharvester_spider_permissions_${EnvironmentType}
           PolicyDocument:
-            Version: "2012-10-17"
+            Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
                   - logs:PutRetentionPolicy
-                Resource: "*"
+                Resource: '*'
               - Effect: Allow
                 Action:
                   - sqs:DeleteMessage
@@ -67,54 +67,7 @@ Resources:
                   - sqs:GetQueueAttributes
                   - sqs:GetQueueUrl
                 Resource:
-                  Fn::ImportValue: !Sub "${ScraperStackName}-ScraperQueueArn"
-
-  SpiderInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Path: /
-      Roles:
-        - !Ref SpiderRole
-
-  SpiderInstanceSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: !Sub caseharvester_spider_security_group_${EnvironmentType}
-      GroupDescription: Controls access to Case Harvester spider instances
-      VpcId:
-        Fn::ImportValue: !Sub ${StaticStackName}-VPCId
-      SecurityGroupIngress:
-        - CidrIp: 0.0.0.0/0
-          Description: Anywhere
-          FromPort: 22
-          ToPort: 22
-          IpProtocol: tcp
-
-  SpiderTemplate:
-    Type: AWS::EC2::LaunchTemplate
-    Properties:
-      LaunchTemplateName: !Sub caseharvester_spider_template_${EnvironmentType}
-      LaunchTemplateData:
-        BlockDeviceMappings:
-          - DeviceName: /dev/xvda
-            Ebs:
-              DeleteOnTermination: true
-              Encrypted: false
-              VolumeSize: 8
-        IamInstanceProfile:
-          Arn: !GetAtt SpiderInstanceProfile.Arn
-        ImageId: ami-0e263cd9983d8519c
-        InstanceInitiatedShutdownBehavior: stop
-        InstanceType: t3a.nano
-        KeyName: dan_ojb
-        NetworkInterfaces:
-          - AssociatePublicIpAddress: true
-            DeleteOnTermination: true
-            DeviceIndex: 0
-            SubnetId:
-              Fn::ImportValue: !Sub ${StaticStackName}-VPCPublicSubnet1Id
-            Groups:
-              - !Ref SpiderInstanceSecurityGroup
+                  Fn::ImportValue: !Sub '${ScraperStackName}-ScraperQueueArn'
 
   SpiderTask:
     Type: AWS::ECS::TaskDefinition
@@ -158,8 +111,3 @@ Outputs:
     Value: !GetAtt SpiderQueue.QueueName
     Export:
       Name: !Sub ${AWS::StackName}-SpiderQueueName
-  SpiderLaunchTemplateId:
-    Description: Spider launch template ID
-    Value: !Ref SpiderTemplate
-    Export:
-      Name: !Sub ${AWS::StackName}-SpiderLaunchTemplateId

@@ -17,7 +17,9 @@ class ODYCOAParser(CaseDetailsParser):
         strainer = SoupStrainer('div',class_='BodyWindow')
         self.soup = BeautifulSoup(html,'html.parser',parse_only=strainer)
         if len(self.soup.contents) != 1 or not self.soup.div:
-            raise ParserError("Unexpected HTML format", self.soup)
+            self.soup = BeautifulSoup(html,'html.parser').find('div',class_='BodyWindow')
+            if not self.soup or not self.soup.contents:
+                raise ParserError("Unexpected HTML format", self.soup)
         self.marked_for_deletion = []
 
     def header(self, soup):
@@ -84,13 +86,31 @@ class ODYCOAParser(CaseDetailsParser):
     #########################################################
     @consumer
     def involved_parties(self, db, soup):
-        for section_header in soup.div.find_all('h5', recursive=False):
-            self.mark_for_deletion(section_header)
-            party = ODYCOAInvolvedParty(case_number=self.case_number)
-            party.party_type = self.format_value(list(section_header.stripped_strings)[0])
+        try:
+            section_header = self.first_level_header(soup, 'Involved Parties Information')
+        except ParserError:
+            return
+        
+        prev_obj = section_header
+        while True:
+            party = None
 
             try:
-                name_table = self.table_next_first_column_prompt(section_header,'Name:')
+                prev_obj = self.immediate_sibling(prev_obj, 'hr')
+            except ParserError:
+                pass
+            
+            try:
+                subsection_header = self.immediate_sibling(prev_obj,'h6')
+            except ParserError:
+                break
+            self.mark_for_deletion(subsection_header)
+            prev_obj = subsection_header
+            party = ODYCOAInvolvedParty(case_number=self.case_number)
+            party.party_type = self.format_value(list(subsection_header.stripped_strings)[0])
+
+            try:
+                name_table = self.table_next_first_column_prompt(prev_obj,'Name:')
             except ParserError:
                 pass
             else:
@@ -134,12 +154,21 @@ class ODYCOAParser(CaseDetailsParser):
             # Attorneys
             while True:
                 try:
+                    separator = self.immediate_sibling(prev_obj,'br')
+                    separator = self.immediate_sibling(separator,'br')
+                    prev_obj = separator
+                except ParserError:
+                    pass
+                try:
                     subsection_header = self.immediate_sibling(prev_obj,'table')
                     subsection_table = self.immediate_sibling(subsection_header,'table')
                 except ParserError:
                     break
                 prev_obj = subsection_table
-                subsection_name = subsection_header.find('h5').string
+                try:
+                    subsection_name = subsection_header.find('h5').string
+                except:
+                    subsection_name = subsection_header.find('h6').string
                 self.mark_for_deletion(subsection_header)
                 if 'Attorney(s) for the' in subsection_name:
                     for span in subsection_table.find_all('span',class_='FirstColumnPrompt',string='Name:'):
