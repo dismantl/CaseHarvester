@@ -226,6 +226,8 @@ class SearchNode:
     def search(self, session, i=1):
         if i > 2:
             logger.error('Too many retried searches after XML parsing error')
+            if len(self.search_string) <= 15:
+                self.__spawn_children()
             return 0
         try:
             response = self.__get_results(session)
@@ -301,7 +303,7 @@ class SearchNode:
         if len(new_cases) > 0:
             logger.info(f"{self.id} added {len(new_cases)} new cases")
         
-        if len(rows) == 500:
+        if len(rows) == 500 and len(self.search_string) <= 15:
             # Procreate!
             self.__spawn_children()
         
