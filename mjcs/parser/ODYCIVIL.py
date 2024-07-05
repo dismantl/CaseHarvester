@@ -421,6 +421,8 @@ class ODYCIVILParser(CaseDetailsParser):
                     for line in text.split('\n'):
                         label = line.split(':')[0].lower()
                         val = line.split(':')[1].strip()
+                        if not val:
+                            continue
                         if val[-1] == ';':
                             val = val.rstrip(';')
                         try:

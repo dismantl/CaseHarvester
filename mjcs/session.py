@@ -86,7 +86,9 @@ class MjcsSession:
             time.sleep(10)
             return self.request(*args, i=i+1, **kwargs)
 
-    def renew(self):
+    def renew(self, i=1):
+        if i > 12:
+            raise Exception('Too many retried renewals')
         self.requests += 1
         response = self.session.request(
             'GET',
@@ -94,7 +96,13 @@ class MjcsSession:
             verify=False
         )
         soup = BeautifulSoup(response.text, 'html.parser')
-        disclaimer_token = soup.find('input',{'name':'disclaimer'}).get('value')
+        disclaimer = soup.find('input',{'name':'disclaimer'})
+        if not disclaimer:
+            logger.warn('Failed to renew session')
+            time.sleep(5)
+            return self.renew(i=i+1)
+        
+        disclaimer_token = disclaimer.get('value')
 
         self.requests += 1
         self.session.headers.update({
@@ -113,6 +121,6 @@ class MjcsSession:
                 (response.history and response.history[0].status_code == 302 and
                     response.history[0].headers['location'] == f'{config.MJCS_BASE_URL}/inquiry-index.jsp') or
                 "Acceptance of the following agreement is" in response.text):
-            err = f"Failed to authenticate with MJCS: code = {response.status_code}, body = {response.text}"
-            logger.error(err)
-            raise Exception(err)
+            logger.warn(f"Failed to authenticate with MJCS: code = {response.status_code}, body = {response.text}")
+            return self.renew(i=i+1)
+            

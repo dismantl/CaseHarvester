@@ -10,6 +10,7 @@ import boto3
 import requests
 from bs4 import BeautifulSoup
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 
 from .config import config
 from .models import Case
@@ -133,7 +134,7 @@ class Spider:
             MetricData=self.metrics
         )
 
-    def spider_from_queue(self, record_metrics=False, skip_search_errors=True, forever=False):
+    def spider_from_queue(self, record_metrics=False, skip_search_errors=True, forever=False, ignore_on_conflict=False):
         if record_metrics:
             timer = RepeatedTimer(60, self.record_metrics)
             timer.start()
@@ -153,7 +154,7 @@ class Spider:
                         site = body.get('site')
                         node = SearchNode(range_start_date, range_end_date, search_string, court, site)
                         try:
-                            new_cases = node.search(self.session)
+                            new_cases = node.search(self.session, ignore_on_conflict=ignore_on_conflict)
                             self.new_cases += new_cases
                         except FailedSearch:
                             if not skip_search_errors:
@@ -223,18 +224,20 @@ class SearchNode:
         id = f'{id}/{self.search_string}'
         return id
 
-    def search(self, session, i=1):
+    def search(self, session, i=1, ignore_on_conflict=False):
         if i > 2:
             logger.error('Too many retried searches after XML parsing error')
             if len(self.search_string) <= 15:
                 self.__spawn_children()
+            elif self.range_start_date != self.range_end_date:
+                self.__split()
             return 0
         try:
             response = self.__get_results(session)
         except FailedSearchTimeout:
-            if self.range_start_date == self.range_end_date:
+            if len(self.search_string) <= 15:
                 self.__spawn_children()
-            else:
+            elif self.range_start_date != self.range_end_date:
                 self.__split()
             return 0
         except CompletedSearchNoResults:
@@ -246,7 +249,7 @@ class SearchNode:
         except ElementTree.ParseError as e:
             if 'DATA NOT FOUND' not in response.text:
                 logger.warning(f'Failed to parse XML: {e}')
-                return self.search(session, i+1)
+                return self.search(session, i=i+1, ignore_on_conflict=ignore_on_conflict)
             return 0
 
         rows = [[element.text for element in row] for row in root]
@@ -263,17 +266,17 @@ class SearchNode:
                         filing_date = None
                 else:
                     filing_date = None
-                case = Case(
-                    case_number = row[0],
-                    court = row[4],
-                    case_type = row[5],
-                    status = row[6],
-                    filing_date = filing_date,
-                    filing_date_original = row[7],
-                    caption = row[8],
-                    query_court = self.court,
-                    detail_loc = 'Unknown'
-                )
+                case = {
+                    'case_number': row[0],
+                    'court': row[4],
+                    'case_type': row[5],
+                    'status': row[6],
+                    'filing_date': filing_date,
+                    'filing_date_original': row[7],
+                    'caption': row[8],
+                    'query_court': self.court,
+                    'detail_loc': 'Unknown'
+                }
                 processed_cases[case_number] = case
         logger.debug(f"Search string {self.search_string} returned {len(rows)} items ({len(processed_cases)} unique)")
 
@@ -287,25 +290,31 @@ class SearchNode:
             new_case_numbers = set(processed_cases.keys()) - set(existing_cases)
             new_cases = [processed_cases[x] for x in new_case_numbers]
 
-            # Save new cases to database
-            db.add_all(new_cases)
+            if len(new_cases) > 0:
+                # Save new cases to database
+                stmt = insert(Case).values(new_cases)
+                if ignore_on_conflict:
+                    stmt = stmt.on_conflict_do_nothing()
+                db.execute(stmt)
 
-            # Then send them to the scraper queue
-            messages = [
-                json.dumps({
-                    'case_number': case.case_number,
-                    'detail_loc': case.detail_loc,
-                    'loc': case.loc
-                }) for case in new_cases
-            ]
-            send_to_queue(config.scraper_queue, messages)
-            
-        if len(new_cases) > 0:
-            logger.info(f"{self.id} added {len(new_cases)} new cases")
+                # Then send them to the scraper queue
+                messages = [
+                    json.dumps({
+                        'case_number': case['case_number'],
+                        'detail_loc': case['detail_loc'],
+                        'loc': case.get('loc')
+                    }) for case in new_cases
+                ]
+                send_to_queue(config.scraper_queue, messages)
+                
+                logger.info(f"{self.id} added {len(new_cases)} new cases")
         
-        if len(rows) == 500 and len(self.search_string) <= 15:
+        if len(rows) == 500:
             # Procreate!
-            self.__spawn_children()
+            if len(self.search_string) <= 15:
+                self.__spawn_children()
+            elif self.range_start_date != self.range_end_date:
+                self.__split()
         
         return len(new_cases)
 

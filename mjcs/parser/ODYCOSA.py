@@ -110,7 +110,7 @@ class ODYCOSAParser(CaseDetailsParser):
             self.mark_for_deletion(subsection_header)
             prev_obj = subsection_header
             party = ODYCOSAInvolvedParty(case_number=self.case_number)
-            party.party_type = self.format_value(subsection_header.string)
+            party.party_type = self.format_value(subsection_header.text)
 
             try:
                 name_table = self.table_next_first_column_prompt(subsection_header,'Name:')

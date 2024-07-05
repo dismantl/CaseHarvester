@@ -143,7 +143,10 @@ def run_spider(args):
         logger.info(f'{socket.gethostname()} spidering from queue')
         spider = Spider()
         try:
-            spider.spider_from_queue(record_metrics=args.record_metrics, forever=args.forever)
+            spider.spider_from_queue(
+                record_metrics=args.record_metrics,
+                forever=args.forever,
+                ignore_on_conflict=args.ignore_on_conflict)
         except (RequestTimeout, Forbidden) as e:
             logger.warning(f'Caught {type(e).__name__} error: {e}')
     elif args.start_date:    
@@ -261,6 +264,8 @@ if __name__ == '__main__':
         help="Don't exit if spider queue is empty, keep checking")
     parser_spider.add_argument('--record-metrics', action='store_true',
         help="Send metrics to Cloudwatch every minute")
+    parser_spider.add_argument('--ignore-on-conflict', action='store_true',
+        help="Ignore IntegrityError on conflict (useful when running multiple spiders)")
     parser_spider.set_defaults(func=run_spider)
 
     parser_collector = subparsers.add_parser('collector',
