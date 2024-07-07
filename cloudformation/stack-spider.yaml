@@ -2,15 +2,6 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
 Parameters:
-  StaticStackName:
-    Description: Name of the static stack
-    Type: String
-  ScraperStackName:
-    Description: Name of the scraper stack
-    Type: String
-  DockerRepoStackName:
-    Description: Name of the docker repo stack
-    Type: String
   EnvironmentType:
     Description: The environment type (prod or dev)
     Type: String
@@ -27,83 +18,6 @@ Resources:
       MessageRetentionPeriod: 1209600
       VisibilityTimeout: 300
       QueueName: !Sub caseharvester_spider_queue_${EnvironmentType}
-
-  SpiderRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub caseharvester_spider_role_${EnvironmentType}
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - ecs-tasks.amazonaws.com
-                - ec2.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
-      Policies:
-        - PolicyName: !Sub caseharvester_spider_permissions_${EnvironmentType}
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:PutRetentionPolicy
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - sqs:DeleteMessage
-                  - sqs:ReceiveMessage
-                  - sqs:SendMessage
-                  - sqs:GetQueueAttributes
-                  - sqs:GetQueueUrl
-                Resource: !GetAtt SpiderQueue.Arn
-              - Effect: Allow
-                Action:
-                  - sqs:SendMessage
-                  - sqs:GetQueueAttributes
-                  - sqs:GetQueueUrl
-                Resource:
-                  Fn::ImportValue: !Sub '${ScraperStackName}-ScraperQueueArn'
-
-  SpiderTask:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      ContainerDefinitions:
-        - Name: !Sub caseharvester_spider_container_${EnvironmentType}
-          Command:
-            - python
-            - -u
-            - harvester.py
-            - --environment
-            - !Sub ${EnvironmentType}
-            - spider
-            - --help
-          Environment:
-            - Name: SPIDER_QUEUE_NAME
-              Value: !GetAtt SpiderQueue.QueueName
-          Image: !Sub
-            - ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${repo_name}
-            - repo_name:
-                Fn::ImportValue: !Sub ${DockerRepoStackName}-DockerRepoName
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-create-group: true
-              awslogs-region: !Sub ${AWS::Region}
-              awslogs-group: !Sub caseharvester-spider-${EnvironmentType}
-              awslogs-stream-prefix: caseharvester-spider-logs
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: '1024'
-      Memory: '4096'
-      ExecutionRoleArn:
-        Fn::ImportValue: !Sub ${StaticStackName}-ExecutionRoleArn
-      NetworkMode: awsvpc
-      TaskRoleArn: !GetAtt SpiderRole.Arn
 
 Outputs:
   SpiderQueueName:

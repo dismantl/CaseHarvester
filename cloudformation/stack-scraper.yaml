@@ -2,21 +2,6 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
 Parameters:
-  DatabasePassword:
-    Type: String
-    NoEcho: True
-  DatabaseUsername:
-    Type: String
-    NoEcho: True
-  DatabaseName:
-    Type: String
-    Default: mjcs
-  StaticStackName:
-    Description: Name of the static stack
-    Type: String
-  DockerRepoStackName:
-    Description: Name of the docker repo stack
-    Type: String
   EnvironmentType:
     Description: The environment type (prod or dev)
     Type: String
@@ -25,12 +10,6 @@ Parameters:
       - prod
       - dev
     ConstraintDescription: must be a prod or dev
-  DatabaseUrl:
-    Description: The URL of the database
-    Type: String
-
-Conditions:
-  EmptyDatabaseUrl: !Equals [!Ref DatabaseUrl, '']
 
 Resources:
   ScraperQueue:
