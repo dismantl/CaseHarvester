@@ -391,25 +391,58 @@ class SearchNode:
 
     def __spawn_children(self):
         slices = []
-        for char in search_chars.replace(' ',''): # don't start queries with a space
+
+        # A few shortcuts to save time
+        if self.search_string == 'PUBLIC DEF':
             slices.append(
                 json.dumps({
                     'range_start_date': self.range_start_date.isoformat(),
                     'range_end_date': self.range_end_date.isoformat(),
                     'court': self.court,
                     'site': self.site,
-                    'search_string': self.search_string + char,
+                    'search_string': 'PUBLIC DEFENDER',
                 })
             )
+        elif self.search_string == 'STATE OF MAR':
             slices.append(
                 json.dumps({
                     'range_start_date': self.range_start_date.isoformat(),
                     'range_end_date': self.range_end_date.isoformat(),
                     'court': self.court,
                     'site': self.site,
-                    'search_string': self.search_string + ' ' + char,
+                    'search_string': 'STATE OF MARYLAND',
                 })
             )
+        elif self.search_string == "STATE'S ATT":
+            slices.append(
+                json.dumps({
+                    'range_start_date': self.range_start_date.isoformat(),
+                    'range_end_date': self.range_end_date.isoformat(),
+                    'court': self.court,
+                    'site': self.site,
+                    'search_string': "STATE'S ATTORNEY",
+                })
+            )
+        else:
+            for char in search_chars.replace(' ',''): # don't start queries with a space
+                slices.append(
+                    json.dumps({
+                        'range_start_date': self.range_start_date.isoformat(),
+                        'range_end_date': self.range_end_date.isoformat(),
+                        'court': self.court,
+                        'site': self.site,
+                        'search_string': self.search_string + char,
+                    })
+                )
+                slices.append(
+                    json.dumps({
+                        'range_start_date': self.range_start_date.isoformat(),
+                        'range_end_date': self.range_end_date.isoformat(),
+                        'court': self.court,
+                        'site': self.site,
+                        'search_string': self.search_string + ' ' + char,
+                    })
+                )
 
         send_to_queue(config.spider_queue, slices)
         logger.info(f'Submitted {len(slices)} slices for spidering')
