@@ -72,8 +72,9 @@ class MjcsSession:
             elif response.status_code == 403:
                 self.forbiddens += 1
                 logger.debug("Forbidden, datadome is big mad...")
-                time.sleep(5)
+                time.sleep(i * 5)
                 self.new_session()
+                self.renew()
                 return self.request(*args, i=i+1, **kwargs)
             return response
         except (requests.Timeout,
@@ -83,7 +84,7 @@ class MjcsSession:
                 requests.exceptions.ProxyError
                 ) as e:
             logger.debug(f'{type(e).__name__} error, trying again...')
-            time.sleep(10)
+            time.sleep(i * 5)
             return self.request(*args, i=i+1, **kwargs)
 
     def renew(self, i=1):
@@ -99,7 +100,8 @@ class MjcsSession:
         disclaimer = soup.find('input',{'name':'disclaimer'})
         if not disclaimer:
             logger.warn('Failed to renew session')
-            time.sleep(5)
+            time.sleep(i * 5)
+            self.new_session()
             return self.renew(i=i+1)
         
         disclaimer_token = disclaimer.get('value')
@@ -122,5 +124,7 @@ class MjcsSession:
                     response.history[0].headers['location'] == f'{config.MJCS_BASE_URL}/inquiry-index.jsp') or
                 "Acceptance of the following agreement is" in response.text):
             logger.warn(f"Failed to authenticate with MJCS: code = {response.status_code}, body = {response.text}")
+            time.sleep(i * 5)
+            self.new_session()
             return self.renew(i=i+1)
             
