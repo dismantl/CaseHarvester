@@ -59,7 +59,10 @@ class Config:
         self.CLOUDWATCH_RETENTION_DAYS = os.getenv('CLOUDWATCH_RETENTION_DAYS', 30)
 
         # Proxy/bypass options
-        self.PROXY = os.getenv('PROXY')
+        self.PROXY_USERNAME = os.getenv('PROXY_USERNAME')
+        self.PROXY_PASSWORD = os.getenv('PROXY_PASSWORD')
+        self.PROXY_HOST = os.getenv('PROXY_HOST')
+        self.PROXY_PORT = os.getenv('PROXY_PORT')
 
         # Spider options
         self.SPIDER_DAYS_PER_QUERY = int(os.getenv('SPIDER_DAYS_PER_QUERY',16))

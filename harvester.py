@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
-from mjcs import models
-from mjcs.config import config
-from mjcs.models.common import TableBase
-from mjcs.spider import generate_spider_slices, Spider
-from mjcs.scraper import Scraper, RequestTimeout, Forbidden
-from mjcs.parser import Parser
-from mjcs.util import db_session, get_case_model_list
-from mjcs.collector import MDECCollector
-import boto3
-from datetime import datetime, timedelta
-import os
-import json
 import argparse
+import json
 import logging
-import subprocess
+import os
 import socket
+from datetime import datetime
+from multiprocessing import set_start_method
+
+import boto3
 import watchtower
 from ec2_metadata import ec2_metadata
 from sqlalchemy import create_engine
 from sqlalchemy.sql import text
-from multiprocessing import set_start_method
+
+from mjcs import models
+from mjcs.collector import MDECCollector
+from mjcs.config import config
+from mjcs.models.common import TableBase
+from mjcs.parser import Parser
+from mjcs.scraper import Forbidden, Scraper
+from mjcs.spider import Spider, generate_spider_slices
+from mjcs.util import db_session, get_case_model_list
 
 logger = logging.getLogger('mjcs')
 
@@ -141,13 +142,10 @@ def valid_date(s):
 def run_spider(args):
     if args.from_queue:
         logger.info(f'{socket.gethostname()} spidering from queue')
-        spider = Spider()
+        spider = Spider(args.concurrency)
         try:
-            spider.spider_from_queue(
-                record_metrics=args.record_metrics,
-                forever=args.forever,
-                ignore_on_conflict=args.ignore_on_conflict)
-        except (RequestTimeout, Forbidden) as e:
+            spider.spider_from_queue(forever=args.forever)
+        except Forbidden as e:
             logger.warning(f'Caught {type(e).__name__} error: {e}')
     elif args.start_date:    
         generate_spider_slices(args.start_date, args.end_date or datetime.now(), args.court, args.site)
@@ -158,7 +156,7 @@ def run_collector(args):
     MDECCollector().collect_case_numbers(args.date)
 
 def run_scraper(args):
-    scraper = Scraper()
+    scraper = Scraper(args.concurrency)
     if args.case:
         scraper.scrape_case(args.case)
     elif args.stale:
@@ -169,8 +167,8 @@ def run_scraper(args):
     elif args.from_queue:
         logger.info(f'{socket.gethostname()} scraping from queue')
         try:
-            scraper.scrape_from_queue(record_metrics=args.record_metrics, forever=args.forever)
-        except (RequestTimeout, Forbidden) as e:
+            scraper.scrape_from_queue(forever=args.forever)
+        except Forbidden as e:
             logger.warning(f'Caught {type(e).__name__} error: {e}')
     else:
         raise Exception("Must specify --case, --from-queue, --stale, or --stale-count.")
@@ -248,6 +246,7 @@ if __name__ == '__main__':
 
     parser_spider = subparsers.add_parser('spider',
         help='Spider the Maryland Judiciary Case Search database for case numbers')
+    parser_spider.add_argument('--concurrency', type=int, default=1)
     parser_spider.add_argument('--start-date','-s', type=valid_date,
         help="Start date for search range. --end-date defaults to today if not specified")
     parser_spider.add_argument('--end-date','-e', type=valid_date,
@@ -262,10 +261,6 @@ if __name__ == '__main__':
         help="Spider MJCS with queries from the spider queue")
     parser_spider.add_argument('--forever', action='store_true',
         help="Don't exit if spider queue is empty, keep checking")
-    parser_spider.add_argument('--record-metrics', action='store_true',
-        help="Send metrics to Cloudwatch every minute")
-    parser_spider.add_argument('--ignore-on-conflict', action='store_true',
-        help="Ignore IntegrityError on conflict (useful when running multiple spiders)")
     parser_spider.set_defaults(func=run_spider)
 
     parser_collector = subparsers.add_parser('collector',
@@ -276,6 +271,7 @@ if __name__ == '__main__':
 
     parser_scraper = subparsers.add_parser('scraper',
         help="Scrape case details from the Maryland Judiciary Case Search database")
+    parser_scraper.add_argument('--concurrency', type=int, default=1)
     parser_scraper.add_argument('--case', '-c', help="Scrape specific case number")
     parser_scraper.add_argument('--verbose', '-v', action='store_true',
         help="Print debug information")
@@ -295,8 +291,6 @@ if __name__ == '__main__':
         help="Scrape cases from the scraper queue")
     parser_scraper.add_argument('--forever', action='store_true',
         help="Don't exit if scraper queue is empty, keep checking")
-    parser_scraper.add_argument('--record-metrics', action='store_true',
-        help="Send metrics to Cloudwatch every minute")
     parser_scraper.set_defaults(func=run_scraper)
 
     parser_parser = subparsers.add_parser('parser',

@@ -2,20 +2,18 @@ import json
 import logging
 import re
 import string
-import time
 import xml.etree.ElementTree as ElementTree
 from datetime import datetime, timedelta
 
-import boto3
-import requests
+import trio
 from bs4 import BeautifulSoup
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from .config import config
 from .models import Case
-from .session import Forbidden, MjcsSession, RequestTimeout
-from .util import RepeatedTimer, db_session, send_to_queue, split_date_range
+from .session import AsyncSessionPool, Forbidden
+from .util import db_session, send_to_queue, split_date_range
 
 logger = logging.getLogger('mjcs')
 
@@ -48,135 +46,6 @@ class CompletedSearchNoResults(Exception):
     pass
 
 
-class Spider:
-    def __init__(self):
-        self.requests = 0
-        self.forbiddens = 0
-        self.queries = 0
-        self.new_cases = 0
-        self.last_request_count = 0
-        self.last_forbidden_count = 0
-        self.last_query_count = 0
-        self.last_new_case_count = 0
-        self.metrics = []
-    
-    @property
-    def instance_id(self):
-        if not hasattr(self, '_instance_id'):
-            from ec2_metadata import ec2_metadata
-            self._instance_id = ec2_metadata.instance_id
-        return self._instance_id
-
-    @property
-    def session(self):
-        if not hasattr(self, '_session'):
-            self._session = MjcsSession()
-        return self._session
-
-    def record_metrics(self):
-        now = datetime.now()
-        new_request_count = self.session.requests
-        delta_requests = new_request_count - self.last_request_count
-        self.last_request_count = new_request_count
-        
-        new_query_count = self.queries
-        delta_queries = new_query_count - self.last_query_count
-        self.last_query_count = new_query_count
-        
-        new_new_case_count = self.new_cases
-        delta_new_cases = new_new_case_count - self.last_new_case_count
-        self.last_new_case_count = new_new_case_count
-
-        new_forbidden_count = self.session.forbiddens
-        delta_forbiddens = new_forbidden_count - self.last_forbidden_count
-        self.last_forbidden_count = new_forbidden_count
-
-        dimensions = [
-            {
-                'Name': 'InstanceId',
-                'Value': self.instance_id
-            },
-            {
-                'Name': 'Environment',
-                'Value': config.environment
-            }
-        ]
-        self.metrics += [
-            {
-                'MetricName': 'SpiderRequests',
-                'Dimensions': dimensions,
-                'Timestamp': now,
-                'Value': delta_requests
-            },
-            {
-                'MetricName': 'SpiderForbiddens',
-                'Dimensions': dimensions,
-                'Timestamp': now,
-                'Value': delta_forbiddens
-            },
-            {
-                'MetricName': 'SpiderQueries',
-                'Dimensions': dimensions,
-                'Timestamp': now,
-                'Value': delta_queries
-            },
-            {
-                'MetricName': 'SpiderNewCases',
-                'Dimensions': dimensions,
-                'Timestamp': now,
-                'Value': delta_new_cases
-            }
-        ]
-    
-    def report(self):
-        config.boto3_session.client('cloudwatch').put_metric_data(
-            Namespace='CaseHarvester',
-            MetricData=self.metrics
-        )
-
-    def spider_from_queue(self, record_metrics=False, skip_search_errors=True, forever=False, ignore_on_conflict=False):
-        if record_metrics:
-            timer = RepeatedTimer(60, self.record_metrics)
-            timer.start()
-        try:
-            while True:
-                queue_items = config.spider_queue.receive_messages(
-                    WaitTimeSeconds = config.QUEUE_WAIT,
-                    MaxNumberOfMessages = 10
-                )
-                if queue_items:
-                    for item in queue_items:
-                        body = json.loads(item.body)
-                        range_start_date = datetime.fromisoformat(body['range_start_date'])
-                        range_end_date = datetime.fromisoformat(body['range_end_date'])
-                        search_string = body['search_string']
-                        court = body.get('court')
-                        site = body.get('site')
-                        node = SearchNode(range_start_date, range_end_date, search_string, court, site)
-                        try:
-                            new_cases = node.search(self.session, ignore_on_conflict=ignore_on_conflict)
-                            self.new_cases += new_cases
-                        except FailedSearch:
-                            if not skip_search_errors:
-                                raise
-                        item.delete()
-                        self.queries += 1
-                else:
-                    logger.info('No items in spider queue.')
-                    if not forever:
-                        break
-                    time.sleep(5 * 60)
-        finally:
-            if record_metrics:
-                timer.stop()
-                self.record_metrics()
-                self.report()
-            logger.info(f'Number of queries: {self.queries}')
-            logger.info(f'Number of new case numbers: {self.new_cases}')
-            logger.info(f'Number of requests: {self.session.requests}')
-            logger.info(f'Number of forbidden responses: {self.session.forbiddens}')
-
-
 def generate_spider_slices(range_start_date, range_end_date=datetime.now(), court=None, site=None):
     def gen_timeranges(start_date, end_date):
         for n in range(0,int((end_date - start_date).days),config.SPIDER_DAYS_PER_QUERY):
@@ -206,13 +75,68 @@ def generate_spider_slices(range_start_date, range_end_date=datetime.now(), cour
     send_to_queue(config.spider_queue, slices)
 
 
+class Spider:
+    def __init__(self, concurrency=1):
+        self.concurrency = concurrency
+        self.session_pool = AsyncSessionPool(concurrency)
+    
+    def spider_from_queue(self, forever=False):
+        trio.run(self.__start_service, forever)
+
+    async def __start_service(self, forever):
+        logger.info('Initiating spider service.')
+        try:
+            # Blocks until all child tasks finish or exception thrown
+            async with trio.open_nursery() as nursery:
+                nursery.start_soon(self.__queue_manager, nursery, forever)
+        except KeyboardInterrupt:
+            print("\nCaught KeyboardInterrupt: stopping service.")
+        logger.info("Spider service stopped.")
+
+    async def __queue_manager(self, nursery, forever):
+        while True:
+            if len(nursery.child_tasks) < 100:
+                queue_items = config.spider_queue.receive_messages(
+                    WaitTimeSeconds = config.QUEUE_WAIT,
+                    MaxNumberOfMessages = 10
+                )
+                if queue_items:
+                    for item in queue_items:
+                        body = json.loads(item.body)
+                        range_start_date = datetime.fromisoformat(body['range_start_date'])
+                        range_end_date = datetime.fromisoformat(body['range_end_date'])
+                        search_string = body['search_string']
+                        court = body.get('court')
+                        site = body.get('site')
+                        node = SearchNode(
+                            self.session_pool,
+                            range_start_date,
+                            range_end_date,
+                            search_string,
+                            court,
+                            site,
+                            ignore_on_conflict=self.concurrency > 1
+                        )
+                        nursery.start_soon(node.search)
+                        item.delete()
+                else:
+                    logger.info('No items in spider queue.')
+                    if not forever:
+                        break
+                    await trio.sleep(5 * 60)
+            else:
+                await trio.sleep(5)
+
+
 class SearchNode:    
-    def __init__(self, range_start_date, range_end_date, search_string, court=None, site=None):
+    def __init__(self, session_pool, range_start_date, range_end_date, search_string, court=None, site=None, ignore_on_conflict=False):
+        self.session_pool = session_pool
         self.range_start_date = range_start_date
         self.range_end_date = range_end_date
         self.court = court
         self.site = site
         self.search_string = search_string
+        self.ignore_on_conflict = ignore_on_conflict
 
     @property
     def id(self):
@@ -224,24 +148,28 @@ class SearchNode:
         id = f'{id}/{self.search_string}'
         return id
 
-    def search(self, session, i=1, ignore_on_conflict=False):
+    async def search(self, i=1):
         if i > 2:
             logger.error('Too many retried searches after XML parsing error')
             if len(self.search_string) <= 15:
                 self.__spawn_children()
             elif self.range_start_date != self.range_end_date:
                 self.__split()
-            return 0
+            return
+        
+        session = await self.session_pool.get()
         try:
-            response = self.__get_results(session)
+            response = await self.__get_results(session)
         except FailedSearchTimeout:
             if len(self.search_string) <= 15:
                 self.__spawn_children()
             elif self.range_start_date != self.range_end_date:
                 self.__split()
-            return 0
+            return
         except CompletedSearchNoResults:
-            return 0
+            return
+        finally:
+            self.session_pool.put_nowait(session)
         
         # Parse XML
         try:
@@ -249,8 +177,8 @@ class SearchNode:
         except ElementTree.ParseError as e:
             if 'DATA NOT FOUND' not in response.text:
                 logger.warning(f'Failed to parse XML: {e}')
-                return self.search(session, i=i+1, ignore_on_conflict=ignore_on_conflict)
-            return 0
+                return await self.search(i=i+1)
+            return
 
         rows = [[element.text for element in row] for row in root]
 
@@ -293,7 +221,7 @@ class SearchNode:
             if len(new_cases) > 0:
                 # Save new cases to database
                 stmt = insert(Case).values(new_cases)
-                if ignore_on_conflict:
+                if self.ignore_on_conflict:
                     stmt = stmt.on_conflict_do_nothing()
                 db.execute(stmt)
 
@@ -318,15 +246,12 @@ class SearchNode:
         
         return len(new_cases)
 
-    def __get_results(self, session):
-        try:
-            response = session.request(
-                method='GET',
-                url = f'{config.MJCS_BASE_URL}/inquiry-search.jsp',
-                headers = {'Referer': f'{config.MJCS_BASE_URL}/'}
-            )
-        except requests.Timeout:
-            raise RequestTimeout
+    async def __get_results(self, session):
+        response = await session.request(
+            method='GET',
+            url = f'{config.MJCS_BASE_URL}/inquiry-search.jsp',
+            headers = {'Referer': f'{config.MJCS_BASE_URL}/'}
+        )
 
         if response.status_code == 403:
             raise Forbidden
@@ -344,25 +269,24 @@ class SearchNode:
         query_params = {
             'lastName':self.search_string + '%',
             # 'firstName': '%',
-            'countyName':self.court,
-            'site':self.site,
             'company':'N',
             'filingStart':self.range_start_date.strftime("%-m/%-d/%Y"),
             'filingEnd':self.range_end_date.strftime("%-m/%-d/%Y"),
             'd-16544-e': 3,  # XML
             'searchtype': search_type
         }
+        if self.court:
+            query_params['countyName'] = self.court
+        if self.site:
+            query_params['site'] = self.site
         
         logger.debug(f'Searching for {self.id}')
-        try:
-            response = session.request(
-                method='POST',
-                url=f'{config.MJCS_BASE_URL}/inquirySearch.jis',
-                data=query_params,
-                headers = {'Referer': f'{config.MJCS_BASE_URL}/inquiry-search.jsp'}
-            )
-        except requests.Timeout:
-            raise RequestTimeout
+        response = await session.request(
+            method='POST',
+            url=f'{config.MJCS_BASE_URL}/inquirySearch.jis',
+            data=query_params,
+            headers = {'Referer': f'{config.MJCS_BASE_URL}/inquiry-search.jsp'}
+        )
 
         if response.status_code == 403:
             raise Forbidden

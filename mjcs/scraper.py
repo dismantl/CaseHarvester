@@ -1,18 +1,18 @@
-from .config import config
-from .session import MjcsSession, RequestTimeout, Forbidden
-from .util import db_session, get_detail_loc, send_to_queue, get_queue_count, RepeatedTimer
-from .models import ScrapeVersion, Scrape, Case
-from hashlib import sha256
-import logging
-import botocore
-import boto3
-import re
 import json
-import time
-import requests
-from datetime import datetime, timedelta
-from sqlalchemy import and_, or_, text, select, func
+import logging
+import re
+from datetime import datetime
+from hashlib import sha256
+
+import botocore
+import trio
 from bs4 import BeautifulSoup
+from sqlalchemy import and_, func, or_, select, text
+
+from .config import config
+from .models import Case, Scrape, ScrapeVersion
+from .session import AsyncSessionPool, Forbidden
+from .util import db_session, get_detail_loc, get_queue_count, send_to_queue
 
 logger = logging.getLogger('mjcs')
 
@@ -51,76 +51,49 @@ class ExpiredSession(Exception):
 
 
 class Scraper:
-    def __init__(self):
-        self.scrapes = 0
-        self.last_scrape_count = 0
-        self.last_request_count = 0
-        self.last_forbidden_count = 0
-        self.metrics = []
+    def __init__(self, concurrency=1):
+        self.session_pool = AsyncSessionPool(concurrency)
     
-    @property
-    def instance_id(self):
-        if not hasattr(self, '_instance_id'):
-            from ec2_metadata import ec2_metadata
-            self._instance_id = ec2_metadata.instance_id
-        return self._instance_id
+    def scrape_from_queue(self, forever=False):
+        trio.run(self.__start_service, forever, restrict_keyboard_interrupt_to_checkpoints=True)
+    
+    def scrape_case(self, case_number):
+        async def __scrape_specific_case(case_number):
+            detail_loc = get_detail_loc(case_number)
+            await self.__scrape_case(case_number, detail_loc)
+        trio.run(__scrape_specific_case, case_number)
 
-    @property
-    def session(self):
-        if not hasattr(self, '_session'):
-            self._session = MjcsSession()
-        return self._session
-
-    def record_metrics(self):
-        now = datetime.now()
-        new_scrape_count = self.scrapes
-        delta_scrapes = new_scrape_count - self.last_scrape_count
-        self.last_scrape_count = new_scrape_count
-
-        new_request_count = self.session.requests
-        delta_requests = new_request_count - self.last_request_count
-        self.last_request_count = new_request_count
-
-        new_forbidden_count = self.session.forbiddens
-        delta_forbiddens = new_forbidden_count - self.last_forbidden_count
-        self.last_forbidden_count = new_forbidden_count
-
-        dimensions = [
-            {
-                'Name': 'InstanceId',
-                'Value': self.instance_id
-            },
-            {
-                'Name': 'Environment',
-                'Value': config.environment
-            }
-        ]
-        self.metrics += [
-            {
-                'MetricName': 'Scrapes',
-                'Dimensions': dimensions,
-                'Timestamp': now,
-                'Value': delta_scrapes
-            },
-            {
-                'MetricName': 'ScraperRequests',
-                'Dimensions': dimensions,
-                'Timestamp': now,
-                'Value': delta_requests
-            },
-            {
-                'MetricName': 'ForbiddenRequests',
-                'Dimensions': dimensions,
-                'Timestamp': now,
-                'Value': delta_forbiddens
-            }
-        ]
-        
-    def report(self):
-        config.boto3_session.client('cloudwatch').put_metric_data(
-            Namespace='CaseHarvester',
-            MetricData=self.metrics
-        )
+    async def __start_service(self, forever):
+        logger.info('Initiating scraper service.')
+        try:
+            # Blocks until all child tasks finish or exception thrown
+            async with trio.open_nursery() as nursery:
+                nursery.start_soon(self.__queue_manager, nursery, forever)
+        except KeyboardInterrupt:
+            print("\nCaught KeyboardInterrupt: stopping service.")
+        logger.info("Scraper service stopped.")
+    
+    async def __queue_manager(self, nursery, forever):
+        while True:
+            if len(nursery.child_tasks) < 100:
+                queue_items = config.scraper_queue.receive_messages(
+                    WaitTimeSeconds = config.QUEUE_WAIT,
+                    MaxNumberOfMessages = 10
+                )
+                if queue_items:
+                    for item in queue_items:
+                        body = json.loads(item.body)
+                        case_number = body['case_number']
+                        detail_loc = body.get('detail_loc')
+                        nursery.start_soon(self.__scrape_case, case_number, detail_loc)
+                        item.delete()
+                else:
+                    logger.debug('No items in scraper queue.')
+                    if not forever:
+                        break
+                    await trio.sleep(5 * 60)
+            else:
+                await trio.sleep(5)
 
     def stale_filter(self, range_start_date=None, range_end_date=None, include_unscraped=False, include_inactive=False):
         or_filters = [and_(
@@ -194,66 +167,30 @@ class Scraper:
         
         logger.info(f"Submitted a total of {total} cases for rescraping")
 
-    def scrape_from_queue(self, record_metrics=False, forever=False):
-        if record_metrics:
-            timer = RepeatedTimer(60, self.record_metrics)
-            timer.start()
-        try:
-            while True:
-                queue_items = config.scraper_queue.receive_messages(
-                    WaitTimeSeconds = config.QUEUE_WAIT,
-                    MaxNumberOfMessages = 10
-                )
-                if queue_items:
-                    for item in queue_items:
-                        body = json.loads(item.body)
-                        case_number = body['case_number']
-                        detail_loc = body.get('detail_loc')
-                        try:
-                            self.scrape_case(case_number, detail_loc)
-                        except FailedScrape:
-                            pass
-                        item.delete()
-                else:
-                    logger.info('No items in scraper queue.')
-                    if not forever:
-                        break
-                    time.sleep(5 * 60)
-        finally:
-            if record_metrics:
-                timer.stop()
-                self.record_metrics()
-                self.report()
-            logger.info(f'Number of requests: {self.session.requests}')
-            logger.info(f'Number of forbidden requests: {self.session.forbiddens}')
-            logger.info(f'Number of scrapes: {self.scrapes}')
-
-    def scrape_case(self, case_number, detail_loc=None):
+    async def __scrape_case(self, case_number, detail_loc=None):
+        session = await self.session_pool.get()
         logger.debug(f"Requesting case details for {case_number}")
         begin = datetime.now()
 
         # First we have to get the `searchtype` hidden field from the search page
         try:
-            response = self.session.request(
+            response = await session.request(
                 method='GET',
                 url = f'{config.MJCS_BASE_URL}/inquiry-search.jsp',
                 headers = {'Referer': f'{config.MJCS_BASE_URL}/'}
             )
-        except requests.Timeout:
-            raise RequestTimeout
-        
-        if response.status_code == 403:
-            raise Forbidden
-        elif response.status_code != 200:
-            logger.debug(f"Failed to retrieve search page: {response.status_code}")
-            raise FailedScrapeUnknownError(response.text)
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        searchtype = soup.find('input',{'name':'searchtype'}).get('value')
+            
+            if response.status_code == 403:
+                raise Forbidden
+            elif response.status_code != 200:
+                logger.debug(f"Failed to retrieve search page: {response.status_code}")
+                raise FailedScrapeUnknownError(response.text)
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            searchtype = soup.find('input',{'name':'searchtype'}).get('value')
 
-        # Now request the actual case details
-        try:
-            response = self.session.request(
+            # Now request the actual case details
+            response = await session.request(
                 'POST',
                 f'{config.MJCS_BASE_URL}/inquiryByCaseNum.jis',
                 data = {
@@ -261,19 +198,17 @@ class Scraper:
                     'searchtype': searchtype
                 }
             )
-        except requests.Timeout:
-            raise RequestTimeout
-        
-        end = datetime.now()
-        duration = (end - begin).total_seconds()
+            
+            end = datetime.now()
+            duration = (end - begin).total_seconds()
+        finally:
+            self.session_pool.put_nowait(session)
 
         # Handle scrape result
-        self.scrapes += 1
         try:
             self.__check_scrape_response(case_number, response)
         except (FailedScrapeTimeout, FailedScrape500, FailedScrapeUnexpectedError, FailedScrapeUnknownError) as e:
             logger.debug(f'Scrape error {type(e).__name__}: {e}')
-            time.sleep(1) #anti hammer
         except FailedScrape as e:
             logger.debug(f'Scrape error {type(e).__name__}: {e}')
             with db_session() as db:
@@ -298,7 +233,7 @@ class Scraper:
                             .values(scrape_exempt=True)
                     )
         else:
-            self.__store_case_details(case_number, detail_loc, response.text, begin, duration)
+            await self.__store_case_details(case_number, detail_loc, response.text, begin, duration)
 
     def __check_scrape_response(self, case_number, response):
         if response.status_code == 500:
@@ -322,7 +257,7 @@ class Scraper:
                 not re.search(r'[- ]*'.join(case_number.lower()),response.text)):
             raise FailedScrapeNoCaseNumber
 
-    def __store_case_details(self, case_number, detail_loc, html, timestamp, scrape_duration=None):
+    async def __store_case_details(self, case_number, detail_loc, html, timestamp, scrape_duration=None):
         add = False
         with db_session() as db:
             latest_sha256 = db.scalars(
@@ -362,7 +297,7 @@ class Scraper:
                 except botocore.exceptions.ClientError as e:
                     logger.debug(f'S3 error {type(e).__name__}: {e}')
                     # Sometimes the version_id property isn't available from S3 when we first try to access it, so wait and try again
-                    time.sleep(5)
+                    await trio.sleep(5)
                     version_id = obj.version_id
 
                 with db_session() as db:

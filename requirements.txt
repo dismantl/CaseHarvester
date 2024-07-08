@@ -11,3 +11,5 @@ requests == 2.28.2
 pypdf == 3.6.0
 watchtower == 3.0.1
 ec2_metadata == 2.11.0
+httpx == 0.27.0
+trio == 0.26.0
