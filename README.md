@@ -8,7 +8,7 @@ Case Harvester is a project designed to scrape the [Maryland Judiciary Case Sear
 
 Case Harvester began as an Open Justice Baltimore project and now runs independently at [caseharvester.org](https://caseharvester.org). The relaunched service is a continuously refreshed database of Maryland court cases, covering courts statewide back to 2000 and Baltimore City back to 1990. Live case counts, coverage by category and filing year, and data freshness are published on the [statistics page](https://caseharvester.org/stats), along with the SQL behind every figure.
 
-Licensed access includes a REST API, exact case lookup, CSV export, and an MCP server so AI agents can query the database directly. The personal details of criminal defendants and eviction tenants are withheld, and no license buys a fuller copy of the data. Access is invite-only for now. Requests will open at [caseharvester.org](https://caseharvester.org) soon.
+Licensed access includes a REST API, exact case lookup, CSV export, and an MCP server so AI agents can query the database directly. The personal details of criminal defendants and eviction tenants are withheld. Access can be requested at [caseharvester.org/request-access](https://caseharvester.org/request-access).
 
 The old public site at [mdcaseexplorer.com](https://mdcaseexplorer.com) and the monthly table exports are retired. Both addresses now redirect to caseharvester.org.
 
