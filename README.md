@@ -2,7 +2,7 @@
 
 > **Case Harvester has relaunched at [caseharvester.org](https://caseharvester.org). The court record, made usable.**
 
-Case Harvester is a project designed to scrape the [Maryland Judiciary Case Search](https://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp) (MJCS) and build a near-complete database of Maryland court cases that can be queried and analyzed without the limitations of the MJCS interface. It is designed to leverage [Amazon Web Services (AWS)](https://aws.amazon.com/) for scalability and performance.
+Case Harvester is a project designed to scrape the [Maryland Judiciary Case Search](https://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp) (MJCS) and build a near-complete database of Maryland court cases that can be queried and analyzed without the limitations of the MJCS interface.
 
 # The relaunch
 
@@ -14,9 +14,7 @@ The old public site at [mdcaseexplorer.com](https://mdcaseexplorer.com) and the 
 
 This repository holds the original AWS-based pipeline and remains available as a reference. Development of the relaunched pipeline continues in a private repository.
 
-> **NOTE: Unless you are modifying Case Harvester for specific purposes, please do not run your own instance so that Case Search is spared unnecessary load. The data is already collected and kept current at caseharvester.org.**
-
-# Architecture
+# Architecture (historical reference)
 Case Harvester is split into three main components: spider, scraper, and parser. Each component is a part of a pipeline that finds, downloads, and parses case data from the MJCS. The following diagram shows at a high level how each of these components interact:
 
 ![High level diagram](./img/main.svg)
