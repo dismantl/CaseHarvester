@@ -1,14 +1,20 @@
-<img src="https://openjusticebaltimore.org/images/caseharvester200h.png" alt="Case Harvester" />
-<img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.mdcaseexplorer.com%2Fapi%2Fv1%2Fcases%2Fcount&label=Total%20cases&query=$.count&color=blue" alt"Total cases" />
-
 # Case Harvester
-Case Harvester is a project designed to scrape the [Maryland Judiciary Case Search](https://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp) (MJCS) and build a near-complete database of Maryland court cases that can be queried and analyzed without the limitations of the MJCS interface. It is designed to leverage [Amazon Web Services (AWS)](https://aws.amazon.com/) for scalability and performance.
 
-Our database of cases (with criminal defendant PII redacted) is available to the public and can be found at [mdcaseexplorer.com](https://mdcaseexplorer.com), which is built using our [Case Explorer](https://github.com/dismantl/CaseExplorer) software. REST and GraphQL APIs are available. If you would like to download tables from our database exported monthly, you can find that at [exports.mdcaseexplorer.com](https://exports.mdcaseexplorer.com/).
+> **Case Harvester has relaunched at [caseharvester.org](https://caseharvester.org). The court record, made usable.**
 
-> **NOTE: Unless you are modifying Case Harvester for specific purposes, please do not run your own instance so that MJCS is spared unneccesary load. Instead, use the options described above for viewing the data, or if you have an AWS account you are also welcome to clone our database directly.**
+Case Harvester is a project designed to scrape the [Maryland Judiciary Case Search](https://casesearch.courts.state.md.us/casesearch/inquiry-index.jsp) (MJCS) and build a near-complete database of Maryland court cases that can be queried and analyzed without the limitations of the MJCS interface.
 
-# Architecture
+# The relaunch
+
+Case Harvester began as an Open Justice Baltimore project and now runs independently at [caseharvester.org](https://caseharvester.org). The relaunched service is a continuously refreshed database of Maryland court cases, covering courts statewide back to 2000 and Baltimore City back to 1990. Live case counts, coverage by category and filing year, and data freshness are published on the [statistics page](https://caseharvester.org/stats), along with the SQL behind every figure.
+
+Licensed access includes a REST API, exact case lookup, CSV export, and an MCP server so AI agents can query the database directly. The personal details of criminal defendants and eviction tenants are withheld. Access can be requested at [caseharvester.org/request-access](https://caseharvester.org/request-access).
+
+The old public site at [mdcaseexplorer.com](https://mdcaseexplorer.com) and the monthly table exports are retired. Both addresses now redirect to caseharvester.org.
+
+This repository holds the original AWS-based pipeline and remains available as a reference. Development of the relaunched pipeline continues in a private repository.
+
+# Architecture (historical reference)
 Case Harvester is split into three main components: spider, scraper, and parser. Each component is a part of a pipeline that finds, downloads, and parses case data from the MJCS. The following diagram shows at a high level how each of these components interact:
 
 ![High level diagram](./img/main.svg)
@@ -45,4 +51,4 @@ Case details in the MJCS are formatted differently depending on the county and t
 Each different parser breaks down the case details to a granular level and stores the data in a number of database tables. This [schematic diagram](https://disman.tl/caseharvester/relationships.html) illustrates how this data is represented in the database.
 
 # Questions
-For questions or more information, email [dan@acab.enterprises](mailto:dan@acab.enterprises).
+For questions or more information, email [contact@caseharvester.org](mailto:contact@caseharvester.org).
